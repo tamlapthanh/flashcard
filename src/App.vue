@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useTheme } from 'vuetify';
 import { flushResults } from './api';
+import { auth, clearSession, loginRequired } from './auth';
 import Hanko from './components/Hanko.vue';
 import { t } from './i18n';
 import { settings } from './settings';
@@ -24,6 +25,18 @@ const items = computed(() => [
   { path: '/settings', title: t('nav.settings'), glyph: '設', color: 'warning' }
 ]);
 const current = computed(() => items.value.find((i) => (i.path === '/' ? route.path === '/' : route.path.startsWith(i.path)))?.path ?? '/');
+
+/* Signing out (or a session the server no longer accepts) always lands on the login screen. */
+function logout(): void {
+  menuOpen.value = false;
+  clearSession();
+}
+watch(
+  () => auth.token,
+  (token) => {
+    if (!token && loginRequired && route.name !== 'login') void router.replace('/login');
+  }
+);
 
 function go(path: string): void {
   menuOpen.value = false;
@@ -64,6 +77,12 @@ onUnmounted(() => {
           <template #prepend><div class="nav-tile" :style="{ background: `rgb(var(--v-theme-${i.color}))` }" aria-hidden="true">{{ i.glyph }}</div></template>
         </v-list-item>
       </v-list>
+      <template v-if="loginRequired && auth.user" #append>
+        <div class="px-4 pt-2 text-caption text-medium-emphasis"><v-icon icon="mdi-account-circle-outline" size="14" /> {{ t('nav.signedIn', { user: auth.user }) }}</div>
+        <v-list nav class="pa-2">
+          <v-list-item :title="t('nav.logout')" prepend-icon="mdi-logout" rounded="lg" @click="logout" />
+        </v-list>
+      </template>
     </v-navigation-drawer>
 
     <v-main>

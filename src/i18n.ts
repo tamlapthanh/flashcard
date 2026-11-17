@@ -8,6 +8,8 @@ const en = {
   'nav.decks': 'Decks',
   'nav.study': 'Study',
   'nav.settings': 'Settings',
+  'nav.logout': 'Sign out',
+  'nav.signedIn': 'Signed in as {user}',
   'app.tagline': 'Flashcard · LCT vocabulary',
 
   'btn.again': 'Again',
@@ -35,6 +37,9 @@ const en = {
   'study.stop': 'Stop',
   'study.read': 'Read aloud',
   'study.details': 'Details',
+  'study.back': 'Back to card',
+  'study.prev': 'Previous word',
+  'study.next': 'Next word',
 
   'detail.sinoViet': 'Sino-Viet',
   'detail.pos': 'Part of speech',
@@ -88,10 +93,21 @@ const en = {
   'set.showMeaningSub': 'On the answer side (Japanese to Vietnamese)',
   'set.showHanViet': 'Show Sino-Vietnamese (Hán Việt)',
   'set.showHanVietSub': 'Above the meaning and in Details',
+  'set.naturalVoice': 'Natural voice',
+  'set.naturalVoiceSub': 'Reads each word with an AI voice; falls back to the phone voice',
   'set.dark': 'Dark mode',
   'set.language': 'Language',
   'set.direction': 'Study direction',
   'set.pending': '{n} results not sent yet. They will be sent when you are back online.',
+
+  'login.title': 'Sign in',
+  'login.user': 'Username',
+  'login.password': 'Password',
+  'login.submit': 'Sign in',
+  'login.show': 'Show password',
+  'login.hide': 'Hide password',
+  'login.wrong': 'Wrong username or password.',
+  'login.waking': 'Waking up the server. This can take 30–60 seconds…',
 
   'flag.jp': 'Japanese',
   'flag.vn': 'Vietnamese'
@@ -101,6 +117,8 @@ const vi: Record<keyof typeof en, string> = {
   'nav.decks': 'Bộ thẻ',
   'nav.study': 'Học',
   'nav.settings': 'Cài đặt',
+  'nav.logout': 'Đăng xuất',
+  'nav.signedIn': 'Đang đăng nhập: {user}',
   'app.tagline': 'Flashcard · Học từ vựng LCT',
 
   'btn.again': 'Học lại',
@@ -128,6 +146,9 @@ const vi: Record<keyof typeof en, string> = {
   'study.stop': 'Dừng đọc',
   'study.read': 'Đọc',
   'study.details': 'Chi tiết',
+  'study.back': 'Về mặt trước',
+  'study.prev': 'Từ trước',
+  'study.next': 'Từ tiếp theo',
 
   'detail.sinoViet': 'Hán Việt',
   'detail.pos': 'Loại từ',
@@ -181,10 +202,21 @@ const vi: Record<keyof typeof en, string> = {
   'set.showMeaningSub': 'Ở mặt sau (chiều Nhật sang Việt)',
   'set.showHanViet': 'Hiện Hán Việt',
   'set.showHanVietSub': 'Phía trên nghĩa và trong Chi tiết',
+  'set.naturalVoice': 'Giọng đọc tự nhiên',
+  'set.naturalVoiceSub': 'Đọc từ bằng giọng AI; lỗi thì dùng giọng của máy',
   'set.dark': 'Chế độ tối',
   'set.language': 'Ngôn ngữ',
   'set.direction': 'Chiều học',
   'set.pending': '{n} kết quả chưa gửi, sẽ tự gửi khi có kết nối.',
+
+  'login.title': 'Đăng nhập',
+  'login.user': 'Tên đăng nhập',
+  'login.password': 'Mật khẩu',
+  'login.submit': 'Đăng nhập',
+  'login.show': 'Hiện mật khẩu',
+  'login.hide': 'Ẩn mật khẩu',
+  'login.wrong': 'Sai tên đăng nhập hoặc mật khẩu.',
+  'login.waking': 'Đang đánh thức server, chờ khoảng 30–60 giây…',
 
   'flag.jp': 'Tiếng Nhật',
   'flag.vn': 'Tiếng Việt'

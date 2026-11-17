@@ -1,7 +1,9 @@
 /*
- * The only place that talks to the server: swap the auth here (token from a login screen) when login exists.
+ * The only place that talks to the server. Calls carry the login token (and the static key, for a server without
+ * login). A 401 on any call other than login means the session ended: the user is signed out and sent to the login screen.
  * Study results go through a persistent queue so nothing is lost when the server is asleep or the phone is offline.
  */
+import { auth, clearSession, setSession } from './auth';
 import { t } from './i18n';
 import type { Card, Deck, LookupResult, StudyResult } from './types';
 
@@ -18,7 +20,7 @@ export class ApiError extends Error {
 }
 
 function authHeaders(): Record<string, string> {
-  return KEY ? { 'x-api-key': KEY } : {};
+  return { ...(KEY ? { 'x-api-key': KEY } : {}), ...(auth.token ? { authorization: `Bearer ${auth.token}` } : {}) };
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -31,11 +33,20 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   } catch {
     throw new ApiError(t('api.conn'), 0);
   }
+  if (res.status === 401 && path !== '/api/login') clearSession();
   if (!res.ok) throw new ApiError(t('api.server', { status: res.status }), res.status);
   return (await res.json()) as T;
 }
 
 export const api = {
+  /** Resolves with the user name; a wrong name or password rejects with status 401. */
+  login: async (username: string, password: string): Promise<string> => {
+    const r = await request<{ token: string; user: string }>('/api/login', { method: 'POST', body: JSON.stringify({ username, password }) });
+    // Results still queued belong to the previous user: they must not be credited to someone else.
+    if (auth.user && auth.user !== r.user) writeQueue([]);
+    setSession(r.token, r.user);
+    return r.user;
+  },
   decks: () => request<{ decks: Deck[] }>('/api/decks').then((r) => r.decks),
   cards: (params: { deck: string; tags: string[]; status: string[]; limit: number }) => {
     const q = new URLSearchParams({ deck: params.deck, limit: String(params.limit) });
@@ -51,6 +62,19 @@ export const api = {
   /** Free servers sleep: ping /health first so the UI can say "waking up". */
   health: () => request<{ ok: boolean }>('/health')
 };
+
+/* The spoken word as an MP3 (ElevenLabs through the server). Rejects when the server has no voice or fails. */
+export async function fetchSpeech(text: string): Promise<Blob> {
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}/api/speech?text=${encodeURIComponent(text)}`, { headers: authHeaders() });
+  } catch {
+    throw new ApiError(t('api.conn'), 0);
+  }
+  if (res.status === 401) clearSession();
+  if (!res.ok) throw new ApiError(t('api.server', { status: res.status }), res.status);
+  return res.blob();
+}
 
 /* ---- result queue ---- */
 

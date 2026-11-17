@@ -79,6 +79,11 @@ import { clampScale, settings } from '../settings';
         <template #append><v-switch v-model="settings.showHanViet" color="primary" hide-details density="compact" /></template>
       </v-list-item>
       <v-divider />
+      <v-list-item :title="t('set.naturalVoice')" :subtitle="t('set.naturalVoiceSub')">
+        <template #prepend><v-avatar color="info" variant="tonal" size="38"><v-icon icon="mdi-account-voice" /></v-avatar></template>
+        <template #append><v-switch v-model="settings.naturalVoice" color="primary" hide-details density="compact" /></template>
+      </v-list-item>
+      <v-divider />
       <v-list-item :title="t('set.dark')">
         <template #prepend><v-avatar color="secondary" variant="tonal" size="38"><v-icon icon="mdi-weather-night" /></v-avatar></template>
         <template #append><v-switch v-model="settings.dark" color="primary" hide-details density="compact" /></template>

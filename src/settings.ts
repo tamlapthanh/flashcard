@@ -9,6 +9,7 @@ export interface Settings {
   language: Language; // language of the app's own text (card data stays as written in LCT)
   showMeaning: boolean; // show the Vietnamese meaning on the answer side (Japanese -> Vietnamese mode)
   showHanViet: boolean; // show the Sino-Vietnamese (Hán Việt) reading
+  naturalVoice: boolean; // read words with the natural (ElevenLabs) voice when the server has one
   direction: 'forward' | 'reverse'; // forward = Japanese -> Vietnamese, reverse = Vietnamese -> Japanese
 }
 
@@ -16,7 +17,7 @@ const KEY = 'flashmobile.settings';
 
 function defaults(): Settings {
   const vietnamese = typeof navigator !== 'undefined' && navigator.language?.toLowerCase().startsWith('vi');
-  return { fontScale: 1, showReading: false, dark: false, language: vietnamese ? 'vi' : 'en', showMeaning: true, showHanViet: true, direction: 'forward' };
+  return { fontScale: 1, showReading: false, dark: false, language: vietnamese ? 'vi' : 'en', showMeaning: true, showHanViet: true, naturalVoice: true, direction: 'forward' };
 }
 
 function load(): Settings {
@@ -30,6 +31,7 @@ function load(): Settings {
       language: raw.language === 'vi' || raw.language === 'en' ? raw.language : base.language,
       showMeaning: raw.showMeaning ?? base.showMeaning,
       showHanViet: raw.showHanViet ?? base.showHanViet,
+      naturalVoice: raw.naturalVoice ?? base.naturalVoice,
       direction: raw.direction === 'reverse' ? 'reverse' : 'forward'
     };
   } catch {
