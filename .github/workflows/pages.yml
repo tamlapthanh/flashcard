@@ -1,8 +1,10 @@
 name: Deploy to GitHub Pages
 
+# Manual only. The site is normally published from the gh-pages branch (`npx gh-pages -d dist`, see HUONG-DAN.md), and
+# the github-pages environment only accepts that branch, so running on every push to main always failed.
+# To publish with Actions instead: Settings > Pages > Source: GitHub Actions, allow main in Settings > Environments >
+# github-pages, set the Variable VITE_API_URL, then run this workflow by hand (Actions > Run workflow).
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
