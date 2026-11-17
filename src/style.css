@@ -1,0 +1,143 @@
+/*
+ * Fresh green: a soft green gradient page, white rounded cards, deep forest-green bands, leaf-green 3D buttons.
+ * --forest = dark panels, --leaf = labels and small accents, --gold = pitch/streak-like highlights.
+ */
+:root {
+  --jp: #1c2e1d;
+  --rd: #2b7bb9;
+  --hv: #2e8b57;
+  --shu: #e5533d;
+  --forest: #1f4d24;
+  --leaf: #4e8f2f;
+  --gold: #e0a21a;
+  --paper: #fffcf0; /* warm cream: the inside of every card */
+  --paper-edge: #e6e2bd;
+  --grid: #d9d6a8;
+  --grid-soft: #eceac9;
+  --page: linear-gradient(180deg, #d6efae 0%, #e8f6d0 38%, #f6fbe9 100%);
+  --font-jp: 'Noto Serif JP', 'Hiragino Mincho ProN', 'Yu Mincho', 'MS PMincho', serif;
+}
+.v-theme--dark {
+  --jp: #eef8e4;
+  --rd: #6cc3ee;
+  --hv: #6fe0a6;
+  --shu: #ff7a66;
+  --forest: #2e6b34;
+  --leaf: #8fd35f;
+  --gold: #ffc247;
+  --paper: #1d4223;
+  --paper-edge: #2f5f36;
+  --grid: #3a7041;
+  --grid-soft: #2f5f36;
+  --page: linear-gradient(180deg, #123619 0%, #0e2312 100%);
+}
+html,
+body {
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.v-application {
+  background: var(--page) !important;
+  background-attachment: fixed;
+}
+.v-main {
+  background: transparent;
+}
+.jp {
+  color: var(--jp);
+  font-family: var(--font-jp);
+  font-weight: 500;
+}
+.rd {
+  color: var(--rd);
+}
+.hv {
+  color: var(--hv);
+}
+
+/* Top bar: transparent over the gradient, dark-green text, round white icon buttons. */
+.v-app-bar.v-toolbar {
+  background: transparent !important;
+  color: var(--forest) !important;
+}
+.v-theme--dark .v-app-bar.v-toolbar {
+  color: #eef8e4 !important;
+}
+.v-app-bar .v-btn--icon {
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--forest);
+  margin: 0 3px;
+  box-shadow: 0 1px 3px rgba(31, 77, 36, 0.15);
+}
+.v-theme--dark .v-app-bar .v-btn--icon {
+  background: rgba(255, 255, 255, 0.12);
+  color: #eef8e4;
+}
+
+/* Cards: white, very round, soft green shadow. */
+.soft-card,
+.paper-card {
+  background: var(--paper);
+  border: 1px solid var(--paper-edge);
+  border-radius: 24px;
+  box-shadow: 0 2px 4px rgba(31, 77, 36, 0.06), 0 10px 26px rgba(31, 77, 36, 0.1);
+}
+
+/* Hairline between the parts of a card. */
+.rule {
+  height: 1px;
+  margin: 0 16px;
+  background: var(--paper-edge);
+}
+
+/* Small caps label: HÁN VIỆT, ENGLISH, ... */
+.label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--leaf);
+}
+
+/* Main buttons look pressed-in: a darker edge underneath. */
+.v-btn.bg-primary:not(.v-btn--disabled) {
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 4px 0 #3f8a1f;
+}
+.v-btn.bg-primary:not(.v-btn--disabled):active {
+  box-shadow: 0 1px 0 #3f8a1f;
+  transform: translateY(3px);
+}
+
+/* A section label with a kanji mark. */
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 16px 0 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--forest);
+}
+.v-theme--dark .section-title {
+  color: var(--leaf);
+}
+.section-title .glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  background: var(--forest);
+  color: #fff;
+  font-family: var(--font-jp);
+  font-size: 0.8rem;
+  letter-spacing: 0;
+}
