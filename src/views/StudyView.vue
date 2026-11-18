@@ -450,7 +450,7 @@ onUnmounted(() => {
             <div v-if="card.kanji.length" class="item">
               <v-icon icon="mdi-ideogram-cjk" color="teal" />
               <div class="grow">
-                <div class="label">{{ hasHanViet ? t('detail.sinoVietTap') : t('detail.kanji') }}</div>
+                <div class="label">{{ hasHanViet ? t('detail.sinoViet') : t('detail.kanji') }}</div>
                 <!-- one row per kanji, in aligned columns: kanji | Sino-Vietnamese sound | meaning. Tap the kanji (only the kanji) for its stroke order. -->
                 <div class="hvpairs">
                   <div v-for="k in card.kanji" :key="k.Literal" class="hvp">
