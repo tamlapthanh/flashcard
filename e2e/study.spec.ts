@@ -18,15 +18,19 @@ test.describe('study', () => {
   });
 
   test('space flips the card; ArrowRight / ArrowLeft browse without grading', async ({ page }) => {
-    const before = (await counter(page).innerText()).trim();
+    // The counter is based on the cards left, so browsing does not change it: compare the word on the card instead.
+    const word = page.locator('.wordbody');
+    const counterBefore = (await counter(page).innerText()).trim();
+    const wordBefore = await word.innerText();
     await page.keyboard.press('Space');
-    await expect(counter(page)).toHaveText(before); // flipping never moves on
-    const total = Number(/\/\s*(\d+)/.exec(before)![1]);
+    await expect(counter(page)).toHaveText(counterBefore); // flipping never moves on
+    const total = Number(/\/\s*(\d+)/.exec(counterBefore)![1]);
     if (total > 1) {
       await page.keyboard.press('ArrowRight');
-      await expect(counter(page)).not.toHaveText(before);
+      await expect(word).not.toHaveText(wordBefore);
+      await expect(counter(page)).toHaveText(counterBefore); // browsing is not grading
       await page.keyboard.press('ArrowLeft');
-      await expect(counter(page)).toHaveText(before);
+      await expect(word).toHaveText(wordBefore);
     }
   });
 
