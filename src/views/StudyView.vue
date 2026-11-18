@@ -425,11 +425,11 @@ onUnmounted(() => {
               <v-icon icon="mdi-ideogram-cjk" color="teal" />
               <div class="grow">
                 <div class="label">{{ hasHanViet ? t('detail.sinoVietTap') : t('detail.kanji') }}</div>
-                <!-- one row per kanji, in aligned columns: kanji | Sino-Vietnamese sound | meaning. Tap a row for its stroke order. -->
+                <!-- one row per kanji, in aligned columns: kanji | Sino-Vietnamese sound | meaning. Tap the kanji (only the kanji) for its stroke order. -->
                 <div class="hvpairs">
-                  <button v-for="k in card.kanji" :key="k.Literal" type="button" class="hvp" :aria-label="`Kanji ${k.Literal}`" @click.stop="openKanji(k.Literal)">
-                    <span class="jp k">{{ k.Literal }}</span><span class="hv">{{ k.HanViet ? k.HanViet.toUpperCase() : '' }}</span><span class="hm">{{ kanjiMeaning(k) }}</span>
-                  </button>
+                  <div v-for="k in card.kanji" :key="k.Literal" class="hvp">
+                    <button type="button" class="jp k" :aria-label="`Kanji ${k.Literal}`" @click.stop="openKanji(k.Literal)">{{ k.Literal }}</button><span class="hv">{{ k.HanViet ? k.HanViet.toUpperCase() : '' }}</span><span class="hm">{{ kanjiMeaning(k) }}</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -946,21 +946,17 @@ onUnmounted(() => {
   align-items: baseline;
 }
 .hvp {
-  /* a whole row is one button (tap for the stroke order) whose three parts sit in the columns of .hvpairs */
+  /* a plain row whose three parts sit in the columns of .hvpairs; only the kanji is a button (tap for the stroke order) */
   display: grid;
   grid-template-columns: subgrid;
   grid-column: 1 / -1;
   align-items: center;
   text-align: left;
-  font: inherit;
-  color: inherit;
-  background: none;
-  border: 0;
-  padding: 0;
-  cursor: pointer;
 }
-/* Only the kanji is framed, like the kanji tiles used to be: a thin border with rounded corners, no 3D edge. */
+/* Only the kanji is framed (and tappable), like the kanji tiles used to be: a thin border with rounded corners, no 3D edge. */
 .hvp .k {
+  font-family: var(--font-jp);
+  cursor: pointer;
   color: var(--headword); /* same red as the kanji in the word list */
   min-width: 42px;
   padding: 2px 8px;
@@ -971,7 +967,7 @@ onUnmounted(() => {
   border: 1px solid var(--paper-edge);
   border-radius: 6px;
 }
-.hvp:hover .k {
+.hvp .k:hover {
   border-color: var(--leaf);
 }
 .hvp .hm {
