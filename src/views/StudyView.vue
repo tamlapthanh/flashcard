@@ -941,8 +941,8 @@ onUnmounted(() => {
 }
 .pair {
   display: grid;
-  /* Sino-Viet and Part of speech side by side when both exist and fit; a lone item takes the full width (no early wrapping) */
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  /* Sino-Viet and Part of speech one under the other, each on its own row like English (side by side squeezed the kanji meanings) */
+  grid-template-columns: 1fr;
   gap: 12px;
 }
 .item {
