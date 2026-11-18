@@ -97,6 +97,48 @@ body {
   box-shadow: 0 1px 0 #3f8a1f;
   transform: translateY(3px);
 }
+/*
+ * With a mouse, every 3D button sinks a little when the pointer is over it (about half way to the pressed look); pressing it
+ * sinks it all the way. Touch screens have no hover, so they are not affected.
+ */
+.v-btn.bg-primary,
+.v-btn.v-btn--variant-tonal,
+.v-app-bar .v-btn--icon,
+.tool3d.v-btn,
+.fanopt {
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  /* green main buttons (Learned, Again, Skip, Start, ...) and the round buttons of the top bar (menu, list) */
+  .v-btn.bg-primary:not(.v-btn--disabled):hover,
+  .v-app-bar .v-btn--icon:not(.v-btn--disabled):hover {
+    box-shadow: 0 2px 0 #3f8a1f;
+    transform: translateY(2px);
+  }
+  .v-btn.bg-primary:not(.v-btn--disabled):hover:active,
+  .v-app-bar .v-btn--icon:not(.v-btn--disabled):hover:active {
+    box-shadow: 0 1px 0 #3f8a1f;
+    transform: translateY(3px);
+  }
+  /* pale (tonal) buttons */
+  .v-btn.v-btn--variant-tonal:not(.v-btn--disabled):hover {
+    box-shadow: 0 2px 0 rgba(31, 77, 36, 0.35);
+    transform: translateY(1px);
+  }
+  .v-btn.v-btn--variant-tonal:not(.v-btn--disabled):hover:active {
+    box-shadow: 0 1px 0 rgba(31, 77, 36, 0.35);
+    transform: translateY(2px);
+  }
+  /* the small round buttons inside the card (show / hide marks, speaker) */
+  .tool3d.v-btn:not(.v-btn--disabled):hover {
+    box-shadow: 0 1px 0 #3f8a1f;
+    transform: translateY(2px);
+  }
+  .tool3d.v-btn:not(.v-btn--disabled):hover:active {
+    box-shadow: 0 0 0 #3f8a1f;
+    transform: translateY(3px);
+  }
+}
 
 /* Cards: white, very round, soft green shadow. */
 .soft-card,
@@ -168,6 +210,28 @@ body {
   transform: translateY(3px);
 }
 
+.tip {
+  position: fixed;
+  z-index: 3000; /* above Vuetify's sheets and dialogs */
+  max-width: 260px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, rgb(var(--v-theme-primary)) 72%, #fff); /* a little lighter than the green buttons */
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(20, 60, 24, 0.95), 0 0 3px rgba(20, 60, 24, 0.7); /* keeps white text readable on the light green */
+  box-shadow: 0 2px 0 #3f8a1f;
+  font-size: 0.75rem;
+  line-height: 1.3;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(2px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.tip.show {
+  opacity: 1;
+  transform: none;
+}
+
 /* The English / Vietnamese switch in Settings. */
 .v-btn-toggle {
   box-shadow: 0 3px 0 rgba(31, 77, 36, 0.35);
@@ -207,5 +271,13 @@ html {
   scrollbar-width: none;
 }
 html::-webkit-scrollbar {
+  display: none;
+}
+/* While a sheet / dialog is open Vuetify forces a scrollbar on the page (overflow-y: scroll); keep it hidden too. */
+html.v-overlay-scroll-blocked {
+  overflow-y: hidden !important;
+  scrollbar-width: none;
+}
+html.v-overlay-scroll-blocked::-webkit-scrollbar {
   display: none;
 }

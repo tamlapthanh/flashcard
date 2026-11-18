@@ -55,7 +55,7 @@ watch(
       </template>
       <div v-else-if="!loading" class="text-body-1">{{ fallbackMeaning }}</div>
       <div v-if="failed" class="text-caption text-error mt-1">{{ t('related.fail') }}</div>
-      <v-btn block variant="tonal" class="mt-3" @click="emit('close')">{{ t('related.close') }}</v-btn>
+      <v-btn block variant="tonal" class="mt-3" :data-tip="t('related.close')" @click="emit('close')">{{ t('related.close') }}</v-btn>
     </v-card>
   </v-bottom-sheet>
 </template>

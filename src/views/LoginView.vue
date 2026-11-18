@@ -76,7 +76,7 @@ onUnmounted(() => clearTimeout(wakeTimer));
       <div v-if="error" class="text-body-2 text-error mt-3" role="alert"><v-icon icon="mdi-alert-circle-outline" size="16" /> {{ error }}</div>
       <div v-else-if="waking" class="text-caption text-medium-emphasis mt-3"><v-icon icon="mdi-power-sleep" size="14" /> {{ t('login.waking') }}</div>
 
-      <v-btn type="submit" block color="primary" size="large" prepend-icon="mdi-login" class="mt-5" :loading="busy" :disabled="!username.trim() || !password">
+      <v-btn type="submit" block color="primary" size="large" prepend-icon="mdi-login" class="mt-5" :loading="busy" :disabled="!username.trim() || !password" :data-tip="t('login.submit')">
         {{ t('login.submit') }}
       </v-btn>
     </form>

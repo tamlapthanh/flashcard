@@ -101,13 +101,13 @@ onMounted(load);
     <v-alert v-if="waking" type="info" variant="tonal" icon="mdi-power-sleep" class="mb-3">{{ t('deck.waking') }}</v-alert>
     <v-alert v-if="error" type="error" variant="tonal" icon="mdi-alert-circle-outline" class="mb-3">
       {{ error }}
-      <template #append><v-btn variant="tonal" size="small" @click="load">{{ t('deck.retry') }}</v-btn></template>
+      <template #append><v-btn variant="tonal" size="small" :data-tip="t('tip.retry')" @click="load">{{ t('deck.retry') }}</v-btn></template>
     </v-alert>
     <v-progress-linear v-if="loading" indeterminate class="mb-3" color="primary" />
 
     <template v-if="decks.length">
       <div class="decks">
-        <button v-for="d in decks" :key="d.id" type="button" class="paper-card deck" :class="{ on: d.id === deckId }" @click="deckId = d.id">
+        <button v-for="d in decks" :key="d.id" type="button" class="paper-card deck" :class="{ on: d.id === deckId }" :data-tip="t('tip.deck')" @click="deckId = d.id">
           <div class="d-flex align-center ga-3">
             <div class="deck-tile jp" aria-hidden="true">札</div>
             <div class="flex-grow-1 text-start">
@@ -120,7 +120,7 @@ onMounted(load);
         </button>
       </div>
 
-      <button type="button" class="paper-card filter" @click="filterOpen = true">
+      <button type="button" class="paper-card filter" :data-tip="t('tip.filter')" @click="filterOpen = true">
         <v-icon icon="mdi-filter-variant" class="mr-3" color="primary" />
         <div class="d-flex flex-wrap ga-1 flex-grow-1">
           <v-chip v-for="(p, i) in filterSummary" :key="i" size="small" variant="tonal">{{ p }}</v-chip>
@@ -132,7 +132,7 @@ onMounted(load);
       <div v-if="deck?.tags.length" class="paper-card tagsbox">
         <div class="tagshead">
           <div class="label"><v-icon icon="mdi-tag-multiple-outline" size="14" />{{ t('filter.tags') }}</div>
-          <v-btn v-if="tags.length" size="x-small" variant="tonal" color="primary" @click="tags = []">{{ t('filter.clear', { n: tags.length }) }}</v-btn>
+          <v-btn v-if="tags.length" size="x-small" variant="tonal" color="primary" :data-tip="t('tip.clearTags')" @click="tags = []">{{ t('filter.clear', { n: tags.length }) }}</v-btn>
         </div>
         <div class="tagscroll">
           <v-chip-group v-model="tags" multiple filter column color="primary">
@@ -144,7 +144,7 @@ onMounted(load);
   </v-container>
 
   <v-footer v-if="deck" app class="pa-3 start-bar">
-    <v-btn block color="primary" size="large" prepend-icon="mdi-play" :loading="starting" :disabled="eligible === 0" @click="start">
+    <v-btn block color="primary" size="large" prepend-icon="mdi-play" :loading="starting" :disabled="eligible === 0" :data-tip="t('tip.start')" @click="start">
       <span class="jp-start">始める</span>&nbsp;· {{ t('deck.start', { n: startCount }) }}
     </v-btn>
   </v-footer>
@@ -159,7 +159,7 @@ onMounted(load);
           <v-chip v-for="s in STATUS_ORDER" :key="s" :value="s" size="small" :prepend-icon="STATUS_ICON[s]">{{ statusLabel(s) }} ({{ deck?.counts[s] ?? 0 }})</v-chip>
         </v-chip-group>
 
-        <v-btn block color="primary" class="mt-3" prepend-icon="mdi-check" @click="filterOpen = false">{{ t('filter.done') }}</v-btn>
+        <v-btn block color="primary" class="mt-3" prepend-icon="mdi-check" :data-tip="t('tip.done')" @click="filterOpen = false">{{ t('filter.done') }}</v-btn>
       </div>
     </v-card>
   </v-bottom-sheet>

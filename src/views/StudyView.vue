@@ -33,6 +33,21 @@ const listOpen = ref(false); // the list of all words of this run (opened from t
 const touchOnly = typeof window !== 'undefined' && !window.matchMedia('(hover: hover) and (pointer: fine)').matches;
 const notesOpen = ref(false);
 const speaking = ref(false);
+/* The eye button fans out three options (what to show on the card; each is also a switch in Settings, so a change here is saved there); any tap elsewhere folds them back. */
+const fanOpen = ref(false);
+const fanOptions = computed(() => [
+  { key: 'reading', glyph: 'あ', label: t('show.reading'), on: s.showReading, dx: 0, dy: -62, toggle: () => (settings.showReading = s.showReading = !s.showReading) },
+  { key: 'meaning', glyph: 'Vi', label: t('show.meaning'), on: settings.showMeaning, dx: 31, dy: -54, toggle: () => (settings.showMeaning = !settings.showMeaning) },
+  { key: 'english', glyph: 'En', label: t('show.english'), on: settings.showEnglish, dx: 54, dy: -31, toggle: () => (settings.showEnglish = !settings.showEnglish) },
+  { key: 'hanviet', glyph: '漢', label: t('show.hanviet'), on: settings.showHanViet, dx: 62, dy: 0, toggle: () => (settings.showHanViet = !settings.showHanViet) }
+]);
+const foldFan = (): void => {
+  fanOpen.value = false;
+};
+watch(fanOpen, (isOpen) => {
+  if (isOpen) setTimeout(() => window.addEventListener('click', foldFan, { once: true }), 0);
+  else window.removeEventListener('click', foldFan);
+});
 const stamping = ref(false); // the "習" seal is being pressed onto the card
 
 /* The card = what came with the deck + its heavy part (furigana, pitch, kanji, note) once that has been fetched. */
@@ -57,8 +72,6 @@ const noteLines = computed(() => parseNote(card.value?.note));
 const plainNotes = computed(() => noteLines.value.filter((l) => !l.related));
 const relatedLines = computed(() => noteLines.value.filter((l) => !!l.related));
 const scale = computed(() => settings.fontScale);
-/* The eye button toggles the reading. In reverse mode the word itself only appears after the flip, so does the button. */
-const canToggleReading = computed(() => !!card.value?.reading && (!s.reverse || s.flipped));
 
 /* Sino-Vietnamese sounds paired with their Han characters (香 HƯƠNG), one per row in the Details. */
 const hanvietOn = computed(() => settings.showHanViet && !!card.value?.hanviet);
@@ -76,6 +89,13 @@ const hasDetail = computed(() => {
 });
 
 /* Speaking: normal mode reads the front word; reverse mode only after the flip (does not give the answer away). */
+/*
+ * Hán Việt and the Vietnamese meaning follow the switches (the eye menu / Settings): when ON they are on the card straight away,
+ * like the hiragana; no tap is needed to show them. So in Japanese -> Vietnamese mode the answer counts as already shown
+ * (a tap goes straight to the Details) as soon as either of them is on.
+ */
+const englishOn = computed(() => settings.showEnglish && !!card.value?.english);
+const answerShown = computed(() => s.flipped || (!s.reverse && (settings.showMeaning || hanvietOn.value || englishOn.value)));
 const canSpeakNow = computed(() => canSpeak() && !!card.value && card.value.lang === 'ja' && (!s.reverse || s.flipped));
 
 function speak(): void {
@@ -106,10 +126,13 @@ function openDetail(): void {
   detailOpen.value = true;
 }
 
+/* Text on the card can be selected and copied; the click or swipe that only ended a selection must not flip or browse. */
+const hasSelection = (): boolean => !!window.getSelection()?.toString();
+
 /* Tap the card: the first tap shows the answer, the next tap opens the Details (when the card has any). */
 function tapCard(): void {
-  if (swallowClick) return;
-  if (!s.flipped) flip();
+  if (swallowClick || hasSelection()) return;
+  if (!answerShown.value) flip();
   else openDetail();
 }
 
@@ -158,6 +181,7 @@ function mouseUp(e: MouseEvent): void {
 let swallowClick = false;
 
 function gesture(dx: number, dy: number): void {
+  if (hasSelection()) return; // dragging over the text selects it
   // Swipe up: show the Details (whenever the card has details; it also shows the answer side).
   if (dy < -60 && Math.abs(dy) > Math.abs(dx) * 1.5) {
     swallowClick = true;
@@ -244,7 +268,7 @@ onUnmounted(() => {
       <Hanko char="学" :size="88" />
       <div class="text-h6 mt-5">{{ t('study.none') }}</div>
       <div class="text-body-2 text-medium-emphasis mt-1">{{ t('study.noneHint') }}</div>
-      <v-btn color="primary" size="large" prepend-icon="mdi-cards-outline" class="mt-6" @click="router.replace('/')">{{ t('study.choose') }}</v-btn>
+      <v-btn color="primary" size="large" prepend-icon="mdi-cards-outline" class="mt-6" :data-tip="t('tip.choose')" @click="router.replace('/')">{{ t('study.choose') }}</v-btn>
     </v-container>
   </template>
 
@@ -265,10 +289,10 @@ onUnmounted(() => {
         </div>
         <div v-else class="text-caption text-medium-emphasis mt-3"><v-icon icon="mdi-cloud-check-outline" size="14" /> {{ t('study.saved') }}</div>
       </div>
-      <v-btn v-if="s.againCards.length" block color="primary" size="large" prepend-icon="mdi-refresh" class="mt-4" @click="retryAgain">
+      <v-btn v-if="s.againCards.length" block color="primary" size="large" prepend-icon="mdi-refresh" class="mt-4" :data-tip="t('tip.retryAgain')" @click="retryAgain">
         {{ t('study.reviewMissed', { n: s.againCards.length }) }}
       </v-btn>
-      <v-btn block variant="tonal" size="large" prepend-icon="mdi-cards-outline" class="mt-2" @click="router.replace('/')">{{ t('study.backToDecks') }}</v-btn>
+      <v-btn block variant="tonal" size="large" prepend-icon="mdi-cards-outline" class="mt-2" :data-tip="t('tip.backToDecks')" @click="router.replace('/')">{{ t('study.backToDecks') }}</v-btn>
     </v-container>
   </template>
 
@@ -278,9 +302,9 @@ onUnmounted(() => {
       <!-- grading buttons live in the header, right of the counter; always usable (you may know the word without flipping).
            On narrow screens only the icons show (the names stay as accessible labels). -->
       <div class="acts">
-        <v-btn class="act" prepend-icon="mdi-help-circle-outline" variant="flat" color="primary" :disabled="stamping" :aria-label="t('btn.again')" @click="answer('again')"><span class="lbl">{{ t('btn.again') }}</span></v-btn>
-        <v-btn class="act" prepend-icon="mdi-check" variant="flat" color="primary" :disabled="stamping" :aria-label="t('btn.learned')" @click="answer('learned')"><span class="lbl">{{ t('btn.learned') }}</span></v-btn>
-        <v-btn class="act" prepend-icon="mdi-skip-next-outline" variant="flat" color="primary" :disabled="stamping" :aria-label="t('btn.skip')" @click="answer('skip')"><span class="lbl">{{ t('btn.skip') }}</span></v-btn>
+        <v-btn class="act" prepend-icon="mdi-help-circle-outline" variant="flat" color="primary" :disabled="stamping" :aria-label="t('btn.again')" :data-tip="t('tip.again')" @click="answer('again')"><span class="lbl">{{ t('btn.again') }}</span></v-btn>
+        <v-btn class="act" prepend-icon="mdi-check" variant="flat" color="primary" :disabled="stamping" :aria-label="t('btn.learned')" :data-tip="t('tip.learned')" @click="answer('learned')"><span class="lbl">{{ t('btn.learned') }}</span></v-btn>
+        <v-btn class="act" prepend-icon="mdi-skip-next-outline" variant="flat" color="primary" :disabled="stamping" :aria-label="t('btn.skip')" :data-tip="t('tip.skip')" @click="answer('skip')"><span class="lbl">{{ t('btn.skip') }}</span></v-btn>
         <v-btn class="act listbtn" icon="mdi-format-list-bulleted" variant="flat" color="primary" :aria-label="t('list.open')" @click="listOpen = true" />
       </div>
     </TopBar>
@@ -295,7 +319,7 @@ onUnmounted(() => {
         <div class="flipper" :class="{ back: detailOpen }">
         <div class="face">
         <!-- the word; tapping it flips the card -->
-        <div class="wordarea" :class="{ tappable: !s.flipped || hasDetail }" @click="tapCard">
+        <div class="wordarea" :class="{ tappable: !answerShown || hasDetail }" @click="tapCard">
           <Hanko v-if="stamping" char="習" :size="92" stamping class="press-seal" />
           <!-- Only this part changes when you move to another word (the card, the top bar buttons and the tools stay still). -->
           <Transition :name="slide" mode="out-in">
@@ -311,17 +335,19 @@ onUnmounted(() => {
               </div>
             </template>
             <!-- step 2: the meaning -->
-            <template v-if="s.flipped && (settings.showMeaning || hanvietOn)">
+            <template v-if="settings.showMeaning || hanvietOn || englishOn">
               <div class="sep" />
               <!-- Sino-Vietnamese right above the Vietnamese meaning; each can be switched off in Settings -->
               <div v-if="hanvietOn" class="hv hanviet top">{{ card.hanviet!.toUpperCase() }}</div>
               <div v-if="settings.showMeaning" class="meaning">{{ card.meaning }}</div>
+              <div v-if="englishOn" class="english">{{ card.english }}</div>
             </template>
           </template>
           <template v-else>
-            <div v-if="s.flipped && hanvietOn" class="hv hanviet top">{{ card.hanviet!.toUpperCase() }}</div>
+            <div v-if="hanvietOn" class="hv hanviet top">{{ card.hanviet!.toUpperCase() }}</div>
             <!-- in reverse mode the meaning is the question, so it is always shown -->
             <div class="meaning" :class="{ big: !s.flipped }">{{ card.meaning }}</div>
+            <div v-if="englishOn" class="english">{{ card.english }}</div>
             <template v-if="s.flipped">
               <div class="sep" />
               <div class="word jp small">{{ card.headword }}</div>
@@ -333,15 +359,25 @@ onUnmounted(() => {
 
           <!-- reading toggle at the bottom left, speaker at the bottom right -->
           <div class="tools">
-            <v-btn
-              v-if="canToggleReading"
-              :icon="s.showReading ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
-              variant="text"
-              color="primary"
-              class="tool3d"
-              :aria-label="s.showReading ? t('study.hideReading') : t('study.showReading')"
-              @click.stop="s.showReading = !s.showReading"
-            />
+            <!-- the eye fans out three small round options around itself: hiragana, Vietnamese meaning, Hán Việt (lit = shown) -->
+            <div class="fan" :class="{ open: fanOpen }">
+              <button
+                v-for="(o, idx) in fanOptions"
+                :key="o.key"
+                type="button"
+                class="fanopt"
+                :class="{ on: o.on }"
+                :style="{ '--dx': o.dx + 'px', '--dy': o.dy + 'px', '--i': idx, '--n': fanOptions.length }"
+                :title="o.label"
+                :aria-label="o.label"
+                :aria-pressed="o.on"
+                @click.stop="o.toggle()"
+              >{{ o.glyph }}</button>
+              <!-- the button itself shows the four options as tiny marks: lit = shown on the card, dim = hidden -->
+              <v-btn variant="text" color="primary" class="tool3d eye4" :aria-label="t('show.title')" :aria-expanded="fanOpen" @click.stop="fanOpen = !fanOpen">
+                <span class="marks"><span v-for="o in fanOptions" :key="o.key" class="mk" :class="{ on: o.on }">{{ o.glyph }}</span></span>
+              </v-btn>
+            </div>
             <v-btn
               v-if="canSpeakNow"
               :icon="speaking ? 'mdi-stop' : 'mdi-volume-high'"
@@ -538,7 +574,7 @@ onUnmounted(() => {
 /* The three grading buttons: a row of their own above the card, not inside it. */
 .counter {
   position: absolute;
-  top: 6px;
+  top: 1px;
   right: 10px;
   z-index: 3;
   display: inline-flex;
@@ -606,6 +642,10 @@ onUnmounted(() => {
   padding: 8px 14px;
   overflow: hidden; /* the sliding word never leaves the card */
 }
+.wordbody,
+.bw {
+  user-select: text; /* the word, its reading and meaning can be selected and copied */
+}
 .wordbody {
   display: flex;
   flex-direction: column;
@@ -635,12 +675,122 @@ onUnmounted(() => {
 .tools > * {
   pointer-events: auto;
 }
+.eye4.v-btn {
+  padding: 0 !important;
+}
+.marks {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  justify-items: center;
+  width: 24px;
+  height: 20px; /* fits inside the 34 x 28 button, nothing grows */
+  line-height: 1;
+}
+.mk {
+  font-family: var(--font-jp);
+  font-size: 0.52rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #fff;
+  opacity: 0.62; /* off: still readable on the green button, just calmer than the lit ones */
+  transition: opacity 0.15s;
+}
+.mk.on {
+  opacity: 1; /* on */
+  text-shadow: 0 0 5px rgba(255, 255, 255, 0.95);
+  font-weight: 900;
+}
+.fan {
+  position: relative;
+  width: 34px;
+  height: 28px;
+}
+.fanopt {
+  position: absolute;
+  left: 2px;
+  top: -1px;
+  width: 30px;
+  height: 30px;
+  box-sizing: border-box;
+  border: 1.5px solid var(--leaf); /* off: an outlined disc that stays visible on any background */
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-jp);
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  background: var(--paper);
+  color: var(--leaf);
+  box-shadow: 0 2px 0 rgba(31, 77, 36, 0.35);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(0, 0) scale(0.4);
+  /* closing (the state this rule describes): slow and gentle, the outermost option folds first, one after another */
+  transition: transform 0.5s cubic-bezier(0.45, 0, 0.2, 1) calc((var(--n) - 1 - var(--i)) * 70ms), opacity 0.45s ease calc((var(--n) - 1 - var(--i)) * 70ms);
+}
+.fan.open .fanopt {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(calc(var(--dx) * var(--k, 1)), calc(var(--dy) * var(--k, 1))) scale(1);
+  /* opening: just as slow and gentle, in the opposite order: the nearest option appears first, the outermost last */
+  transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) calc(var(--i) * 55ms), opacity 0.36s ease calc(var(--i) * 55ms);
+}
+@media (hover: hover) and (pointer: fine) {
+  /* the fanned-out options sink a little under the mouse too (only once they are out: .open sets the transform) */
+  .fan.open .fanopt:hover {
+    box-shadow: 0 1px 0 rgba(31, 77, 36, 0.35);
+    transform: translate(calc(var(--dx) * var(--k, 1)), calc(var(--dy) * var(--k, 1) + 1px)) scale(1);
+  }
+  .fan.open .fanopt.on:hover {
+    box-shadow: 0 1px 0 #3f8a1f;
+  }
+}
+.fanopt.on {
+  background: rgb(var(--v-theme-primary)); /* lit = shown on the card */
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 2px 0 #3f8a1f;
+}
+/* Web (a real mouse): the two buttons in the card, the four marks and the fanned-out options are a little larger; phones keep the small size. */
+@media (hover: hover) and (pointer: fine) {
+  .tools .tool3d.v-btn {
+    width: 46px !important;
+    height: 38px !important;
+  }
+  .tools .tool3d.v-btn .v-icon {
+    font-size: 22px;
+  }
+  .marks {
+    width: 34px;
+    height: 28px;
+  }
+  .mk {
+    font-size: 0.72rem;
+  }
+  .fan {
+    --k: 1.4;
+    width: 46px;
+    height: 38px;
+  }
+  .fanopt {
+    left: 3px;
+    top: 0;
+    width: 40px;
+    height: 40px;
+    font-size: 1rem;
+  }
+}
 .tools .speak {
   margin-left: auto; /* stays on the right even when the reading toggle is not shown */
 }
 .word {
   font-size: calc(3.6rem * var(--fs));
   line-height: 1.2;
+  color: var(--headword); /* the headword is red, as on LCT's lookup card */
+  font-weight: 700;
 }
 .word.small {
   font-size: calc(2.2rem * var(--fs));
@@ -668,6 +818,12 @@ onUnmounted(() => {
 }
 .hanviet.top {
   margin-bottom: 4px;
+}
+.english {
+  margin-top: 4px;
+  font-size: calc(0.95rem * var(--fs));
+  font-style: italic;
+  opacity: 0.8;
 }
 .meaning.big {
   font-family: var(--font-jp);
@@ -723,6 +879,8 @@ onUnmounted(() => {
 .bw {
   font-size: 1.7rem;
   line-height: 1.2;
+  color: var(--headword);
+  font-weight: 700;
 }
 .br {
   font-size: 1.05rem;
@@ -803,6 +961,7 @@ onUnmounted(() => {
 }
 /* Only the kanji is framed, like the kanji tiles used to be: a thin border with rounded corners, no 3D edge. */
 .hvp .k {
+  color: var(--headword); /* same red as the kanji in the word list */
   min-width: 42px;
   padding: 2px 8px;
   text-align: center;

@@ -40,5 +40,7 @@ const withPitch = computed(() => props.cells.some((c) => c.morae));
 .base {
   font-size: calc(2.6rem * var(--fs));
   line-height: 1.1;
+  color: var(--headword);
+  font-weight: 700;
 }
 </style>
