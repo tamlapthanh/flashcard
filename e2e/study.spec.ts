@@ -1,12 +1,15 @@
 import { API_URL } from '../playwright.config';
-import { apiDecks, counter, expect, openSignedIn, startStudy, test } from './fixtures';
+import { apiDeck, counter, expect, openSignedIn, richestDeck, startStudy, test, type DeckInfo } from './fixtures';
 
 test.describe('study', () => {
+  let deck: DeckInfo;
+
   test.beforeEach(async ({ page, request }) => {
-    const [deck] = await apiDecks(request, 'alice');
-    test.skip(!deck || deck.counts.new + deck.counts.learning === 0, 'no new/learning cards in the first deck of the local data');
+    const richest = await richestDeck(request, 'alice');
+    test.skip(!richest || richest.counts.new + richest.counts.learning === 0, 'no new/learning cards in the local data');
+    deck = richest!;
     await openSignedIn(page, request, 'alice');
-    await startStudy(page);
+    await startStudy(page, deck);
   });
 
   test('shows position "1 / N" and the three grading buttons', async ({ page }) => {
@@ -28,18 +31,18 @@ test.describe('study', () => {
   });
 
   test('grading Learned is saved on the server', async ({ page, request }) => {
-    const learnedBefore = (await apiDecks(request, 'alice'))[0]!.counts.learned;
+    const learnedBefore = (await apiDeck(request, 'alice', deck.id)).counts.learned;
     await page.getByRole('button', { name: 'Learned' }).click();
     // results go through a queue: wait until the server shows one more learned card
-    await expect.poll(async () => (await apiDecks(request, 'alice'))[0]!.counts.learned, { timeout: 15_000 }).toBe(learnedBefore + 1);
+    await expect.poll(async () => (await apiDeck(request, 'alice', deck.id)).counts.learned, { timeout: 15_000 }).toBe(learnedBefore + 1);
   });
 
   test('progress belongs to the user: bob does not see the card alice learned', async ({ page, request }) => {
-    const bobBefore = (await apiDecks(request, 'bob'))[0]!.counts;
-    const aliceBefore = (await apiDecks(request, 'alice'))[0]!.counts.learned;
+    const bobBefore = (await apiDeck(request, 'bob', deck.id)).counts;
+    const aliceBefore = (await apiDeck(request, 'alice', deck.id)).counts.learned;
     await page.getByRole('button', { name: 'Learned' }).click();
-    await expect.poll(async () => (await apiDecks(request, 'alice'))[0]!.counts.learned, { timeout: 15_000 }).toBe(aliceBefore + 1);
-    expect((await apiDecks(request, 'bob'))[0]!.counts).toEqual(bobBefore);
+    await expect.poll(async () => (await apiDeck(request, 'alice', deck.id)).counts.learned, { timeout: 15_000 }).toBe(aliceBefore + 1);
+    expect((await apiDeck(request, 'bob', deck.id)).counts).toEqual(bobBefore);
   });
 });
 
