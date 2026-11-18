@@ -10,7 +10,8 @@
     "test": "vitest run",
     "typecheck": "vue-tsc --noEmit",
     "e2e": "playwright test",
-    "e2e:report": "playwright show-report"
+    "e2e:report": "playwright show-report",
+    "e2e:watch": "playwright test -c playwright.watch.config.ts"
   },
   "dependencies": {
     "@mdi/font": "^7.4.47",
