@@ -54,9 +54,9 @@ const firstMeaning = computed(() => (props.kanji.MeaningsVi[0] ?? props.kanji.Me
       <div v-if="!touchOnly || hintOpen" class="formula">
         <span class="whole jp" :style="{ gridRow: `1 / span ${parts.length + (firstMeaning ? 1 : 0)}` }">{{ kanji.Literal }}</span>
         <template v-for="(p, i) in parts" :key="i">
-          <span class="op">{{ i === 0 ? '=' : '+' }}</span>
           <span class="pg jp">{{ p.Literal }}</span>
-          <span class="pc"><span v-if="p.HanViet" class="hv">{{ p.HanViet }}</span><template v-if="p.HanViet && p.Meaning"> · </template>{{ p.Meaning }}</span>
+          <span class="phv hv">{{ p.HanViet ? p.HanViet.toUpperCase() : '' }}</span>
+          <span class="pm">{{ p.Meaning }}</span>
         </template>
         <template v-if="firstMeaning">
           <span class="op">→</span>
@@ -140,7 +140,7 @@ const firstMeaning = computed(() => (props.kanji.MeaningsVi[0] ?? props.kanji.Me
 }
 .formula {
   display: grid;
-  grid-template-columns: auto auto auto minmax(0, 1fr);
+  grid-template-columns: auto auto auto minmax(0, 1fr); /* character | box | Hán Việt | meaning */
   column-gap: 10px;
   row-gap: 6px;
   align-items: center;
@@ -161,7 +161,7 @@ const firstMeaning = computed(() => (props.kanji.MeaningsVi[0] ?? props.kanji.Me
 }
 /* every part is the same size, whatever the character */
 .pg {
-  grid-column: 3;
+  grid-column: 2;
   width: 42px;
   padding: 2px 0;
   text-align: center;
@@ -171,13 +171,19 @@ const firstMeaning = computed(() => (props.kanji.MeaningsVi[0] ?? props.kanji.Me
   border: 1px solid var(--paper-edge);
   border-radius: 6px;
 }
-.pc {
+.phv {
+  grid-column: 3;
+  font-size: 0.82rem;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+.pm {
   grid-column: 4;
   font-size: 0.82rem;
   line-height: 1.3;
 }
 .result {
-  grid-column: 3 / -1;
+  grid-column: 3 / -1; /* free text right after the arrow, not tied to the meaning column */
   font-weight: 700;
 }
 </style>

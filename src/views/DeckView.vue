@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router';
 import { api, ApiError } from '../api';
 import { t } from '../i18n';
 import TopBar from '../components/TopBar.vue';
+import { clearDetails, ensureDetails } from '../lib/cardDetail';
 import { StudySession } from '../session';
 import { settings } from '../settings';
 import { activeSession } from '../store';
@@ -21,7 +22,6 @@ const filterOpen = ref(false);
 const deckId = ref<string | null>(null);
 const tags = ref<string[]>([]);
 const statuses = ref<StudyStatus[]>(['new', 'learning']);
-const limit = ref(50);
 
 const statusLabel = (s: StudyStatus): string => t(`status.${s}`);
 const STATUS_ORDER: StudyStatus[] = ['new', 'learning', 'learned', 'skipped'];
@@ -37,11 +37,18 @@ const deck = computed(() => decks.value.find((d) => d.id === deckId.value) ?? nu
 /* Cards matching the status filter (tags are applied by the server; the count here is an upper bound by status). */
 const eligible = computed(() => (deck.value ? statuses.value.reduce((n, s) => n + deck.value!.counts[s], 0) : 0));
 
+/* What Start will load: every card of the status filter; with tags, at most the cards that carry them (an upper bound, tags may overlap). */
+const startCount = computed(() => {
+  if (!deck.value || tags.value.length === 0) return eligible.value;
+  const tagged = deck.value.tags.filter((tg) => tags.value.includes(tg.tag)).reduce((n, tg) => n + tg.count, 0);
+  return Math.min(eligible.value, tagged);
+});
+
 const learnedPercent = (d: Deck): number => (d.total ? Math.round((100 * d.counts.learned) / d.total) : 0);
 
 /* One-line summary of the filter, shown on the main screen. */
 const filterSummary = computed(() => {
-  return [statuses.value.map((s) => statusLabel(s)).join(' + ') || t('filter.allStatus'), t('filter.max', { n: limit.value })];
+  return [statuses.value.map((s) => statusLabel(s)).join(' + ') || t('filter.allStatus')];
 });
 
 watch(deckId, () => (tags.value = []));
@@ -68,11 +75,13 @@ async function start(): Promise<void> {
   starting.value = true;
   error.value = '';
   try {
-    const { cards } = await api.cards({ deck: deck.value.id, tags: tags.value, status: statuses.value, limit: limit.value });
+    const { cards } = await api.cards({ deck: deck.value.id, tags: tags.value, status: statuses.value });
     if (cards.length === 0) {
       error.value = t('err.none');
       return;
     }
+    clearDetails();
+    await ensureDetails(cards.slice(0, 7).map((c) => c.id)); // the first cards are complete when the study screen opens
     activeSession.value = new StudySession(cards, { reverse: settings.direction === 'reverse', showReading: settings.showReading });
     await router.push('/study');
   } catch {
@@ -86,11 +95,9 @@ onMounted(load);
 </script>
 
 <template>
-  <TopBar title="単語帳">
-    <v-btn icon="mdi-refresh" :aria-label="t('deck.reload')" :disabled="loading" @click="load" />
-  </TopBar>
+  <TopBar title="単語帳" />
 
-  <v-container class="deckpage">
+  <v-container fluid class="deckpage">
     <v-alert v-if="waking" type="info" variant="tonal" icon="mdi-power-sleep" class="mb-3">{{ t('deck.waking') }}</v-alert>
     <v-alert v-if="error" type="error" variant="tonal" icon="mdi-alert-circle-outline" class="mb-3">
       {{ error }}
@@ -100,7 +107,7 @@ onMounted(load);
 
     <template v-if="decks.length">
       <div class="decks">
-        <button v-for="d in decks" :key="d.id" type="button" class="paper-card deck mb-2" :class="{ on: d.id === deckId }" @click="deckId = d.id">
+        <button v-for="d in decks" :key="d.id" type="button" class="paper-card deck" :class="{ on: d.id === deckId }" @click="deckId = d.id">
           <div class="d-flex align-center ga-3">
             <div class="deck-tile jp" aria-hidden="true">札</div>
             <div class="flex-grow-1 text-start">
@@ -127,7 +134,6 @@ onMounted(load);
           <div class="label"><v-icon icon="mdi-tag-multiple-outline" size="14" />{{ t('filter.tags') }}</div>
           <v-btn v-if="tags.length" size="x-small" variant="tonal" color="primary" @click="tags = []">{{ t('filter.clear', { n: tags.length }) }}</v-btn>
         </div>
-        <div class="text-caption text-medium-emphasis">{{ t('filter.tagsHint') }}</div>
         <div class="tagscroll">
           <v-chip-group v-model="tags" multiple filter column color="primary">
             <v-chip v-for="tg in deck.tags" :key="tg.tag" :value="tg.tag" size="small" variant="tonal">{{ tg.tag }} ({{ tg.count }})</v-chip>
@@ -139,11 +145,11 @@ onMounted(load);
 
   <v-footer v-if="deck" app class="pa-3 start-bar">
     <v-btn block color="primary" size="large" prepend-icon="mdi-play" :loading="starting" :disabled="eligible === 0" @click="start">
-      <span class="jp-start">始める</span>&nbsp;· {{ t('deck.start', { n: Math.min(limit, eligible) }) }}
+      <span class="jp-start">始める</span>&nbsp;· {{ t('deck.start', { n: startCount }) }}
     </v-btn>
   </v-footer>
 
-  <!-- filter sheet: status and size (tags live on the main screen) -->
+  <!-- filter sheet: status (tags live on the main screen; there is no limit on the number of cards) -->
   <v-bottom-sheet v-model="filterOpen">
     <v-card class="sheet" rounded="t-xl">
       <div class="grip" />
@@ -152,9 +158,6 @@ onMounted(load);
         <v-chip-group v-model="statuses" multiple filter color="primary" class="mb-2">
           <v-chip v-for="s in STATUS_ORDER" :key="s" :value="s" size="small" :prepend-icon="STATUS_ICON[s]">{{ statusLabel(s) }} ({{ deck?.counts[s] ?? 0 }})</v-chip>
         </v-chip-group>
-
-        <div class="label"><v-icon icon="mdi-counter" size="14" />{{ t('filter.limit', { n: limit }) }}</div>
-        <v-slider v-model="limit" :min="10" :max="200" :step="10" hide-details color="primary" prepend-icon="mdi-minus" append-icon="mdi-plus" />
 
         <v-btn block color="primary" class="mt-3" prepend-icon="mdi-check" @click="filterOpen = false">{{ t('filter.done') }}</v-btn>
       </div>
@@ -167,15 +170,21 @@ onMounted(load);
 .deckpage {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  min-height: calc(100dvh - 128px); /* at least the screen; grows (and the page scrolls) only if the decks alone need more */
+  gap: 6px;
+  padding-inline: 12px; /* same side margin as the Start bar (pa-3), so panels and button line up */
+  padding-top: 4px; /* Vuetify container adds 16px; keep the first panel close to the top bar */
+  padding-bottom: 8px; /* was 16px: less empty space above the Start bar */
+  min-height: calc(100dvh - var(--v-layout-top, 48px) - var(--v-layout-bottom, 72px)); /* at least the screen; grows (and the page scrolls) only if the decks alone need more */
 }
 .decks {
   flex: 0 0 auto; /* the dictionaries are shown in full, exactly as before */
+  display: flex;
+  flex-direction: column;
+  gap: 6px; /* same as .deckpage gap, so every panel is spaced evenly */
 }
 .tagsbox {
   flex: 1 1 0;
-  min-height: 120px;
+  min-height: max(125px, 25dvh); /* room for ~2-3 tags; the page scrolls when there are many decks */
   display: flex;
   flex-direction: column;
   padding: 10px 12px;
@@ -184,13 +193,16 @@ onMounted(load);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 28px;
+  min-height: 24px;
 }
 .tagscroll {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding-top: 4px;
+  padding-top: 0;
+}
+.tagscroll :deep(.v-chip-group) {
+  padding-top: 0; /* Vuetify adds 4px above the chips */
 }
 .deck {
   display: block;

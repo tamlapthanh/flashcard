@@ -9,13 +9,15 @@ import PitchLine from '../components/PitchLine.vue';
 import RelatedDialog from '../components/RelatedDialog.vue';
 import RubyWord from '../components/RubyWord.vue';
 import TopBar from '../components/TopBar.vue';
+import WordListSheet from '../components/WordListSheet.vue';
+import { detailOf, ensureDetails } from '../lib/cardDetail';
 import { parseNote, type RelatedWord } from '../lib/note';
 import { swipeDown } from '../lib/swipeDown';
 import { canSpeak, speakJapanese, stopSpeaking } from '../lib/speech';
 import { StudySession } from '../session';
 import { settings } from '../settings';
 import { activeSession } from '../store';
-import type { KanjiInfo, StudyResult } from '../types';
+import type { Card, KanjiInfo, StudyResult } from '../types';
 
 const router = useRouter();
 const hasSession = activeSession.value !== null;
@@ -26,13 +28,27 @@ const pending = ref(pendingResults());
 const related = ref<RelatedWord | null>(null);
 const kanjiSel = ref<string | null>(null);
 const detailOpen = ref(false);
+const listOpen = ref(false); // the list of all words of this run (opened from the 1 / N counter)
 /* On a touch screen (phone, tablet) the Notes stay folded until tapped; with a mouse there is room, so they always show. */
 const touchOnly = typeof window !== 'undefined' && !window.matchMedia('(hover: hover) and (pointer: fine)').matches;
 const notesOpen = ref(false);
 const speaking = ref(false);
 const stamping = ref(false); // the "習" seal is being pressed onto the card
 
-const card = computed(() => s.current);
+/* The card = what came with the deck + its heavy part (furigana, pitch, kanji, note) once that has been fetched. */
+const card = computed<Card | undefined>(() => {
+  const c = s.current;
+  if (!c) return undefined;
+  const d = detailOf(c.id);
+  return { ...c, english: d?.english ?? null, note: d?.note ?? null, ruby: d?.ruby ?? null, pitch: d?.pitch ?? null, kanji: d?.kanji ?? [] };
+});
+/* Fetch the detail of this card, the next few and the one before it (swiping back), so swiping stays instant. */
+function prefetch(): void {
+  const q = s.queue;
+  const last = q[q.length - 1];
+  void ensureDetails([...q.slice(0, 6), ...(last ? [last] : [])].map((c) => c.id));
+}
+watch(() => s.current?.id, prefetch, { immediate: true });
 watch([() => card.value?.id, detailOpen], () => (notesOpen.value = false)); // folded again on every new card and every time the back is opened
 /* The reading is NEVER shown on its own (not even after the flip): only the kanji, until the eye button is tapped. */
 const readingVisible = computed(() => s.showReading);
@@ -156,6 +172,17 @@ function gesture(dx: number, dy: number): void {
   browse(dx < 0 ? 'next' : 'previous');
 }
 
+/* Tapped a word in the list: show that card (when it is still in the deck) and close the list. */
+function pickWord(id: string): void {
+  listOpen.value = false;
+  if (stamping.value || id === s.current?.id) return;
+  slide.value = 'slide-next';
+  detailOpen.value = false;
+  stopSpeaking();
+  speaking.value = false;
+  s.jumpTo(id);
+}
+
 async function answer(result: StudyResult): Promise<void> {
   if (stamping.value) return; // one answer at a time while the seal is pressing
   if (result === 'learned') {
@@ -248,27 +275,31 @@ onUnmounted(() => {
   <!-- Studying: three steps on one card (word -> meaning -> details sheet), never scrolls -->
   <template v-else-if="card">
     <TopBar>
-      <template #center>
-        {{ s.position }} / {{ s.total }}
-        <v-icon v-if="pending > 0" icon="mdi-cloud-upload-outline" size="14" class="ml-1" :title="t('study.unsentTip')" />
-      </template>
       <!-- grading buttons live in the header, right of the counter; always usable (you may know the word without flipping).
            On narrow screens only the icons show (the names stay as accessible labels). -->
       <div class="acts">
-        <v-btn class="act" prepend-icon="mdi-help-circle-outline" variant="tonal" color="secondary" :disabled="stamping" :aria-label="t('btn.again')" @click="answer('again')"><span class="lbl">{{ t('btn.again') }}</span></v-btn>
+        <v-btn class="act" prepend-icon="mdi-help-circle-outline" variant="flat" color="primary" :disabled="stamping" :aria-label="t('btn.again')" @click="answer('again')"><span class="lbl">{{ t('btn.again') }}</span></v-btn>
         <v-btn class="act" prepend-icon="mdi-check" variant="flat" color="primary" :disabled="stamping" :aria-label="t('btn.learned')" @click="answer('learned')"><span class="lbl">{{ t('btn.learned') }}</span></v-btn>
-        <v-btn class="act" prepend-icon="mdi-skip-next-outline" variant="tonal" color="secondary" :disabled="stamping" :aria-label="t('btn.skip')" @click="answer('skip')"><span class="lbl">{{ t('btn.skip') }}</span></v-btn>
+        <v-btn class="act" prepend-icon="mdi-skip-next-outline" variant="flat" color="primary" :disabled="stamping" :aria-label="t('btn.skip')" @click="answer('skip')"><span class="lbl">{{ t('btn.skip') }}</span></v-btn>
+        <v-btn class="act listbtn" icon="mdi-format-list-bulleted" variant="flat" color="primary" :aria-label="t('list.open')" @click="listOpen = true" />
       </div>
     </TopBar>
 
     <div class="stage" :style="{ '--fs': scale }" @touchstart.passive="touchStart" @touchend.passive="touchEnd" @mousedown="mouseDown" @mouseup="mouseUp">
-      <Transition :name="slide" mode="out-in">
-      <div :key="card.id" class="paper-card card">
+      <div class="paper-card card">
+        <!-- position in the run, top right of the card; tap it for the word list -->
+        <button type="button" class="counter" :aria-label="t('list.open')" @click.stop="listOpen = true">
+          {{ s.position }} / {{ s.total }}
+          <v-icon v-if="pending > 0" icon="mdi-cloud-upload-outline" size="14" class="ml-1" :title="t('study.unsentTip')" />
+        </button>
         <div class="flipper" :class="{ back: detailOpen }">
         <div class="face">
         <!-- the word; tapping it flips the card -->
         <div class="wordarea" :class="{ tappable: !s.flipped || hasDetail }" @click="tapCard">
           <Hanko v-if="stamping" char="習" :size="92" stamping class="press-seal" />
+          <!-- Only this part changes when you move to another word (the card, the top bar buttons and the tools stay still). -->
+          <Transition :name="slide" mode="out-in">
+          <div :key="card.id" class="wordbody">
           <!-- step 1 / 2: the word (normal) or the meaning (reverse) -->
           <template v-if="!s.reverse">
             <RubyWord v-if="useRuby && card.ruby" :cells="card.ruby" :scale="scale" />
@@ -297,8 +328,10 @@ onUnmounted(() => {
               <div v-if="card.reading && s.showReading" class="reading rd">{{ card.reading }}</div>
             </template>
           </template>
+          </div>
+          </Transition>
 
-          <!-- the reading toggle sits right next to the speaker -->
+          <!-- reading toggle at the bottom left, speaker at the bottom right -->
           <div class="tools">
             <v-btn
               v-if="canToggleReading"
@@ -314,18 +347,13 @@ onUnmounted(() => {
               :icon="speaking ? 'mdi-stop' : 'mdi-volume-high'"
               variant="text"
               color="primary"
-              class="tool3d"
+              class="tool3d speak"
               :aria-label="speaking ? t('study.stop') : t('study.read')"
               @click.stop="speak"
             />
           </div>
         </div>
 
-        <!-- step 3 -->
-        <button v-if="hasDetail" type="button" class="more" @click="openDetail">
-          <v-icon icon="mdi-information-outline" size="18" /> {{ t('study.details') }} <v-icon icon="mdi-chevron-up" size="18" />
-        </button>
-        <div v-else class="more-space" />
         </div>
         <!-- back of the card: the details (tap, or swipe down, to turn back) -->
         <div class="face back-face" @click="detailOpen = false" @touchstart.passive="detailSwipe.onTouchstart" @touchend.passive="detailSwipe.onTouchend">
@@ -423,13 +451,9 @@ onUnmounted(() => {
             </div>
           </div>
         </div>
-          <button type="button" class="more" @click.stop="detailOpen = false">
-            <v-icon icon="mdi-chevron-down" size="18" /> {{ t('study.back') }}
-          </button>
         </div>
         </div>
       </div>
-      </Transition>
 
       <!-- arrows for mouse users only (hidden on touch screens, where you swipe) -->
       <v-btn class="nav nav-prev" icon="mdi-chevron-left" size="small" variant="flat" :disabled="s.total < 2" :aria-label="t('study.prev')" @click="browse('previous')" />
@@ -437,6 +461,7 @@ onUnmounted(() => {
     </div>
 
 
+    <WordListSheet :open="listOpen" :session="s" @close="listOpen = false" @pick="pickWord" />
     <KanjiSheet :kanji="card.kanji" :selected="kanjiSel" @close="kanjiSel = null" @select="(l: string) => (kanjiSel = l)" />
     <RelatedDialog :headword="related?.headword ?? null" :reading="related?.reading ?? null" :fallback-meaning="related?.meaning ?? ''" @close="related = null" />
   </template>
@@ -449,8 +474,10 @@ onUnmounted(() => {
   height: calc(100dvh - 48px);
   display: flex;
   flex-direction: column;
+  overflow: hidden; /* nothing ever sticks out of the screen while swiping */
 }
 .card {
+  position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
@@ -509,6 +536,21 @@ onUnmounted(() => {
   }
 }
 /* The three grading buttons: a row of their own above the card, not inside it. */
+.counter {
+  position: absolute;
+  top: 6px;
+  right: 10px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--leaf);
+  background: color-mix(in srgb, var(--leaf) 12%, transparent);
+  cursor: pointer;
+}
 .acts {
   display: flex;
   gap: 8px;
@@ -525,11 +567,13 @@ onUnmounted(() => {
 /* Narrow screens (phones): icons only, so the three buttons, the counter, the menu and the close button all fit. */
 @media (max-width: 560px) {
   .acts {
+    flex: none;
     gap: 6px;
-    margin-right: 2px;
+    margin-right: 12px; /* keep the last (Skip) button off the screen edge */
   }
   .act {
-    padding: 0 10px;
+    min-width: 40px;
+    padding: 0 8px;
   }
   .lbl {
     display: none;
@@ -537,6 +581,10 @@ onUnmounted(() => {
   .act :deep(.v-btn__prepend) {
     margin-inline: 0;
   }
+}
+.listbtn.v-btn {
+  width: 40px !important; /* round-ish icon-only button, same height as the other three */
+  padding: 0;
 }
 /* Again and Skip are pressed-in 3D buttons too, like Learned (darker edge underneath, sinks when pressed). */
 .act.v-btn--variant-tonal:not(.v-btn--disabled) {
@@ -556,6 +604,14 @@ onUnmounted(() => {
   justify-content: center;
   text-align: center;
   padding: 8px 14px;
+  overflow: hidden; /* the sliding word never leaves the card */
+}
+.wordbody {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  max-width: 100%;
 }
 .wordarea.tappable {
   cursor: pointer;
@@ -569,10 +625,18 @@ onUnmounted(() => {
 }
 .tools {
   position: absolute;
-  bottom: 4px;
+  bottom: 8px;
+  left: 6px;
   right: 6px;
   display: flex;
   align-items: center;
+  pointer-events: none; /* the empty middle of the strip must not swallow taps meant for the card */
+}
+.tools > * {
+  pointer-events: auto;
+}
+.tools .speak {
+  margin-left: auto; /* stays on the right even when the reading toggle is not shown */
 }
 .word {
   font-size: calc(3.6rem * var(--fs));
@@ -608,32 +672,6 @@ onUnmounted(() => {
 .meaning.big {
   font-family: var(--font-jp);
   font-size: calc(1.8rem * var(--fs));
-}
-.more-space {
-  flex: 0 0 auto;
-  height: 52px; /* same as the button below: margin 6 + 38 + 8 */
-}
-/* "Details" / "Back to card": a pressed-in 3D pill at the foot of the card, like the other buttons. */
-.more {
-  flex: 0 0 auto;
-  height: 38px;
-  margin: 6px 12px 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  border: 0;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--leaf) 18%, var(--paper));
-  box-shadow: 0 3px 0 rgba(31, 77, 36, 0.35);
-  color: var(--forest);
-  font-size: 0.85rem;
-  font-weight: 700;
-  cursor: pointer;
-}
-.more:active {
-  box-shadow: 0 1px 0 rgba(31, 77, 36, 0.35);
-  transform: translateY(2px);
 }
 /* The card turns over like a real one: the front is the word, the back is the details. */
 .card {

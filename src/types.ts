@@ -56,7 +56,8 @@ export interface KanjiInfo {
   PartEdges?: string[] | null;
 }
 
-export interface Card {
+/* What the server sends for every card of a run: enough for the word list and the front of the card. */
+export interface LightCard {
   id: string;
   deckId: string;
   lang: 'ja' | 'en';
@@ -65,16 +66,27 @@ export interface Card {
   pos: string | null;
   meaning: string;
   hanviet: string | null;
-  english: string | null;
-  note: string | null;
   example: string | null;
   exampleVi: string | null;
   tags: string[];
   progress: Progress;
+  /** The reading split under each kanji piece, for the word list (null when it cannot be aligned). */
+  furigana: { text: string; ruby: string | null; morae: PitchMora[] | null }[] | null;
+  /** The pitch line of the whole reading when it could not be split under the kanji. */
+  pitchMorae: PitchMora[] | null;
+}
+
+/* The heavy part, fetched per card just before it is studied (see lib/cardDetail.ts). */
+export interface CardDetail {
+  id: string;
+  english: string | null;
+  note: string | null;
   ruby: RubyCell[] | null;
   pitch: PitchView | null;
   kanji: KanjiInfo[];
 }
+
+export type Card = LightCard & CardDetail;
 
 export interface Deck {
   id: string;

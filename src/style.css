@@ -4,6 +4,9 @@
  */
 :root {
   --jp: #1c2e1d;
+  --reading: #0f6cbd; /* deeper blue for the reading in lists (LCT's WordLookupReadingBrush) */
+  --gloss: #5f6368; /* secondary text, LCT's WordLookupGlossBrush */
+  --headword: #c42b1c; /* the red of the headword on LCT's lookup card (WordLookupHeadwordBrush) */
   --rd: #2b7bb9;
   --hv: #2e8b57;
   --shu: #e5533d;
@@ -19,6 +22,9 @@
 }
 .v-theme--dark {
   --jp: #eef8e4;
+  --reading: #7db8f0;
+  --gloss: #a0a4a8;
+  --headword: #ff8a80; /* LCT dark theme */
   --rd: #6cc3ee;
   --hv: #6fe0a6;
   --shu: #ff7a66;
@@ -69,11 +75,11 @@ body {
   height: 34px !important;
   min-width: 0 !important;
   border-radius: 999px !important;
-  background: rgba(255, 255, 255, 0.78);
-  color: var(--forest);
+  background: rgb(var(--v-theme-primary)); /* the same green as the Learned button */
+  color: #fff;
   margin: 0 3px;
   /* pressed-in look like the main buttons: a darker edge underneath that sinks when pressed */
-  box-shadow: 0 3px 0 rgba(31, 77, 36, 0.35);
+  box-shadow: 0 4px 0 #3f8a1f;
 }
 .v-app-bar .v-btn--icon .v-icon {
   font-size: 20px;
@@ -88,12 +94,8 @@ body {
   border-radius: 999px !important;
 }
 .v-app-bar .v-btn--icon:not(.v-btn--disabled):active {
-  box-shadow: 0 1px 0 rgba(31, 77, 36, 0.35);
-  transform: translateY(2px);
-}
-.v-theme--dark .v-app-bar .v-btn--icon {
-  background: rgba(255, 255, 255, 0.12);
-  color: #eef8e4;
+  box-shadow: 0 1px 0 #3f8a1f;
+  transform: translateY(3px);
 }
 
 /* Cards: white, very round, soft green shadow. */
@@ -147,8 +149,8 @@ body {
 /* Small round icon buttons that sit inside cards and sheets (reading toggle, speaker): paper-coloured 3D discs. */
 .tool3d.v-btn {
   /* same size and shape as the Again / Learned / Skip buttons in the top bar (40 x 34, pill) */
-  width: 40px !important;
-  height: 34px !important;
+  width: 34px !important;
+  height: 28px !important;
   min-width: 0 !important;
   border-radius: 999px !important;
 }
@@ -156,13 +158,14 @@ body {
   font-size: 18px;
 }
 .tool3d.v-btn:not(.v-btn--disabled) {
-  background: var(--paper) !important;
-  border: 1px solid var(--paper-edge);
-  box-shadow: 0 2px 0 rgba(31, 77, 36, 0.35);
+  background: rgb(var(--v-theme-primary)) !important; /* the same green as the Learned button */
+  color: #fff !important;
+  border: 0;
+  box-shadow: 0 3px 0 #3f8a1f;
 }
 .tool3d.v-btn:not(.v-btn--disabled):active {
-  box-shadow: 0 0 0 rgba(31, 77, 36, 0.35);
-  transform: translateY(2px);
+  box-shadow: 0 0 0 #3f8a1f;
+  transform: translateY(3px);
 }
 
 /* The English / Vietnamese switch in Settings. */
@@ -197,4 +200,12 @@ body {
   font-family: var(--font-jp);
   font-size: 0.8rem;
   letter-spacing: 0;
+}
+
+/* Page scrollbar hidden (the page still scrolls with wheel / touch / keys), so it never eats width or looks heavy. */
+html {
+  scrollbar-width: none;
+}
+html::-webkit-scrollbar {
+  display: none;
 }

@@ -18,6 +18,8 @@ const card = (id: string): Card => ({
   example: null,
   exampleVi: null,
   tags: [],
+  furigana: null,
+  pitchMorae: null,
   progress: { status: 'new', correct: 0, wrong: 0, lastReviewed: null },
   ruby: null,
   pitch: null,

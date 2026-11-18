@@ -5,7 +5,7 @@
  */
 import { auth, clearSession, setSession } from './auth';
 import { t } from './i18n';
-import type { Card, Deck, LookupResult, StudyResult } from './types';
+import type { CardDetail, Deck, LightCard, LookupResult, StudyResult } from './types';
 
 const BASE = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 const KEY = import.meta.env.VITE_API_KEY ?? '';
@@ -48,12 +48,14 @@ export const api = {
     return r.user;
   },
   decks: () => request<{ decks: Deck[] }>('/api/decks').then((r) => r.decks),
-  cards: (params: { deck: string; tags: string[]; status: string[]; limit: number }) => {
-    const q = new URLSearchParams({ deck: params.deck, limit: String(params.limit) });
+  cards: (params: { deck: string; tags: string[]; status: string[] }) => {
+    const q = new URLSearchParams({ deck: params.deck });
     if (params.tags.length) q.set('tags', params.tags.join(','));
     if (params.status.length) q.set('status', params.status.join(','));
-    return request<{ total: number; cards: Card[] }>('/api/cards?' + q.toString());
+    return request<{ total: number; cards: LightCard[] }>('/api/cards?' + q.toString());
   },
+  /** The heavy part (furigana, pitch, kanji, note) of up to 30 cards. */
+  cardDetails: (ids: string[]) => request<{ details: CardDetail[] }>('/api/cards/detail?ids=' + encodeURIComponent(ids.join(','))).then((r) => r.details),
   lookup: (headword: string, reading: string | null) => {
     const q = new URLSearchParams({ headword });
     if (reading) q.set('reading', reading);

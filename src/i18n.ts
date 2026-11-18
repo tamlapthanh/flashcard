@@ -38,6 +38,7 @@ const en = {
   'study.read': 'Read aloud',
   'study.details': 'Details',
   'study.back': 'Back to card',
+  'list.open': 'Show the word list',
   'study.prev': 'Previous word',
   'study.next': 'Next word',
 
@@ -79,11 +80,9 @@ const en = {
   'api.server': 'Server error {status}',
   'filter.allTags': 'All tags',
   'filter.allStatus': 'All statuses',
-  'filter.max': 'max {n}',
   'filter.tags': 'Tags',
   'filter.tagsHint': 'Tap tags to study only those. None selected = all cards.',
   'filter.status': 'Status',
-  'filter.limit': 'Max cards: {n}',
   'filter.done': 'Done',
   'filter.clear': 'Clear ({n})',
 
@@ -150,6 +149,7 @@ const vi: Record<keyof typeof en, string> = {
   'study.read': 'Đọc',
   'study.details': 'Chi tiết',
   'study.back': 'Về mặt trước',
+  'list.open': 'Xem danh sách từ',
   'study.prev': 'Từ trước',
   'study.next': 'Từ tiếp theo',
 
@@ -191,11 +191,9 @@ const vi: Record<keyof typeof en, string> = {
   'api.server': 'Server trả lỗi {status}',
   'filter.allTags': 'Mọi tag',
   'filter.allStatus': 'Mọi trạng thái',
-  'filter.max': 'tối đa {n}',
   'filter.tags': 'Tag',
   'filter.tagsHint': 'Chạm vào tag để chỉ học các thẻ đó. Không chọn tag nào = học tất cả.',
   'filter.status': 'Trạng thái',
-  'filter.limit': 'Số thẻ tối đa: {n}',
   'filter.done': 'Xong',
   'filter.clear': 'Bỏ chọn ({n})',
 
