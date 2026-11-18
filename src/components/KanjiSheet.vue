@@ -39,6 +39,8 @@ watch(open, (isOpen) => isOpen && opened.value++, { immediate: true });
 <style scoped>
 .sheet {
   background: var(--paper);
+  max-height: 90dvh; /* never taller than the screen: it scrolls instead (KanjiBlock measures this to decide whether the hint fits) */
+  overflow-y: auto;
 }
 .grip {
   width: 34px;

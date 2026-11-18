@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { pendingResults, submitResult } from '../api';
 import { t } from '../i18n';
@@ -64,7 +64,6 @@ function prefetch(): void {
   void ensureDetails([...q.slice(0, 6), ...(last ? [last] : [])].map((c) => c.id));
 }
 watch(() => s.current?.id, prefetch, { immediate: true });
-watch([() => card.value?.id, detailOpen], () => (notesOpen.value = false)); // folded again on every new card and every time the back is opened
 /* The reading is NEVER shown on its own (not even after the flip): only the kanji, until the eye button is tapped. */
 const readingVisible = computed(() => s.showReading);
 const useRuby = computed(() => !s.reverse && !!card.value?.ruby && readingVisible.value);
@@ -72,6 +71,28 @@ const noteLines = computed(() => parseNote(card.value?.note));
 const plainNotes = computed(() => noteLines.value.filter((l) => !l.related));
 const relatedLines = computed(() => noteLines.value.filter((l) => !!l.related));
 const scale = computed(() => settings.fontScale);
+
+/* On a touch screen the Notes are folded, but they open by themselves when the Details still fit without scrolling:
+   open them, let the layout settle (before anything is painted), and fold them again if the Details now overflow.
+   Folded again on every new card and every time the back is opened; a tap on the toggle wins until then. */
+let notesTouched = false;
+async function fitNotes(): Promise<void> {
+  if (!touchOnly || notesTouched || !detailOpen.value || plainNotes.value.length === 0) return;
+  notesOpen.value = true;
+  await nextTick();
+  const el = detailEl.value;
+  if (el && el.scrollHeight > el.clientHeight + 1) notesOpen.value = false;
+}
+function toggleNotes(): void {
+  notesTouched = true;
+  notesOpen.value = !notesOpen.value;
+}
+watch([() => card.value?.id, detailOpen], () => {
+  notesOpen.value = false;
+  notesTouched = false;
+  void fitNotes();
+});
+watch([() => plainNotes.value.length, scale], () => void fitNotes()); // the Details finished loading, or the text size changed
 
 /* Sino-Vietnamese sounds paired with their Han characters (香 HƯƠNG), one per row in the Details. */
 const hanvietOn = computed(() => settings.showHanViet && !!card.value?.hanviet);
@@ -253,9 +274,14 @@ function onKey(e: KeyboardEvent): void {
   else if (e.key.toLowerCase() === 'p' && canSpeakNow.value) speak();
 }
 
-onMounted(() => window.addEventListener('keydown', onKey));
+const onResize = (): void => void fitNotes(); // a rotated or resized screen may give the Notes room, or take it away
+onMounted(() => {
+  window.addEventListener('keydown', onKey);
+  window.addEventListener('resize', onResize);
+});
 onUnmounted(() => {
   window.removeEventListener('keydown', onKey);
+  window.removeEventListener('resize', onResize);
   stopSpeaking();
 });
 </script>
@@ -466,7 +492,7 @@ onUnmounted(() => {
           <div v-if="plainNotes.length" class="item">
             <v-icon icon="mdi-note-text-outline" color="secondary" />
             <div class="grow">
-              <button v-if="touchOnly" type="button" class="label notes-toggle" :aria-expanded="notesOpen" @click.stop="notesOpen = !notesOpen">
+              <button v-if="touchOnly" type="button" class="label notes-toggle" :aria-expanded="notesOpen" @click.stop="toggleNotes">
                 {{ t('detail.notes') }}<v-icon :icon="notesOpen ? 'mdi-chevron-up' : 'mdi-chevron-down'" size="16" />
               </button>
               <div v-else class="label">{{ t('detail.notes') }}</div>

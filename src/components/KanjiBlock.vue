@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, nextTick, onMounted, ref } from 'vue';
 import { t } from '../i18n';
 import type { KanjiInfo } from '../types';
 import StrokePlayer from './StrokePlayer.vue';
@@ -18,11 +18,28 @@ const radical = computed(() => [props.kanji.Radical, props.kanji.RadicalHanViet]
 /* The parts of the kanji; without the server's explanations (older server) they still show as bare characters. */
 const parts = computed(() => props.kanji.Parts ?? props.kanji.Components.filter((c) => c !== props.kanji.Literal).map((c) => ({ Literal: c, HanViet: null, Meaning: null })));
 const firstMeaning = computed(() => (props.kanji.MeaningsVi[0] ?? props.kanji.MeaningsEn[0] ?? '').trim());
+
+/* On a touch screen the hint opens by itself when the sheet still fits on the screen: open it, let the layout settle
+   (before anything is painted) and fold it again if the sheet now has to scroll. A tap on the toggle wins. */
+const root = ref<HTMLElement | null>(null);
+let hintTouched = false;
+async function fitHint(): Promise<void> {
+  if (!touchOnly || hintTouched || parts.value.length === 0) return;
+  hintOpen.value = true;
+  await nextTick();
+  const sheet = root.value?.closest<HTMLElement>('.sheet'); // the scrolling card of KanjiSheet
+  if (sheet && sheet.scrollHeight > sheet.clientHeight + 1) hintOpen.value = false;
+}
+function toggleHint(): void {
+  hintTouched = true;
+  hintOpen.value = !hintOpen.value;
+}
+onMounted(() => void fitHint());
 </script>
 
 <!-- One kanji on one screen: header, then the stroke order on the left and the few facts that matter on the right. -->
 <template>
-  <div class="kanji">
+  <div ref="root" class="kanji">
     <div class="top">
       <div class="glyph jp">{{ kanji.Literal }}</div>
       <div class="info">
@@ -47,7 +64,7 @@ const firstMeaning = computed(() => (props.kanji.MeaningsVi[0] ?? props.kanji.Me
     <!-- Memory hint: the kanji as the sum of its parts. Every part is a same-size tile holding only the character; its sound
          and meaning sit beside it, so the rows line up: whole | = / + | part | what it is. -->
     <div v-if="parts.length" class="hint">
-      <button v-if="touchOnly" type="button" class="label hint-toggle" :aria-expanded="hintOpen" @click="hintOpen = !hintOpen">
+      <button v-if="touchOnly" type="button" class="label hint-toggle" :aria-expanded="hintOpen" @click="toggleHint">
         <v-icon icon="mdi-lightbulb-on-outline" size="14" />{{ t('kanji.hint') }}<v-icon :icon="hintOpen ? 'mdi-chevron-up' : 'mdi-chevron-down'" size="16" />
       </button>
       <div v-else class="label"><v-icon icon="mdi-lightbulb-on-outline" size="14" />{{ t('kanji.hint') }}</div>

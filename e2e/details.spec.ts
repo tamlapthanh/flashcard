@@ -31,3 +31,63 @@ test.describe('details: Sino-Vietnamese kanji rows', () => {
     await expect(counter(page)).toBeAttached();
   });
 });
+
+/* On a phone (touch) the Notes and the Memory hint are folded, but open by themselves when the screen has room for them. */
+test.describe('auto-open of Notes and Memory hint when there is room', () => {
+  const TALL = { width: 412, height: 1600 };
+  const SHORT = { width: 412, height: 420 };
+
+  test('Notes open by themselves on a tall screen and fold on a short one; a tap wins', async ({ page, request }) => {
+    const deck = await richestDeck(request, 'alice');
+    test.skip(!deck || deck.counts.new + deck.counts.learning === 0, 'no new/learning cards in the local data');
+    await page.setViewportSize(TALL);
+    await openSignedIn(page, request, 'alice');
+    await startStudy(page, deck!);
+
+    const toggle = page.locator('.notes-toggle');
+    let found = false;
+    for (let i = 0; i < 25 && !found; i++) {
+      await page.keyboard.press('ArrowUp');
+      found = await toggle.waitFor({ timeout: 1500 }).then(() => true, () => false);
+      if (!found) await page.keyboard.press('ArrowRight');
+    }
+    test.skip(!found, 'no card with notes in the first 25 cards of the local data');
+
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true'); // room: opened without a tap
+    await page.setViewportSize(SHORT);
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false'); // no room: folded again
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true'); // the user's tap is respected
+  });
+
+  test('the Memory hint opens by itself on a tall screen and stays folded on a short one', async ({ page, request }) => {
+    const deck = await richestDeck(request, 'alice');
+    test.skip(!deck || deck.counts.new + deck.counts.learning === 0, 'no new/learning cards in the local data');
+    await page.setViewportSize(TALL);
+    await openSignedIn(page, request, 'alice');
+    await startStudy(page, deck!);
+
+    const hintToggle = page.locator('.hint-toggle');
+    let found = false;
+    for (let i = 0; i < 25 && !found; i++) {
+      await page.keyboard.press('ArrowUp');
+      const row = page.locator('.hvp').first();
+      if (await row.waitFor({ timeout: 1500 }).then(() => true, () => false)) {
+        await row.locator('button.k').click();
+        found = await hintToggle.waitFor({ timeout: 1500 }).then(() => true, () => false);
+        if (!found) await page.keyboard.press('Escape');
+      }
+      if (!found) await page.keyboard.press('ArrowRight');
+    }
+    test.skip(!found, 'no kanji with a memory hint in the first 25 cards of the local data');
+
+    await expect(hintToggle).toHaveAttribute('aria-expanded', 'true');
+
+    await page.keyboard.press('Escape'); // close the sheet, shrink the screen, open it again
+    await expect(page.locator('.kanji')).toHaveCount(0);
+    await page.setViewportSize(SHORT);
+    await page.keyboard.press('ArrowUp');
+    await page.locator('.hvp').first().locator('button.k').click();
+    await expect(page.locator('.hint-toggle')).toHaveAttribute('aria-expanded', 'false');
+  });
+});
