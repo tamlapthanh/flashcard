@@ -21,16 +21,16 @@ test.describe('study', () => {
     // The counter is based on the cards left, so browsing does not change it: compare the word on the card instead.
     const word = page.locator('.wordbody');
     const counterBefore = (await counter(page).innerText()).trim();
-    const wordBefore = await word.innerText();
+    const headword = (await word.innerText()).split('\n')[0]!.trim(); // the card also shows the meaning once flipped: compare the word only
     await page.keyboard.press('Space');
     await expect(counter(page)).toHaveText(counterBefore); // flipping never moves on
     const total = Number(/\/\s*(\d+)/.exec(counterBefore)![1]);
     if (total > 1) {
       await page.keyboard.press('ArrowRight');
-      await expect(word).not.toHaveText(wordBefore);
+      await expect(word).not.toContainText(headword);
       await expect(counter(page)).toHaveText(counterBefore); // browsing is not grading
       await page.keyboard.press('ArrowLeft');
-      await expect(word).toHaveText(wordBefore);
+      await expect(word).toContainText(headword);
     }
   });
 
