@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { t } from '../i18n';
 import type { KanjiInfo } from '../types';
 import StrokePlayer from './StrokePlayer.vue';
 
 const props = defineProps<{ kanji: KanjiInfo }>();
+
+/* On a touch screen (phone, tablet) the Memory hint stays folded until tapped; with a mouse there is room, so it always shows. */
+const touchOnly = typeof window !== 'undefined' && !window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+const hintOpen = ref(false);
 
 const meaning = computed(() => (props.kanji.MeaningsVi.length ? props.kanji.MeaningsVi : props.kanji.MeaningsEn).slice(0, 3).join('; '));
 const jlpt = computed(() => (props.kanji.Jlpt ? `N${props.kanji.Jlpt}` : null)); // LCT stores the OLD 1-4 scale
@@ -40,18 +44,19 @@ const firstMeaning = computed(() => (props.kanji.MeaningsVi[0] ?? props.kanji.Me
       </div>
     </div>
 
-    <!-- memory hint built from the data we have: the kanji as a sum of its parts, each with its sound and meaning -->
+    <!-- Memory hint: the kanji as the sum of its parts. Every part is a same-size tile holding only the character; its sound
+         and meaning sit beside it, so the rows line up: whole | = / + | part | what it is. -->
     <div v-if="parts.length" class="hint">
-      <div class="label"><v-icon icon="mdi-lightbulb-on-outline" size="14" />{{ t('kanji.hint') }}</div>
-      <div class="formula">
-        <span class="whole jp">{{ kanji.Literal }}</span>
-        <span class="op">=</span>
+      <button v-if="touchOnly" type="button" class="label hint-toggle" :aria-expanded="hintOpen" @click="hintOpen = !hintOpen">
+        <v-icon icon="mdi-lightbulb-on-outline" size="14" />{{ t('kanji.hint') }}<v-icon :icon="hintOpen ? 'mdi-chevron-up' : 'mdi-chevron-down'" size="16" />
+      </button>
+      <div v-else class="label"><v-icon icon="mdi-lightbulb-on-outline" size="14" />{{ t('kanji.hint') }}</div>
+      <div v-if="!touchOnly || hintOpen" class="formula">
+        <span class="whole jp" :style="{ gridRow: `1 / span ${parts.length + (firstMeaning ? 1 : 0)}` }">{{ kanji.Literal }}</span>
         <template v-for="(p, i) in parts" :key="i">
-          <span v-if="i > 0" class="op">+</span>
-          <span class="piece">
-            <span class="g jp">{{ p.Literal }}</span>
-            <span v-if="p.HanViet || p.Meaning" class="cap"><span class="hv">{{ p.HanViet }}</span><template v-if="p.HanViet && p.Meaning"> · </template>{{ p.Meaning }}</span>
-          </span>
+          <span class="op">{{ i === 0 ? '=' : '+' }}</span>
+          <span class="pg jp">{{ p.Literal }}</span>
+          <span class="pc"><span v-if="p.HanViet" class="hv">{{ p.HanViet }}</span><template v-if="p.HanViet && p.Meaning"> · </template>{{ p.Meaning }}</span>
         </template>
         <template v-if="firstMeaning">
           <span class="op">→</span>
@@ -86,14 +91,33 @@ const firstMeaning = computed(() => (props.kanji.MeaningsVi[0] ?? props.kanji.Me
 .body {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-areas: 'main side';
   gap: 14px;
   align-items: start;
   margin-top: 10px;
 }
 .body.single {
   grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'side';
+}
+/* A wide sheet (desktop, tablet, phone held sideways): the readings sit right beside the drawing instead of drifting to
+   the far edge. Narrow phones keep the two equal columns. */
+@media (min-width: 600px) {
+  .body:not(.single) {
+    grid-template-columns: 210px minmax(0, 1fr);
+    column-gap: 28px;
+  }
+}
+/* Mouse only: a second row for the stroke thumbnails, spanning the full width. (No empty row on touch screens.) */
+@media (hover: hover) and (pointer: fine) {
+  .body:not(.single) {
+    grid-template-areas:
+      'main side'
+      'strip strip';
+  }
 }
 .side {
+  grid-area: side;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -104,41 +128,56 @@ const firstMeaning = computed(() => (props.kanji.MeaningsVi[0] ?? props.kanji.Me
   border-radius: 14px;
   background: var(--grid-soft);
 }
-.formula {
+.hint-toggle {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 6px 8px;
-  margin-top: 6px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+.formula {
+  display: grid;
+  grid-template-columns: auto auto auto minmax(0, 1fr);
+  column-gap: 10px;
+  row-gap: 6px;
+  align-items: center;
+  margin-top: 8px;
 }
 .whole {
-  font-size: 1.9rem;
+  grid-column: 1;
+  align-self: center;
+  padding-right: 6px;
+  font-size: 3rem;
   line-height: 1;
 }
 .op {
+  grid-column: 2;
+  text-align: center;
   opacity: 0.55;
   font-weight: 700;
 }
-.piece {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 3px 8px;
-  border-radius: 10px;
+/* every part is the same size, whatever the character */
+.pg {
+  grid-column: 3;
+  width: 42px;
+  padding: 2px 0;
+  text-align: center;
+  font-size: 1.3rem;
+  line-height: 1.2;
   background: var(--paper);
   border: 1px solid var(--paper-edge);
+  border-radius: 6px;
 }
-.piece .g {
-  font-size: 1.5rem;
-  line-height: 1.1;
-}
-.piece .cap {
-  font-size: 0.62rem;
-  line-height: 1.2;
-  text-align: center;
-  max-width: 96px;
+.pc {
+  grid-column: 4;
+  font-size: 0.82rem;
+  line-height: 1.3;
 }
 .result {
+  grid-column: 3 / -1;
   font-weight: 700;
 }
 </style>

@@ -45,7 +45,9 @@ const en = {
   'detail.pos': 'Part of speech',
   'detail.pitch': 'Pitch accent',
   'detail.kanji': 'Kanji · tap for stroke order',
+  'detail.sinoVietTap': 'Sino-Viet · tap a kanji for stroke order',
   'detail.related': 'Related',
+  'detail.example': 'Example',
   'detail.notes': 'Notes',
 
   'kanji.strokes': '{n} strokes',
@@ -54,6 +56,7 @@ const en = {
   'strokes.label': 'Stroke order of {c}',
   'strokes.prev': 'Previous stroke',
   'strokes.next': 'Next stroke',
+  'strokes.jump': 'Go to stroke {n}',
   'strokes.play': 'Play',
   'strokes.pause': 'Pause',
 
@@ -154,7 +157,9 @@ const vi: Record<keyof typeof en, string> = {
   'detail.pos': 'Loại từ',
   'detail.pitch': 'Trọng âm',
   'detail.kanji': 'Kanji · chạm để xem nét viết',
+  'detail.sinoVietTap': 'Hán Việt · chạm vào chữ để xem nét viết',
   'detail.related': 'Liên quan',
+  'detail.example': 'Ví dụ',
   'detail.notes': 'Ghi chú',
 
   'kanji.strokes': '{n} nét',
@@ -163,6 +168,7 @@ const vi: Record<keyof typeof en, string> = {
   'strokes.label': 'Thứ tự nét viết chữ {c}',
   'strokes.prev': 'Nét trước',
   'strokes.next': 'Nét sau',
+  'strokes.jump': 'Tới nét {n}',
   'strokes.play': 'Phát',
   'strokes.pause': 'Dừng',
 

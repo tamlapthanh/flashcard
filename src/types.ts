@@ -67,6 +67,8 @@ export interface Card {
   hanviet: string | null;
   english: string | null;
   note: string | null;
+  example: string | null;
+  exampleVi: string | null;
   tags: string[];
   progress: Progress;
   ruby: RubyCell[] | null;

@@ -43,6 +43,7 @@ watch(
           v-if="canSpeak()"
           icon="mdi-volume-high"
           variant="text"
+          class="tool3d"
           :aria-label="t('related.read')"
           @click="speakJapanese(result?.reading ?? reading ?? headword ?? '')"
         />

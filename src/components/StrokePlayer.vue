@@ -48,11 +48,20 @@ function go(delta: number): void {
   animating.value = delta > 0;
 }
 
+function jump(n: number): void {
+  stop();
+  step.value = n + 1;
+  animating.value = true; // the chosen stroke draws itself again
+}
+
 onUnmounted(stop);
 </script>
 
 <template>
+  <!-- The root has no box of its own (display: contents): KanjiBlock lays out its two parts, "main" (drawing + buttons) and
+       "strip" (one thumbnail per stroke), together with the readings. -->
   <div class="player">
+    <div class="pmain">
     <div class="canvas">
     <svg viewBox="0 0 109 109" class="big" role="img" :aria-label="t('strokes.label', { c: literal })">
       <path d="M54.5 0V109M0 54.5H109" class="grid" />
@@ -74,17 +83,41 @@ onUnmounted(stop);
     </div>
 
     <div class="controls">
-      <v-btn icon="mdi-skip-previous" variant="text" size="small" :aria-label="t('strokes.prev')" @click="go(-1)" />
-      <v-btn :icon="playing ? 'mdi-pause' : 'mdi-play'" variant="tonal" size="small" :aria-label="playing ? t('strokes.pause') : t('strokes.play')" @click="play" />
-      <v-btn icon="mdi-skip-next" variant="text" size="small" :aria-label="t('strokes.next')" @click="go(1)" />
+      <v-btn class="ctl" icon="mdi-skip-previous" variant="text" size="small" :aria-label="t('strokes.prev')" @click="go(-1)" />
+      <v-btn class="ctl" :icon="playing ? 'mdi-pause' : 'mdi-play'" variant="tonal" size="small" :aria-label="playing ? t('strokes.pause') : t('strokes.play')" @click="play" />
+      <v-btn class="ctl" icon="mdi-skip-next" variant="text" size="small" :aria-label="t('strokes.next')" @click="go(1)" />
     </div>
     <!-- the stroke counter sits under the buttons, on its own line, so it can never run into the text beside the player -->
     <div class="count">{{ step }} / {{ paths.length }}</div>
+    </div>
+
+    <!-- stroke by stroke: one small picture per stroke, click to jump there. Desktop only (hidden on touch screens). -->
+    <div class="strip" role="list">
+      <button
+        v-for="(_, n) in paths"
+        :key="n"
+        type="button"
+        role="listitem"
+        class="thumb"
+        :class="{ on: n === step - 1 }"
+        :aria-label="t('strokes.jump', { n: n + 1 })"
+        @click="jump(n)"
+      >
+        <svg viewBox="0 0 109 109" aria-hidden="true">
+          <path v-for="(d, i) in paths" :key="i" :d="d" class="ts" :class="{ ghost: i > n, now: i === n }" />
+        </svg>
+        <span class="n">{{ n + 1 }}</span>
+      </button>
+    </div>
   </div>
 </template>
 
 <style scoped>
 .player {
+  display: contents;
+}
+.pmain {
+  grid-area: main;
   width: 100%;
   max-width: 210px;
   min-width: 0;
@@ -142,10 +175,80 @@ onUnmounted(stop);
   gap: 2px;
   margin-top: 4px;
 }
+/* The three player buttons are pressed-in 3D like the rest of the app. */
+.ctl {
+  background: var(--paper) !important;
+  border: 1px solid var(--paper-edge);
+  box-shadow: 0 3px 0 rgba(31, 77, 36, 0.35);
+}
+.ctl:active {
+  box-shadow: 0 1px 0 rgba(31, 77, 36, 0.35);
+  transform: translateY(2px);
+}
+.controls {
+  padding-bottom: 3px; /* room for the buttons' edge */
+}
 .count {
   text-align: center;
   font-size: 0.72rem;
   opacity: 0.7;
   margin-top: 2px;
+}
+.strip {
+  display: none;
+  grid-area: strip;
+}
+@media (hover: hover) and (pointer: fine) {
+  .strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 8px;
+  }
+  .thumb {
+    position: relative;
+    width: 38px;
+    padding: 0;
+    border: 1px solid var(--paper-edge);
+    border-radius: 6px;
+    background: var(--paper);
+    box-shadow: 0 2px 0 rgba(31, 77, 36, 0.3);
+    cursor: pointer;
+  }
+  .thumb:active {
+    box-shadow: 0 0 0 rgba(31, 77, 36, 0.3);
+    transform: translateY(2px);
+  }
+  .thumb:hover {
+    border-color: var(--shu);
+  }
+  .thumb.on {
+    border-color: var(--shu);
+    box-shadow: 0 0 0 1px var(--shu);
+  }
+  .thumb svg {
+    display: block;
+    width: 100%;
+  }
+  .ts {
+    fill: none;
+    stroke: rgb(var(--v-theme-on-surface));
+    stroke-width: 6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .ts.ghost {
+    stroke: rgba(var(--v-border-color), 0.25);
+  }
+  .ts.now {
+    stroke: var(--shu);
+  }
+  .thumb .n {
+    position: absolute;
+    left: 2px;
+    top: 0;
+    font-size: 0.6rem;
+    color: var(--shu);
+  }
 }
 </style>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { pendingResults, submitResult } from '../api';
 import { t } from '../i18n';
@@ -15,7 +15,7 @@ import { canSpeak, speakJapanese, stopSpeaking } from '../lib/speech';
 import { StudySession } from '../session';
 import { settings } from '../settings';
 import { activeSession } from '../store';
-import type { StudyResult } from '../types';
+import type { KanjiInfo, StudyResult } from '../types';
 
 const router = useRouter();
 const hasSession = activeSession.value !== null;
@@ -26,10 +26,14 @@ const pending = ref(pendingResults());
 const related = ref<RelatedWord | null>(null);
 const kanjiSel = ref<string | null>(null);
 const detailOpen = ref(false);
+/* On a touch screen (phone, tablet) the Notes stay folded until tapped; with a mouse there is room, so they always show. */
+const touchOnly = typeof window !== 'undefined' && !window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+const notesOpen = ref(false);
 const speaking = ref(false);
 const stamping = ref(false); // the "習" seal is being pressed onto the card
 
 const card = computed(() => s.current);
+watch([() => card.value?.id, detailOpen], () => (notesOpen.value = false)); // folded again on every new card and every time the back is opened
 /* The reading is NEVER shown on its own (not even after the flip): only the kanji, until the eye button is tapped. */
 const readingVisible = computed(() => s.showReading);
 const useRuby = computed(() => !s.reverse && !!card.value?.ruby && readingVisible.value);
@@ -40,23 +44,19 @@ const scale = computed(() => settings.fontScale);
 /* The eye button toggles the reading. In reverse mode the word itself only appears after the flip, so does the button. */
 const canToggleReading = computed(() => !!card.value?.reading && (!s.reverse || s.flipped));
 
-/*
- * Sino-Vietnamese sounds paired with their Han characters (香 HƯƠNG). When the word's own Hán Việt text is just those
- * sounds joined, only the pairs are shown; if it differs (the user wrote something else) both are shown.
- */
+/* Sino-Vietnamese sounds paired with their Han characters (香 HƯƠNG), one per row in the Details. */
 const hanvietOn = computed(() => settings.showHanViet && !!card.value?.hanviet);
-const hanvietPairs = computed(() => (card.value?.kanji ?? []).filter((k) => !!k.HanViet));
-const pairsMatchWord = computed(() => {
-  const c = card.value;
-  if (!c?.hanviet || hanvietPairs.value.length === 0) return false;
-  const joined = hanvietPairs.value.map((k) => k.HanViet!.trim().toLowerCase()).join(' ');
-  return joined === c.hanviet.trim().toLowerCase().replace(/\s+/g, ' ');
-});
+const hasHanViet = computed(() => (card.value?.kanji ?? []).some((k) => !!k.HanViet));
+/* What a kanji means, shown to the right of its Sino-Vietnamese sound: Vietnamese first, English when there is none. */
+function kanjiMeaning(k: KanjiInfo): string {
+  const list = k.MeaningsVi.length ? k.MeaningsVi : k.MeaningsEn;
+  return list.slice(0, 2).join('; ');
+}
 
 /* Step 3 (the "Chi tiết" sheet) only exists when the card has something beyond the word and its meaning. */
 const hasDetail = computed(() => {
   const c = card.value;
-  return !!c && (!!c.hanviet || !!c.english || !!c.pos || !!c.pitch || c.kanji.length > 0 || noteLines.value.length > 0);
+  return !!c && (!!c.hanviet || !!c.english || !!c.example || !!c.pos || !!c.pitch || c.kanji.length > 0 || noteLines.value.length > 0);
 });
 
 /* Speaking: normal mode reads the front word; reverse mode only after the flip (does not give the answer away). */
@@ -230,7 +230,7 @@ onUnmounted(() => {
         <div class="text-h6 mt-4">{{ t('study.finishedCount', { n: s.total }) }}</div>
         <v-row class="mt-4" dense>
           <v-col cols="4"><div class="stat shu"><v-icon icon="mdi-check-circle-outline" /><div class="n">{{ s.learned }}</div>{{ t('btn.learned') }}</div></v-col>
-          <v-col cols="4"><div class="stat"><v-icon icon="mdi-refresh" /><div class="n">{{ s.again }}</div>{{ t('btn.again') }}</div></v-col>
+          <v-col cols="4"><div class="stat"><v-icon icon="mdi-help-circle-outline" /><div class="n">{{ s.again }}</div>{{ t('btn.again') }}</div></v-col>
           <v-col cols="4"><div class="stat"><v-icon icon="mdi-skip-next-outline" /><div class="n">{{ s.skipped }}</div>{{ t('study.skippedStat') }}</div></v-col>
         </v-row>
         <div v-if="pending > 0" class="text-caption text-warning mt-3">
@@ -252,17 +252,16 @@ onUnmounted(() => {
         {{ s.position }} / {{ s.total }}
         <v-icon v-if="pending > 0" icon="mdi-cloud-upload-outline" size="14" class="ml-1" :title="t('study.unsentTip')" />
       </template>
-      <v-btn icon="mdi-close" size="small" variant="text" :aria-label="t('study.end')" @click="router.replace('/')" />
+      <!-- grading buttons live in the header, right of the counter; always usable (you may know the word without flipping).
+           On narrow screens only the icons show (the names stay as accessible labels). -->
+      <div class="acts">
+        <v-btn class="act" prepend-icon="mdi-help-circle-outline" variant="tonal" color="secondary" :disabled="stamping" :aria-label="t('btn.again')" @click="answer('again')"><span class="lbl">{{ t('btn.again') }}</span></v-btn>
+        <v-btn class="act" prepend-icon="mdi-check" variant="flat" color="primary" :disabled="stamping" :aria-label="t('btn.learned')" @click="answer('learned')"><span class="lbl">{{ t('btn.learned') }}</span></v-btn>
+        <v-btn class="act" prepend-icon="mdi-skip-next-outline" variant="tonal" color="secondary" :disabled="stamping" :aria-label="t('btn.skip')" @click="answer('skip')"><span class="lbl">{{ t('btn.skip') }}</span></v-btn>
+      </div>
     </TopBar>
 
     <div class="stage" :style="{ '--fs': scale }" @touchstart.passive="touchStart" @touchend.passive="touchEnd" @mousedown="mouseDown" @mouseup="mouseUp">
-      <!-- grading buttons: their own row ABOVE the card (outside the word frame); always usable (you may know the word without flipping) -->
-      <div class="acts">
-        <v-btn class="act" prepend-icon="mdi-refresh" variant="tonal" color="secondary" :disabled="stamping" @click="answer('again')">{{ t('btn.again') }}</v-btn>
-        <v-btn class="act" prepend-icon="mdi-check" variant="flat" color="primary" :disabled="stamping" @click="answer('learned')">{{ t('btn.learned') }}</v-btn>
-        <v-btn class="act" prepend-icon="mdi-skip-next-outline" variant="tonal" color="secondary" :disabled="stamping" @click="answer('skip')">{{ t('btn.skip') }}</v-btn>
-      </div>
-
       <Transition :name="slide" mode="out-in">
       <div :key="card.id" class="paper-card card">
         <div class="flipper" :class="{ back: detailOpen }">
@@ -306,6 +305,7 @@ onUnmounted(() => {
               :icon="s.showReading ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
               variant="text"
               color="primary"
+              class="tool3d"
               :aria-label="s.showReading ? t('study.hideReading') : t('study.showReading')"
               @click.stop="s.showReading = !s.showReading"
             />
@@ -314,6 +314,7 @@ onUnmounted(() => {
               :icon="speaking ? 'mdi-stop' : 'mdi-volume-high'"
               variant="text"
               color="primary"
+              class="tool3d"
               :aria-label="speaking ? t('study.stop') : t('study.read')"
               @click.stop="speak"
             />
@@ -331,22 +332,41 @@ onUnmounted(() => {
         <div ref="detailEl" class="px-4 pt-3 pb-2 detail">
           <!-- the word and its meaning stay visible on the back (the meaning follows the Settings switch) -->
           <div class="back-head">
-            <span class="jp bw">{{ card.headword }}</span>
-            <span v-if="card.reading" class="rd br">{{ card.reading }}</span>
+            <div class="bline">
+              <!-- the speaker sits to the left of the word; the reading beside it carries the pitch line when the word has one -->
+              <v-btn
+                v-if="canSpeakNow"
+                :icon="speaking ? 'mdi-stop' : 'mdi-volume-high'"
+                variant="text"
+                color="primary"
+                size="small"
+                class="bspeak tool3d"
+                :aria-label="speaking ? t('study.stop') : t('study.read')"
+                @click.stop="speak"
+              />
+              <span class="jp bw">{{ card.headword }}</span>
+              <span v-if="card.reading" class="rd br">
+                <PitchLine v-if="card.pitch" :morae="card.pitch.morae" />
+                <template v-else>{{ card.reading }}</template>
+              </span>
+            </div>
+            <!-- the word's own Sino-Vietnamese text sits right above the Vietnamese meaning, like on the front of the card -->
+            <div v-if="card.hanviet" class="hv hanviet bhv">{{ card.hanviet.toUpperCase() }}</div>
             <div class="bm">{{ card.meaning }}</div>
           </div>
 
           <!-- the Details always show everything the card has; the Settings switches only affect the front -->
-          <div v-if="card.hanviet || card.pos" class="pair">
-            <div v-if="card.hanviet" class="item">
+          <div v-if="card.kanji.length || card.pos" class="pair">
+            <div v-if="card.kanji.length" class="item">
               <v-icon icon="mdi-ideogram-cjk" color="teal" />
-              <div>
-                <div class="label">{{ t('detail.sinoViet') }}</div>
-                <!-- the Han characters next to each Sino-Vietnamese sound: 香 HƯƠNG -->
-                <div v-if="hanvietPairs.length" class="hvpairs">
-                  <span v-for="k in hanvietPairs" :key="k.Literal" class="hvp"><span class="jp k">{{ k.Literal }}</span><span class="hv">{{ k.HanViet!.toUpperCase() }}</span></span>
+              <div class="grow">
+                <div class="label">{{ hasHanViet ? t('detail.sinoVietTap') : t('detail.kanji') }}</div>
+                <!-- one row per kanji, in aligned columns: kanji | Sino-Vietnamese sound | meaning. Tap a row for its stroke order. -->
+                <div class="hvpairs">
+                  <button v-for="k in card.kanji" :key="k.Literal" type="button" class="hvp" :aria-label="`Kanji ${k.Literal}`" @click.stop="openKanji(k.Literal)">
+                    <span class="jp k">{{ k.Literal }}</span><span class="hv">{{ k.HanViet ? k.HanViet.toUpperCase() : '' }}</span><span class="hm">{{ kanjiMeaning(k) }}</span>
+                  </button>
                 </div>
-                <div v-if="!pairsMatchWord" class="hv">{{ card.hanviet!.toUpperCase() }}</div>
               </div>
             </div>
             <div v-if="card.pos" class="item">
@@ -360,6 +380,15 @@ onUnmounted(() => {
             <div><div class="label">English</div><i>{{ card.english.replace(/\n/g, '; ') }}</i></div>
           </div>
 
+          <div v-if="card.example" class="item">
+            <v-icon icon="mdi-format-quote-open-outline" color="secondary" />
+            <div class="grow">
+              <div class="label">{{ t('detail.example') }}</div>
+              <div class="jp example">{{ card.example }}</div>
+              <div v-if="card.exampleVi" class="exvi">{{ card.exampleVi }}</div>
+            </div>
+          </div>
+
           <div v-if="card.pitch" class="item">
             <v-icon icon="mdi-chart-line-variant" color="pink" />
             <div>
@@ -369,25 +398,17 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <div v-if="card.kanji.length" class="item">
-            <v-icon icon="mdi-book-alphabet" color="primary" />
-            <div class="grow">
-              <div class="label">{{ t('detail.kanji') }}</div>
-              <div class="kanjirow">
-                <button v-for="k in card.kanji" :key="k.Literal" type="button" class="ktile" :aria-label="`Kanji ${k.Literal}`" @click.stop="openKanji(k.Literal)">
-                  <span class="g jp">{{ k.Literal }}</span>
-                  <span class="hvk">{{ k.HanViet ?? '' }}</span>
-                </button>
-              </div>
-            </div>
-          </div>
-
           <!-- all plain note lines under ONE "Notes" label, all related words under ONE "Related" label -->
           <div v-if="plainNotes.length" class="item">
             <v-icon icon="mdi-note-text-outline" color="secondary" />
             <div class="grow">
-              <div class="label">{{ t('detail.notes') }}</div>
-              <div v-for="(line, i) in plainNotes" :key="i" class="noteline">{{ line.text }}</div>
+              <button v-if="touchOnly" type="button" class="label notes-toggle" :aria-expanded="notesOpen" @click.stop="notesOpen = !notesOpen">
+                {{ t('detail.notes') }}<v-icon :icon="notesOpen ? 'mdi-chevron-up' : 'mdi-chevron-down'" size="16" />
+              </button>
+              <div v-else class="label">{{ t('detail.notes') }}</div>
+              <template v-if="!touchOnly || notesOpen">
+                <div v-for="(line, i) in plainNotes" :key="i" class="noteline">{{ line.text }}</div>
+              </template>
             </div>
           </div>
 
@@ -424,7 +445,7 @@ onUnmounted(() => {
 <style scoped>
 .stage {
   position: relative;
-  padding: 10px;
+  padding: 0 4px 4px; /* the word card fills the screen: thin margins left, right and bottom; it starts right under the top bar */
   height: calc(100dvh - 48px);
   display: flex;
   flex-direction: column;
@@ -465,9 +486,20 @@ onUnmounted(() => {
     position: absolute;
     top: 55%;
     z-index: 3;
+    /* nearly invisible until the mouse is over it, so it never hides what is under it on the card */
+    opacity: 0.15;
+    transition: opacity 0.15s ease;
     background: rgba(255, 255, 255, 0.85) !important;
     color: var(--forest) !important;
-    box-shadow: 0 2px 6px rgba(31, 77, 36, 0.25);
+    box-shadow: 0 3px 0 rgba(31, 77, 36, 0.35);
+  }
+  .nav:hover,
+  .nav:focus-visible {
+    opacity: 1;
+  }
+  .nav:not(.v-btn--disabled):active {
+    box-shadow: 0 1px 0 rgba(31, 77, 36, 0.35);
+    transform: translateY(2px);
   }
   .nav-prev {
     left: 0;
@@ -480,24 +512,39 @@ onUnmounted(() => {
 .acts {
   display: flex;
   gap: 8px;
-  padding: 0 2px 10px;
+  margin-right: 6px;
 }
 .act {
-  flex: 1;
   min-width: 0;
-  height: 40px !important;
-  padding: 0 6px;
+  height: 34px !important;
+  padding: 0 12px;
   text-transform: none;
   letter-spacing: 0;
   font-weight: 700;
 }
+/* Narrow screens (phones): icons only, so the three buttons, the counter, the menu and the close button all fit. */
+@media (max-width: 560px) {
+  .acts {
+    gap: 6px;
+    margin-right: 2px;
+  }
+  .act {
+    padding: 0 10px;
+  }
+  .lbl {
+    display: none;
+  }
+  .act :deep(.v-btn__prepend) {
+    margin-inline: 0;
+  }
+}
 /* Again and Skip are pressed-in 3D buttons too, like Learned (darker edge underneath, sinks when pressed). */
 .act.v-btn--variant-tonal:not(.v-btn--disabled) {
-  box-shadow: 0 4px 0 rgba(31, 77, 36, 0.35);
+  box-shadow: 0 3px 0 rgba(31, 77, 36, 0.35);
 }
 .act.v-btn--variant-tonal:not(.v-btn--disabled):active {
   box-shadow: 0 1px 0 rgba(31, 77, 36, 0.35);
-  transform: translateY(3px);
+  transform: translateY(2px);
 }
 .wordarea {
   position: relative;
@@ -562,18 +609,31 @@ onUnmounted(() => {
   font-family: var(--font-jp);
   font-size: calc(1.8rem * var(--fs));
 }
-.more,
 .more-space {
   flex: 0 0 auto;
-  height: 46px;
+  height: 52px; /* same as the button below: margin 6 + 38 + 8 */
+}
+/* "Details" / "Back to card": a pressed-in 3D pill at the foot of the card, like the other buttons. */
+.more {
+  flex: 0 0 auto;
+  height: 38px;
+  margin: 6px 12px 8px;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 2px;
-  border-top: 1px solid var(--paper-edge);
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--leaf) 18%, var(--paper));
+  box-shadow: 0 3px 0 rgba(31, 77, 36, 0.35);
   color: var(--forest);
   font-size: 0.85rem;
   font-weight: 700;
+  cursor: pointer;
+}
+.more:active {
+  box-shadow: 0 1px 0 rgba(31, 77, 36, 0.35);
+  transform: translateY(2px);
 }
 /* The card turns over like a real one: the front is the word, the back is the details. */
 .card {
@@ -612,12 +672,44 @@ onUnmounted(() => {
   padding-bottom: 10px;
   border-bottom: 1px solid var(--paper-edge);
 }
+.bline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 8px;
+}
+.bspeak {
+  flex: 0 0 auto;
+  margin-left: -6px;
+}
 .bw {
   font-size: 1.7rem;
   line-height: 1.2;
 }
 .br {
-  margin-left: 8px;
+  font-size: 1.05rem;
+  opacity: 0.9;
+}
+.bhv {
+  margin-top: 4px;
+}
+.notes-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+.example {
+  font-size: 1.05rem;
+  line-height: 1.5;
+}
+.exvi {
+  font-size: 0.88rem;
+  font-style: italic;
   opacity: 0.8;
 }
 .bm {
@@ -627,7 +719,8 @@ onUnmounted(() => {
 }
 .pair {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  /* Sino-Viet and Part of speech side by side when both exist and fit; a lone item takes the full width (no early wrapping) */
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 12px;
 }
 .item {
@@ -649,51 +742,50 @@ onUnmounted(() => {
   letter-spacing: 0.06em;
 }
 .hvpairs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px 12px;
+  /* one kanji per row, in three aligned columns: kanji | Sino-Viet sound | meaning */
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  column-gap: 10px;
+  row-gap: 6px;
+  align-items: baseline;
 }
 .hvp {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 5px;
+  /* a whole row is one button (tap for the stroke order) whose three parts sit in the columns of .hvpairs */
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  align-items: center;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
 }
+/* Only the kanji is framed, like the kanji tiles used to be: a thin border with rounded corners, no 3D edge. */
 .hvp .k {
-  font-size: 1.25rem;
+  min-width: 42px;
+  padding: 2px 8px;
+  text-align: center;
+  font-size: 1.3rem;
+  line-height: 1.2;
+  background: rgb(var(--v-theme-surface));
+  border: 1px solid var(--paper-edge);
+  border-radius: 6px;
+}
+.hvp:hover .k {
+  border-color: var(--leaf);
+}
+.hvp .hm {
+  font-size: 0.85rem;
+  opacity: 0.85;
 }
 .related {
   color: var(--forest);
   font-weight: 700;
   text-decoration: underline;
   text-decoration-color: var(--leaf);
-}
-.kanjirow {
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  padding-top: 4px;
-}
-.ktile {
-  flex: 0 0 auto;
-  min-width: 60px;
-  padding: 6px 8px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  border: 1px solid var(--paper-edge);
-  border-radius: 6px;
-  background: rgb(var(--v-theme-surface));
-  color: inherit;
-}
-.ktile .g {
-  font-size: 1.8rem;
-  line-height: 1.1;
-}
-.ktile .hvk {
-  font-size: 0.6rem;
-  color: var(--hv);
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
 }
 .stat {
   border-radius: 8px;

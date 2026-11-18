@@ -94,7 +94,7 @@ onMounted(load);
     <v-alert v-if="waking" type="info" variant="tonal" icon="mdi-power-sleep" class="mb-3">{{ t('deck.waking') }}</v-alert>
     <v-alert v-if="error" type="error" variant="tonal" icon="mdi-alert-circle-outline" class="mb-3">
       {{ error }}
-      <template #append><v-btn variant="text" size="small" @click="load">{{ t('deck.retry') }}</v-btn></template>
+      <template #append><v-btn variant="tonal" size="small" @click="load">{{ t('deck.retry') }}</v-btn></template>
     </v-alert>
     <v-progress-linear v-if="loading" indeterminate class="mb-3" color="primary" />
 
@@ -125,7 +125,7 @@ onMounted(load);
       <div v-if="deck?.tags.length" class="paper-card tagsbox">
         <div class="tagshead">
           <div class="label"><v-icon icon="mdi-tag-multiple-outline" size="14" />{{ t('filter.tags') }}</div>
-          <v-btn v-if="tags.length" size="x-small" variant="text" color="primary" @click="tags = []">{{ t('filter.clear', { n: tags.length }) }}</v-btn>
+          <v-btn v-if="tags.length" size="x-small" variant="tonal" color="primary" @click="tags = []">{{ t('filter.clear', { n: tags.length }) }}</v-btn>
         </div>
         <div class="text-caption text-medium-emphasis">{{ t('filter.tagsHint') }}</div>
         <div class="tagscroll">

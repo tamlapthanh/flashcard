@@ -7,7 +7,7 @@
 import { fetchSpeech } from '../api';
 import { settings } from '../settings';
 
-const CACHE_NAME = 'flashmobile-speech-v2'; // bump when the server's voice or speed changes, so old recordings are not replayed
+const CACHE_NAME = 'flashmobile-speech-v3'; // bump when the server's voice or speed changes, so old recordings are not replayed
 
 export function canSpeak(): boolean {
   return typeof window !== 'undefined' && ('speechSynthesis' in window || typeof Audio !== 'undefined');

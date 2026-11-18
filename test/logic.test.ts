@@ -15,6 +15,8 @@ const card = (id: string): Card => ({
   hanviet: null,
   english: null,
   note: null,
+  example: null,
+  exampleVi: null,
   tags: [],
   progress: { status: 'new', correct: 0, wrong: 0, lastReviewed: null },
   ruby: null,
