@@ -24,7 +24,12 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     ...devices['Pixel 7']
   },
-  projects: [{ name: 'mobile-chromium', use: { browserName: 'chromium' } }],
+  projects: [
+    // a phone (touch): every spec except the desktop one
+    { name: 'mobile-chromium', use: { browserName: 'chromium' }, testIgnore: /desktop\.spec\.ts/ },
+    // a desktop browser (mouse, hover, wide window): only the desktop spec - hover colours, side-by-side kanji, word-list columns
+    { name: 'desktop-chromium', use: { ...devices['Desktop Chrome'], viewport: { width: 1700, height: 900 } }, testMatch: /desktop\.spec\.ts/ }
+  ],
   webServer: [
     {
       command: 'npx tsx src/server.ts',

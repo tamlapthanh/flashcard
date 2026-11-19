@@ -91,3 +91,31 @@ test.describe('auto-open of Notes and Memory hint when there is room', () => {
     await expect(page.locator('.hint-toggle')).toHaveAttribute('aria-expanded', 'false');
   });
 });
+
+/* On a phone (touch) a word with several kanji still shows one kanji at a time, switched with chips (the side-by-side view is desktop only). */
+test.describe('kanji sheet on a phone', () => {
+  test('two or more kanji: chips, one stroke player, and the last stroke turns black when drawn', async ({ page, request }) => {
+    const deck = await richestDeck(request, 'alice');
+    test.skip(!deck || deck.counts.new + deck.counts.learning === 0, 'no new/learning cards in the local data');
+    await openSignedIn(page, request, 'alice');
+    await startStudy(page, deck!);
+
+    let found = false;
+    for (let i = 0; i < 40 && !found; i++) {
+      await page.keyboard.press('ArrowUp');
+      const first = await page.locator('.hvp button.k').first().waitFor({ timeout: 1200 }).then(() => true, () => false);
+      found = first && (await page.locator('.hvp button.k').count()) >= 2;
+      if (!found) await page.keyboard.press('ArrowRight');
+    }
+    test.skip(!found, 'no card with two kanji in the first 40 cards of the local data');
+
+    await page.locator('.hvp button.k').first().click();
+    await expect(page.locator('.sheet .v-chip-group')).toBeVisible();
+    await expect(page.locator('.multi')).toHaveCount(0);
+    await expect(page.locator('.sheet .kanji')).toHaveCount(1); // one kanji at a time
+    await expect.poll(() => page.locator('.kanji .stroke.current').count(), { timeout: 25_000 }).toBe(0);
+    // the second chip switches to the second kanji
+    await page.locator('.sheet .v-chip').nth(1).click();
+    await expect(page.locator('.sheet .kanji')).toHaveCount(1);
+  });
+});

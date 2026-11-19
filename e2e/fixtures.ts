@@ -53,9 +53,35 @@ export async function openSignedIn(page: Page, request: APIRequestContext, user:
 /** The "n / total" button on the study card. */
 export const counter = (page: Page) => page.getByRole('button', { name: 'Show the word list' }).filter({ hasText: /\d+\s*\/\s*\d+/ });
 
+/** The letter(s) on a deck's tile (same rule as src/lib/deckMark.ts): a JLPT level when the name has one, else the first character. */
+export function tileMark(name: string): string {
+  const level = /(?:^|[^A-Za-z0-9])N[1-5](?![A-Za-z0-9])/i.exec(name);
+  if (level) return level[0].replace(/^[^A-Za-z]/, '').toUpperCase();
+  return (Array.from(name.trim())[0] ?? '札').toUpperCase();
+}
+
+/** The deck card on the deck screen (the tile inside it is a button of its own, so it is found by text, not by an anchored name). */
+export const deckCard = (page: Page, deck: DeckInfo) => page.locator('button.deck').filter({ hasText: new RegExp(`${escapeRegex(deck.name)}\\s*\\d+ cards`) });
+
+/** The user's saved settings on the server (what the Google Sheet holds in production). */
+export async function apiSettings(request: APIRequestContext, user: User): Promise<{ settings: Record<string, unknown> | null; updatedAt: string | null }> {
+  const token = await apiLogin(request, user);
+  const res = await request.get(`${API_URL}/api/settings`, { headers: { authorization: `Bearer ${token}` } });
+  expect(res.ok()).toBeTruthy();
+  return res.json();
+}
+
+export async function apiPutSettings(request: APIRequestContext, user: User, settings: unknown): Promise<number> {
+  const token = await apiLogin(request, user);
+  return (await request.put(`${API_URL}/api/settings`, { headers: { authorization: `Bearer ${token}` }, data: { settings } })).status();
+}
+
+/** Back to "nothing saved": the next page load of this user starts from the defaults. */
+export const resetSettings = (request: APIRequestContext, user: User): Promise<number> => apiPutSettings(request, user, {});
+
 /** Deck screen -> pick the deck -> Start -> study screen with the first card showing. */
 export async function startStudy(page: Page, deck: DeckInfo): Promise<void> {
-  await page.getByRole('button', { name: new RegExp(`^${escapeRegex(deck.name)} \\d+ cards`) }).click();
+  await deckCard(page, deck).click();
   await page.getByRole('button', { name: /始める/ }).click();
   await expect(page.getByRole('button', { name: 'Learned' })).toBeVisible();
 }
