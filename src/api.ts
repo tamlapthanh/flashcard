@@ -68,17 +68,23 @@ export const api = {
   health: () => request<{ ok: boolean }>('/health')
 };
 
-/* The spoken word as an MP3 (ElevenLabs through the server). Rejects when the server has no voice or fails. */
-export async function fetchSpeech(text: string): Promise<Blob> {
+/* Where the server got a spoken word from (its x-voice-source header): a paid ElevenLabs call, its memory, or a file on its disk. */
+export type ServerVoiceSource = 'elevenlabs' | 'server-memory' | 'server-file' | 'server';
+
+/* The spoken word as an MP3 (ElevenLabs through the server) and where the server got it from. Rejects when the server has no voice or fails. */
+export async function fetchSpeech(text: string, deck = ''): Promise<{ blob: Blob; source: ServerVoiceSource }> {
   let res: Response;
   try {
-    res = await fetch(`${BASE}/api/speech?text=${encodeURIComponent(text)}`, { headers: authHeaders() });
+    const query = `text=${encodeURIComponent(text)}${deck ? `&deck=${encodeURIComponent(deck)}` : ''}`;
+    res = await fetch(`${BASE}/api/speech?${query}`, { headers: authHeaders() });
   } catch {
     throw new ApiError(t('api.conn'), 0);
   }
   if (res.status === 401) clearSession();
   if (!res.ok) throw new ApiError(t('api.server', { status: res.status }), res.status);
-  return res.blob();
+  const header = res.headers.get('x-voice-source');
+  const source: ServerVoiceSource = header === 'elevenlabs' || header === 'server-memory' || header === 'server-file' ? header : 'server'; // an older server sends none
+  return { blob: await res.blob(), source };
 }
 
 /* ---- result queue ---- */

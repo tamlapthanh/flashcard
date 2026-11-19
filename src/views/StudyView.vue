@@ -14,7 +14,7 @@ import WordListSheet from '../components/WordListSheet.vue';
 import { detailOf, ensureDetails } from '../lib/cardDetail';
 import { parseNote, type RelatedWord } from '../lib/note';
 import { swipeDown } from '../lib/swipeDown';
-import { canSpeak, speakJapanese, stopSpeaking } from '../lib/speech';
+import { canSpeak, prefetchSpeech, speakJapanese, stopSpeaking, voiceSource, type VoiceSource } from '../lib/speech';
 import { cardTextVars } from '../cardText';
 import { StudySession } from '../session';
 import { settings } from '../settings';
@@ -128,6 +128,16 @@ const englishOn = computed(() => settings.showEnglish && !!card.value?.english);
 const answerShown = computed(() => s.flipped || (!s.reverse && (settings.showMeaning || hanvietOn.value || englishOn.value)));
 const canSpeakNow = computed(() => canSpeak() && !!card.value && card.value.lang === 'ja' && (!s.reverse || s.flipped));
 
+/* Where the word that was just spoken came from (browser cache, a saved file, the server's memory or disk, a paid ElevenLabs call, the device): shown for a moment next to the speaker. */
+const voiceBadge = ref<VoiceSource | null>(null);
+let voiceBadgeTimer: ReturnType<typeof setTimeout> | undefined;
+watch(voiceSource, (heard) => {
+  if (!heard) return;
+  voiceBadge.value = heard.source;
+  clearTimeout(voiceBadgeTimer);
+  voiceBadgeTimer = setTimeout(() => (voiceBadge.value = null), 2500);
+});
+
 function speak(): void {
   const c = card.value;
   if (!c) return;
@@ -137,7 +147,7 @@ function speak(): void {
     return;
   }
   speaking.value = true;
-  speakJapanese(c.reading || c.headword, () => (speaking.value = false));
+  speakJapanese(c.reading || c.headword, () => (speaking.value = false), s.deckName);
 }
 
 function flip(): void {
@@ -299,11 +309,15 @@ function autoSpeakWord(): Promise<void> {
   return new Promise((resolve) => {
     speaking.value = true;
     const guard = setTimeout(resolve, 10_000);
-    speakJapanese(c.reading || c.headword, () => {
-      clearTimeout(guard);
-      speaking.value = false;
-      resolve();
-    });
+    speakJapanese(
+      c.reading || c.headword,
+      () => {
+        clearTimeout(guard);
+        speaking.value = false;
+        resolve();
+      },
+      s.deckName
+    );
   });
 }
 
@@ -328,6 +342,8 @@ async function releaseWakeLock(): Promise<void> {
 async function autoRun(token: number): Promise<void> {
   let left = s.queue.length;
   while (token === autoToken && left > 0 && !s.finished) {
+    const upcoming = s.queue[1]; // the next word's voice is fetched while this card is on screen
+    if (settings.autoSpeak && upcoming?.lang === 'ja') prefetchSpeech(upcoming.reading || upcoming.headword, s.deckName);
     if (s.flipped) s.flip(); // the front of the card (the session itself, not flip(): that one would stop the auto play)
     detailOpen.value = false;
     await Promise.all([autoPause(settings.autoFrontSec), s.reverse ? Promise.resolve() : autoSpeakWord()]);
@@ -556,6 +572,7 @@ onUnmounted(() => {
 
           <!-- reading toggle at the bottom left, speaker at the bottom right -->
           <div class="tools">
+            <span v-if="voiceBadge" class="srcbadge" :class="'src-' + voiceBadge" data-testid="voice-source" role="status">{{ t(`voice.${voiceBadge}`) }}</span>
             <!-- the eye fans out three small round options around itself: hiragana, Vietnamese meaning, Hán Việt (lit = shown) -->
             <div class="fan" :class="{ open: fanOpen }">
               <button
@@ -902,6 +919,41 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   pointer-events: none; /* the empty middle of the strip must not swallow taps meant for the card */
+}
+.srcbadge {
+  position: absolute;
+  right: 0;
+  bottom: 44px;
+  max-width: 70%;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.5;
+  color: #fff;
+  background: #5a8f3c; /* free and instant: browser cache, saved file */
+  pointer-events: none;
+  animation: srcfade 2.5s ease forwards;
+}
+.srcbadge.src-server-memory,
+.srcbadge.src-server-file,
+.srcbadge.src-server {
+  background: #2f80d1; /* from the server, no charge */
+}
+.srcbadge.src-elevenlabs {
+  background: #ef8a17; /* a paid ElevenLabs call */
+}
+.srcbadge.src-device {
+  background: #7a7a7a; /* the phone's own voice */
+}
+@keyframes srcfade {
+  0%,
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
 }
 .tools > * {
   pointer-events: auto;
