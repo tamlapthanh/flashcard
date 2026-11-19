@@ -129,14 +129,20 @@ const norm = (text: string | null | undefined): string =>
     .replace(/[\u30a1-\u30f6]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0x60))
     .toLowerCase();
 /* Search options (the gear at the right end of the box fans them out, like the eye button on the card; lit = included):
-   learned words, and words not learned yet (again / skipped / not seen). At least one stays on. */
+   learned words, skipped words, and the rest (not seen yet / again). */
 const inLearned = ref(true);
+const inSkipped = ref(true);
 const inTodo = ref(true);
 const optsOpen = ref(false);
 const searchOpts = computed(() => [
-  { key: 'learned', glyph: '済', label: t('list.fLearned'), on: inLearned.value, dx: 0, dy: 40, toggle: () => ((inLearned.value = !inLearned.value), !inLearned.value && (inTodo.value = true)) },
-  { key: 'todo', glyph: '未', label: t('list.fTodo'), on: inTodo.value, dx: 0, dy: 76, toggle: () => ((inTodo.value = !inTodo.value), !inTodo.value && (inLearned.value = true)) }
+  { key: 'learned', glyph: '済', label: t('list.fLearned'), on: inLearned.value, dx: 0, dy: 40, toggle: () => flip(inLearned) },
+  { key: 'skipped', glyph: '休', label: t('list.fSkipped'), on: inSkipped.value, dx: 0, dy: 76, toggle: () => flip(inSkipped) },
+  { key: 'todo', glyph: '未', label: t('list.fTodo'), on: inTodo.value, dx: 0, dy: 112, toggle: () => flip(inTodo) }
 ]);
+/* Switches one option on or off; every one may be off (then the list is empty). */
+function flip(option: { value: boolean }): void {
+  option.value = !option.value;
+}
 const foldOpts = (): void => {
   optsOpen.value = false;
 };
@@ -147,13 +153,18 @@ watch(optsOpen, (isOpen) => {
 const matches = computed(() => {
   const q = norm((query.value ?? '').trim());
   let all = props.session.cards.map((c, i) => ({ c, n: i + 1 }));
-  if (!(inLearned.value && inTodo.value)) all = all.filter(({ c }) => (props.session.status(c.id) === 'learned') === inLearned.value);
+  if (!(inLearned.value && inSkipped.value && inTodo.value)) {
+    all = all.filter(({ c }) => {
+      const st = props.session.status(c.id);
+      return st === 'learned' ? inLearned.value : st === 'skipped' ? inSkipped.value : inTodo.value;
+    });
+  }
   if (!q) return all;
   return all.filter(({ c }) => norm([c.headword, c.reading, c.hanviet, c.meaning, c.example, c.exampleVi].join(' ')).includes(q));
 });
 const visibleCards = computed(() => matches.value.slice(0, shown.value));
 const hasMore = computed(() => shown.value < matches.value.length);
-watch([query, inLearned, inTodo], () => {
+watch([query, inLearned, inSkipped, inTodo], () => {
   shown.value = CHUNK;
   if (rowsEl.value) rowsEl.value.scrollTop = 0;
 });
@@ -186,7 +197,7 @@ watch(
       shown.value = CHUNK;
     } else {
       query.value = ''; // the search box is empty and hidden again next time
-      inLearned.value = inTodo.value = true;
+      inLearned.value = inSkipped.value = inTodo.value = true;
       optsOpen.value = false;
       searchOpen.value = withMouse;
     }
@@ -261,14 +272,14 @@ const currentId = computed(() => props.session.current?.id ?? null);
             :key="o.key"
             type="button"
             class="sopt"
-            :class="{ on: o.on }"
+            :class="['k-' + o.key, { on: o.on }]"
             :style="{ '--dx': o.dx + 'px', '--dy': o.dy + 'px', '--i': idx }"
             :title="o.label"
             :aria-label="o.label"
             :aria-pressed="o.on"
             @click.stop="o.toggle()"
           >{{ o.glyph }}</button>
-          <v-btn icon="mdi-tune-variant" variant="text" color="primary" size="x-small" density="comfortable" class="gear" :class="{ active: !(inLearned && inTodo) }" :aria-label="t('list.options')" :aria-expanded="optsOpen" @click.stop="optsOpen = !optsOpen" />
+          <v-btn icon="mdi-tune-variant" variant="text" color="primary" size="x-small" density="comfortable" class="gear" :class="{ filtered: !(inLearned && inSkipped && inTodo) }" :aria-label="t('list.options')" :aria-expanded="optsOpen" @click.stop="optsOpen = !optsOpen" />
         </div>
       </div>
       <div class="rowswrap">
@@ -345,22 +356,43 @@ const currentId = computed(() => props.session.current?.id ?? null);
 .sfan {
   position: relative;
   flex: 0 0 auto;
+  align-self: center; /* vertically in the middle of the search box */
+  top: -1px; /* optical centring: a hair up */
   width: 30px;
   height: 30px;
-  margin-left: 4px;
+  margin: 0 0 0 4px;
 }
 .gear {
+  position: absolute;
+  inset: 0; /* exactly the 30px box of .sfan, so the gear is centred in it */
+  margin: 0 !important;
   width: 30px !important;
   height: 30px !important;
-  background: var(--paper) !important;
-  border: 1px solid var(--paper-edge);
-  box-shadow: 0 2px 0 rgba(31, 77, 36, 0.35);
+  background: rgb(var(--v-theme-primary)) !important; /* the usual leaf green */
+  color: #fff !important;
+  border: 0;
+  box-shadow: 0 3px 0 #3f8a1f !important; /* pressed-in 3D edge, like the other round buttons */
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
 }
-.gear.active {
-  background: rgb(var(--v-theme-primary)) !important;
-  color: #fff !important; /* some words are filtered out: the gear is lit */
-  border-color: transparent;
-  box-shadow: 0 2px 0 #3f8a1f;
+.gear.filtered {
+  background: var(--paper) !important; /* some option is off: the gear turns pale */
+  color: var(--leaf) !important;
+  border: 1px solid var(--paper-edge);
+  box-shadow: 0 3px 0 rgba(31, 77, 36, 0.4) !important;
+}
+.gear:active {
+  box-shadow: 0 0 0 transparent !important;
+  transform: translateY(3px);
+}
+@media (hover: hover) and (pointer: fine) {
+  .gear.filtered:hover {
+    background: #d4f5c2 !important; /* pale mint under the mouse */
+  }
+  .gear:not(.filtered):hover {
+    background: #9be35f !important; /* the lighter green of the main buttons under the mouse */
+    box-shadow: 0 1px 0 #3f8a1f !important;
+    transform: translateY(2px);
+  }
 }
 .sopt {
   position: absolute;
@@ -393,11 +425,31 @@ const currentId = computed(() => props.session.current?.id ?? null);
   transform: translate(var(--dx), var(--dy)) scale(1);
   transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) calc(var(--i) * 55ms), opacity 0.36s ease calc(var(--i) * 55ms);
 }
+.sopt.k-skipped {
+  border-color: #d99a1c;
+  color: #9a6a00;
+}
+.sopt.k-skipped.on {
+  background: #f2b134; /* the same amber as the skipped rows */
+  border-color: transparent;
+  color: #4e342e;
+  box-shadow: 0 3px 0 #b07a12;
+}
+.sopt.k-todo {
+  border-color: var(--paper-edge);
+  color: var(--jp);
+}
+.sopt.k-todo.on {
+  background: var(--paper-edge); /* the rest: the plain paper tone of its rows */
+  border-color: transparent;
+  color: var(--jp);
+  box-shadow: 0 3px 0 rgba(31, 77, 36, 0.35);
+}
 .sopt.on {
   background: rgb(var(--v-theme-primary)); /* lit = included */
   border-color: transparent;
   color: #fff;
-  box-shadow: 0 2px 0 #3f8a1f;
+  box-shadow: 0 3px 0 #3f8a1f;
 }
 .searchbtn {
   transition: transform 0.12s ease, box-shadow 0.12s ease;
@@ -418,7 +470,7 @@ const currentId = computed(() => props.session.current?.id ?? null);
 .search {
   position: relative;
   flex: 0 0 auto;
-  padding: 0 10px;
+  padding: 0 2px 0 10px; /* the options gear sits close to the right edge of the box */
   border: 1.5px solid var(--leaf); /* green border, like the current row */
   border-radius: 999px;
   background: var(--paper);
@@ -569,7 +621,7 @@ const currentId = computed(() => props.session.current?.id ?? null);
   background: color-mix(in srgb, var(--leaf) 22%, var(--paper)); /* already learned */
 }
 .row.skipped {
-  opacity: 0.55;
+  background: color-mix(in srgb, #f2b134 26%, var(--paper)); /* skipped: warm amber (learned = green, the rest = plain paper) */
 }
 .row.now {
   border-color: var(--leaf);

@@ -138,7 +138,9 @@ async function start(): Promise<void> {
   try {
     const { cards } = await api.cards({ deck: deck.value.id, tags: tags.value, status: statuses.value });
     if (cards.length === 0) {
-      error.value = t('err.none');
+      // nothing left to study (an empty deck, or every word already learned): the "Deck finished" screen, from the deck's saved progress
+      setActiveSession(null);
+      await router.push({ path: '/study', query: { finished: deck.value.id } });
       return;
     }
     clearDetails();
@@ -205,7 +207,7 @@ onMounted(load);
   </v-container>
 
   <v-footer v-if="deck" app class="pa-3 start-bar">
-    <v-btn block color="primary" size="large" prepend-icon="mdi-play" :loading="starting" :disabled="eligible === 0" :data-tip="t('tip.start')" @click="start">
+    <v-btn block color="primary" size="large" prepend-icon="mdi-play" :loading="starting" :data-tip="t('tip.start')" @click="start">
       <span class="jp-start">始める</span>&nbsp;· {{ t('deck.start', { n: startCount }) }}
     </v-btn>
   </v-footer>

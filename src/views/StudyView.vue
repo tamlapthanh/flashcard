@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { api, pendingResults, submitResult } from '../api';
 import { auth } from '../auth';
 import { t } from '../i18n';
@@ -22,6 +22,9 @@ import { activeSession, saveRun, setActiveSession } from '../store';
 import type { Card, Deck, KanjiInfo, StudyResult } from '../types';
 
 const router = useRouter();
+const route = useRoute();
+/* Start on a deck with nothing to study sends the deck here: this screen then shows "Deck finished" for it. */
+const finishedDeckId = typeof route.query.finished === 'string' ? route.query.finished : '';
 const hasSession = activeSession.value !== null;
 // Without a session (opened from the menu) the screen only shows an empty state; this stays inert.
 /* Every step of the run (answer, jump, flip) is written down, so a reload brings the run back where it was. */
@@ -295,7 +298,7 @@ async function loadInfoDeck(): Promise<void> {
     } catch {
       /* no remembered pick */
     }
-    infoDeck.value = decks.find((d) => d.id === id) ?? null;
+    infoDeck.value = decks.find((d) => d.id === (finishedDeckId || id)) ?? null;
   } catch {
     /* offline / server asleep: the plain empty state stays */
   } finally {
@@ -303,7 +306,7 @@ async function loadInfoDeck(): Promise<void> {
   }
 }
 const infoLearnedPercent = computed(() => (infoDeck.value && infoDeck.value.total ? Math.round((100 * infoDeck.value.counts.learned) / infoDeck.value.total) : 0));
-const infoAllLearned = computed(() => !!infoDeck.value && infoDeck.value.total > 0 && infoDeck.value.counts.new + infoDeck.value.counts.learning === 0);
+const infoAllLearned = computed(() => !!infoDeck.value && (finishedDeckId !== '' || infoDeck.value.total === 0 || infoDeck.value.counts.new + infoDeck.value.counts.learning === 0));
 if (!hasSession) void loadInfoDeck();
 
 onMounted(() => {
@@ -456,7 +459,7 @@ onUnmounted(() => {
                 :key="o.key"
                 type="button"
                 class="fanopt"
-                :class="{ on: o.on }"
+                :class="['k-' + o.key, { on: o.on }]"
                 :style="{ '--dx': o.dx + 'px', '--dy': o.dy + 'px', '--i': idx, '--n': fanOptions.length }"
                 :title="o.label"
                 :aria-label="o.label"
@@ -465,7 +468,7 @@ onUnmounted(() => {
               >{{ o.glyph }}</button>
               <!-- the button itself shows the four options as tiny marks: lit = shown on the card, dim = hidden -->
               <v-btn variant="text" color="primary" class="tool3d eye4" :aria-label="t('show.title')" :aria-expanded="fanOpen" @click.stop="fanOpen = !fanOpen">
-                <span class="marks"><span v-for="o in fanOptions" :key="o.key" class="mk" :class="{ on: o.on }">{{ o.glyph }}</span></span>
+                <span class="marks"><span v-for="o in fanOptions" :key="o.key" class="mk" :class="['k-' + o.key, { on: o.on }]">{{ o.glyph }}</span></span>
               </v-btn>
             </div>
             <v-btn
@@ -788,17 +791,27 @@ onUnmounted(() => {
   line-height: 1;
 }
 .mk {
+  /* a tiny copy of the option's button: its own colour behind the letter, no border */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-width: 11px;
+  height: 10px;
+  padding: 0 1px;
+  border-radius: 5px;
   font-family: var(--font-jp);
-  font-size: 0.52rem;
+  font-size: 0.5rem;
   font-weight: 700;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.04em;
+  text-transform: none; /* "Vi" and "En" as written: the Vuetify button would turn them into VI / EN */
   color: #fff;
-  opacity: 0.62; /* off: still readable on the green button, just calmer than the lit ones */
+  background: var(--oc, #3f8a1f);
+  opacity: 0.45; /* off: faded */
   transition: opacity 0.15s;
 }
 .mk.on {
-  opacity: 1; /* on */
-  text-shadow: 0 0 5px rgba(255, 255, 255, 0.95);
+  opacity: 1; /* on: full colour */
   font-weight: 900;
 }
 .fan {
@@ -813,7 +826,7 @@ onUnmounted(() => {
   width: 30px;
   height: 30px;
   box-sizing: border-box;
-  border: 1.5px solid var(--leaf); /* off: an outlined disc that stays visible on any background */
+  border: 1.5px dashed var(--oc, var(--leaf)); /* off: an empty dashed disc in the option's own colour */
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -823,7 +836,7 @@ onUnmounted(() => {
   font-weight: 700;
   cursor: pointer;
   background: var(--paper);
-  color: var(--leaf);
+  color: var(--oc, var(--leaf));
   box-shadow: 0 2px 0 rgba(31, 77, 36, 0.35);
   opacity: 0;
   pointer-events: none;
@@ -845,14 +858,31 @@ onUnmounted(() => {
     transform: translate(calc(var(--dx) * var(--k, 1)), calc(var(--dy) * var(--k, 1) + 1px)) scale(1);
   }
   .fan.open .fanopt.on:hover {
-    box-shadow: 0 1px 0 #3f8a1f;
+    box-shadow: 0 1px 0 var(--od, #3f8a1f);
   }
 }
+/* each option has its own colour: hiragana green, Vietnamese orange, English blue, Sino-Vietnamese purple (--oc fill, --od edge) */
+.fanopt.k-meaning,
+.mk.k-meaning {
+  --oc: #ef8a17;
+  --od: #b8600f;
+}
+.fanopt.k-english,
+.mk.k-english {
+  --oc: #2f80d1;
+  --od: #1f5a99;
+}
+.fanopt.k-hanviet,
+.mk.k-hanviet {
+  --oc: #8e4ec6;
+  --od: #6a3499;
+}
 .fanopt.on {
-  background: rgb(var(--v-theme-primary)); /* lit = shown on the card */
+  background: var(--oc, rgb(var(--v-theme-primary))); /* lit = shown on the card */
+  border-style: solid;
   border-color: transparent;
   color: #fff;
-  box-shadow: 0 2px 0 #3f8a1f;
+  box-shadow: 0 2px 0 var(--od, #3f8a1f);
 }
 /* Web (a real mouse): the two buttons in the card, the four marks and the fanned-out options are a little larger; phones keep the small size. */
 @media (hover: hover) and (pointer: fine) {
@@ -868,7 +898,11 @@ onUnmounted(() => {
     height: 28px;
   }
   .mk {
-    font-size: 0.72rem;
+    font-size: 0.66rem;
+    min-width: 16px;
+    height: 13px;
+    padding: 0 2px;
+    border-radius: 7px;
   }
   .fan {
     --k: 1.4;
