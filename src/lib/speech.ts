@@ -18,11 +18,20 @@ const CACHE_PREFIX = 'flashmobile-speech-v4:'; // + the deck name; bump the numb
 /** browser = this deck's cache, browser-other = another deck's cache, file = shipped with the app, the rest = what the server said, device = the phone's own voice. */
 export type VoiceSource = 'browser' | 'browser-other' | 'file' | ServerVoiceSource | 'device';
 
-/** The source of the word that was spoken last (a new object every time, so the same source twice is still noticed). */
-export const voiceSource = ref<{ source: VoiceSource; n: number } | null>(null);
+/** Where a word first came from, kept with its entry in the browser's cache (a word got there from a saved file, the server, ...). */
+export type VoiceOrigin = 'file' | ServerVoiceSource;
+const ORIGINS: readonly string[] = ['file', 'elevenlabs', 'server-memory', 'server-file', 'server'];
+const originOf = (response: Response): VoiceOrigin | undefined => {
+  const value = response.headers.get('x-voice-origin');
+  return value && ORIGINS.includes(value) ? (value as VoiceOrigin) : undefined;
+};
+
+/** The source of the word that was spoken last (a new object every time, so the same source twice is still noticed). `origin` is
+    set when the word came out of the browser's cache: where it was fetched from in the first place (e.g. fetched ahead by auto play). */
+export const voiceSource = ref<{ source: VoiceSource; origin?: VoiceOrigin; n: number } | null>(null);
 let announced = 0;
-const announce = (source: VoiceSource): void => {
-  voiceSource.value = { source, n: ++announced };
+const announce = (source: VoiceSource, origin?: VoiceOrigin): void => {
+  voiceSource.value = { source, origin, n: ++announced };
 };
 
 export function canSpeak(): boolean {
@@ -70,34 +79,37 @@ async function shippedFile(text: string, deck: string): Promise<Blob | null> {
 
 const entryUrl = (text: string, deck?: string): string => `/speech/${encodeURIComponent(text)}${deck === undefined ? '' : `?deck=${encodeURIComponent(deck)}`}`;
 
-async function remember(store: Cache | null, key: Request, blob: Blob): Promise<void> {
-  await store?.put(key, new Response(blob, { headers: { 'content-type': 'audio/mpeg' } })).catch(() => undefined);
+async function remember(store: Cache | null, key: Request, blob: Blob, origin?: VoiceOrigin): Promise<void> {
+  const headers: Record<string, string> = { 'content-type': 'audio/mpeg' };
+  if (origin) headers['x-voice-origin'] = origin;
+  await store?.put(key, new Response(blob, { headers })).catch(() => undefined);
 }
 
-async function cachedSpeech(text: string, deck: string): Promise<{ blob: Blob; source: VoiceSource }> {
+async function cachedSpeech(text: string, deck: string): Promise<{ blob: Blob; source: VoiceSource; origin?: VoiceOrigin }> {
   const hasCaches = typeof caches !== 'undefined';
   const key = new Request(entryUrl(text, deck));
   const store = hasCaches ? await caches.open(CACHE_PREFIX + (deck || '_')).catch(() => null) : null;
 
   const own = await store?.match(key);
-  if (own) return { blob: await own.blob(), source: 'browser' };
+  if (own) return { blob: await own.blob(), source: 'browser', origin: originOf(own) };
 
   // the same word in another deck's cache (a search by address only, whatever the deck): a few milliseconds, no download
   const other = hasCaches ? await caches.match(new Request(entryUrl(text)), { ignoreSearch: true }).catch(() => undefined) : undefined;
   if (other) {
     const blob = await other.blob();
-    await remember(store, key, blob);
-    return { blob, source: 'browser-other' };
+    const origin = originOf(other);
+    await remember(store, key, blob, origin);
+    return { blob, source: 'browser-other', origin };
   }
 
   const file = await shippedFile(text, deck);
   if (file) {
-    await remember(store, key, file);
+    await remember(store, key, file, 'file');
     return { blob: file, source: 'file' };
   }
 
   const served = await fetchSpeech(text, deck);
-  await remember(store, key, served.blob);
+  await remember(store, key, served.blob, served.source);
   return { blob: served.blob, source: served.source };
 }
 
@@ -130,9 +142,9 @@ export function speakJapanese(text: string, onEnd?: () => void, deck = ''): void
     return;
   }
   void cachedSpeech(text, deck).then(
-    ({ blob, source }) => {
+    ({ blob, source, origin }) => {
       if (id !== current) return; // stopped or replaced while the voice was loading
-      announce(source); // known as soon as the file is in hand (a failing player below then says "device" instead)
+      announce(source, origin); // known as soon as the file is in hand (a failing player below then says "device" instead)
       audioUrl = URL.createObjectURL(blob);
       audio = new Audio(audioUrl);
       audio.onended = () => onEnd?.();

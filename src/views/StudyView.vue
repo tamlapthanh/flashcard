@@ -14,7 +14,7 @@ import WordListSheet from '../components/WordListSheet.vue';
 import { detailOf, ensureDetails } from '../lib/cardDetail';
 import { parseNote, type RelatedWord } from '../lib/note';
 import { swipeDown } from '../lib/swipeDown';
-import { canSpeak, prefetchSpeech, speakJapanese, stopSpeaking, voiceSource, type VoiceSource } from '../lib/speech';
+import { canSpeak, prefetchSpeech, speakJapanese, stopSpeaking, voiceSource, type VoiceOrigin, type VoiceSource } from '../lib/speech';
 import { cardTextVars } from '../cardText';
 import { StudySession } from '../session';
 import { settings } from '../settings';
@@ -129,11 +129,15 @@ const answerShown = computed(() => s.flipped || (!s.reverse && (settings.showMea
 const canSpeakNow = computed(() => canSpeak() && !!card.value && card.value.lang === 'ja' && (!s.reverse || s.flipped));
 
 /* Where the word that was just spoken came from (browser cache, a saved file, the server's memory or disk, a paid ElevenLabs call, the device): shown for a moment next to the speaker. */
-const voiceBadge = ref<VoiceSource | null>(null);
+const voiceBadge = ref<{ source: VoiceSource; origin?: VoiceOrigin } | null>(null);
+const voiceBadgeText = computed(() => {
+  const b = voiceBadge.value;
+  return b ? t(`voice.${b.source}`) + (b.origin ? ` · ${t(`voice.${b.origin}`)}` : '') : ''; // "Browser cache · Saved file": it was fetched ahead from a saved file
+});
 let voiceBadgeTimer: ReturnType<typeof setTimeout> | undefined;
 watch(voiceSource, (heard) => {
   if (!heard) return;
-  voiceBadge.value = heard.source;
+  voiceBadge.value = { source: heard.source, origin: heard.origin };
   clearTimeout(voiceBadgeTimer);
   voiceBadgeTimer = setTimeout(() => (voiceBadge.value = null), 2500);
 });
@@ -572,7 +576,7 @@ onUnmounted(() => {
 
           <!-- reading toggle at the bottom left, speaker at the bottom right -->
           <div class="tools">
-            <span v-if="voiceBadge" class="srcbadge" :class="'src-' + voiceBadge" data-testid="voice-source" role="status">{{ t(`voice.${voiceBadge}`) }}</span>
+            <span v-if="voiceBadge" class="srcbadge" :class="'src-' + voiceBadge.source" data-testid="voice-source" role="status">{{ voiceBadgeText }}</span>
             <!-- the eye fans out three small round options around itself: hiragana, Vietnamese meaning, Hán Việt (lit = shown) -->
             <div class="fan" :class="{ open: fanOpen }">
               <button

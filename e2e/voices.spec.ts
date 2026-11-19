@@ -81,7 +81,7 @@ test.describe('where a spoken word comes from', () => {
     await play(page);
     await expect(badge(page)).toBeHidden({ timeout: 6000 }); // the badge fades after a moment
     await play(page);
-    await expect(badge(page)).toHaveText('Browser cache');
+    await expect(badge(page)).toHaveText('Browser cache · ElevenLabs (new)'); // and where it was fetched from in the first place
     expect(requests).toHaveLength(1);
   });
 
@@ -132,7 +132,7 @@ test.describe('where a spoken word comes from', () => {
     expect(requests).toHaveLength(0);
     await expect(badge(page)).toBeHidden({ timeout: 6000 });
     await play(page);
-    await expect(badge(page)).toHaveText('Browser cache'); // kept in the cache after the first play
+    await expect(badge(page)).toHaveText('Browser cache · Saved file'); // kept in the cache after the first play, with its origin
   });
 
   test('the server says where its audio came from: its memory, its disk, or unknown', async ({ page }) => {
