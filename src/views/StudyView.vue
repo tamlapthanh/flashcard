@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { pendingResults, submitResult } from '../api';
+import { api, pendingResults, submitResult } from '../api';
+import { auth } from '../auth';
 import { t } from '../i18n';
 import Hanko from '../components/Hanko.vue';
 import KanjiSheet from '../components/KanjiSheet.vue';
@@ -17,13 +18,16 @@ import { canSpeak, speakJapanese, stopSpeaking } from '../lib/speech';
 import { cardTextVars } from '../cardText';
 import { StudySession } from '../session';
 import { settings } from '../settings';
-import { activeSession } from '../store';
-import type { Card, KanjiInfo, StudyResult } from '../types';
+import { activeSession, saveRun, setActiveSession } from '../store';
+import type { Card, Deck, KanjiInfo, StudyResult } from '../types';
 
 const router = useRouter();
 const hasSession = activeSession.value !== null;
 // Without a session (opened from the menu) the screen only shows an empty state; this stays inert.
+/* Every step of the run (answer, jump, flip) is written down, so a reload brings the run back where it was. */
+const runMark = (): string => `${s.queue.length}:${s.queue[0]?.id}:${s.learned}:${s.again}:${s.skipped}:${s.flipped}`;
 const s = reactive(activeSession.value ?? new StudySession([], { reverse: false, showReading: false })) as StudySession;
+watch(runMark, saveRun);
 
 const pending = ref(pendingResults());
 const related = ref<RelatedWord | null>(null);
@@ -250,7 +254,7 @@ async function answer(result: StudyResult): Promise<void> {
 function retryAgain(): void {
   const cards = s.againCards;
   if (cards.length === 0) return;
-  activeSession.value = new StudySession(cards, { reverse: s.reverse, showReading: settings.showReading });
+  setActiveSession(new StudySession(cards, { reverse: s.reverse, showReading: settings.showReading, deckName: s.deckName, tags: [...s.tags] }));
   void router.replace('/').then(() => router.push('/study'));
 }
 
@@ -277,6 +281,31 @@ function onKey(e: KeyboardEvent): void {
 }
 
 const onResize = (): void => void fitNotes(); // a rotated or resized screen may give the Notes room, or take it away
+/* No run in memory (opened from the menu, the page was reloaded, or the picked deck had nothing left to study): instead of an
+   empty screen show the deck that was picked last - its progress and counts - with the way to the deck screen. */
+const infoDeck = ref<Deck | null>(null);
+const infoLoading = ref(false);
+async function loadInfoDeck(): Promise<void> {
+  infoLoading.value = true;
+  try {
+    const decks = await api.decks();
+    let id: unknown = null;
+    try {
+      id = (JSON.parse(localStorage.getItem(`flashmobile.deckPick.${auth.user ?? ''}`) ?? 'null') as { deckId?: unknown } | null)?.deckId;
+    } catch {
+      /* no remembered pick */
+    }
+    infoDeck.value = decks.find((d) => d.id === id) ?? null;
+  } catch {
+    /* offline / server asleep: the plain empty state stays */
+  } finally {
+    infoLoading.value = false;
+  }
+}
+const infoLearnedPercent = computed(() => (infoDeck.value && infoDeck.value.total ? Math.round((100 * infoDeck.value.counts.learned) / infoDeck.value.total) : 0));
+const infoAllLearned = computed(() => !!infoDeck.value && infoDeck.value.total > 0 && infoDeck.value.counts.new + infoDeck.value.counts.learning === 0);
+if (!hasSession) void loadInfoDeck();
+
 onMounted(() => {
   window.addEventListener('keydown', onKey);
   window.addEventListener('resize', onResize);
@@ -290,12 +319,45 @@ onUnmounted(() => {
 
 <template>
   <!-- No session yet -->
-  <template v-if="!hasSession">
+  <!-- no run, but the deck picked last has nothing left to study: the same "Deck finished" screen, from the deck's saved progress -->
+  <template v-if="!hasSession && infoDeck && infoAllLearned">
+    <TopBar :title="t('study.finished')" />
+    <v-container fluid class="text-center px-3 pt-1">
+      <div class="paper-card pa-6">
+        <Hanko char="完" :size="84" />
+        <div class="text-h6 mt-4">{{ t('study.finishedCount', { n: infoDeck.total }) }}</div>
+        <div class="text-body-2 text-medium-emphasis">{{ infoDeck.name }}</div>
+        <v-row class="mt-4" dense>
+          <v-col cols="4"><div class="stat shu"><v-icon icon="mdi-check-circle-outline" /><div class="n">{{ infoDeck.counts.learned }}</div>{{ t('btn.learned') }}</div></v-col>
+          <v-col cols="4"><div class="stat"><v-icon icon="mdi-help-circle-outline" /><div class="n">{{ infoDeck.counts.learning }}</div>{{ t('status.learning') }}</div></v-col>
+          <v-col cols="4"><div class="stat"><v-icon icon="mdi-skip-next-outline" /><div class="n">{{ infoDeck.counts.skipped }}</div>{{ t('study.skippedStat') }}</div></v-col>
+        </v-row>
+        <div class="text-caption text-medium-emphasis mt-3"><v-icon icon="mdi-cloud-check-outline" size="14" /> {{ t('study.saved') }}</div>
+      </div>
+      <v-btn block color="primary" size="large" prepend-icon="mdi-cards-outline" class="mt-4" :data-tip="t('tip.backToDecks')" @click="router.replace('/')">{{ t('study.backToDecks') }}</v-btn>
+    </v-container>
+  </template>
+
+  <template v-else-if="!hasSession">
     <TopBar :title="t('nav.study')" />
-    <v-container class="text-center pt-12">
+    <v-container fluid class="text-center pt-12 px-3">
       <Hanko char="学" :size="88" />
       <div class="text-h6 mt-5">{{ t('study.none') }}</div>
       <div class="text-body-2 text-medium-emphasis mt-1">{{ t('study.noneHint') }}</div>
+      <!-- the deck picked last: its progress, so this screen is never an empty page -->
+      <div v-if="infoDeck" class="paper-card infodeck mt-6">
+        <div class="text-subtitle-1 font-weight-medium">{{ infoDeck.name }}</div>
+        <div class="text-caption text-medium-emphasis">{{ t('study.infoLearned', { a: infoDeck.counts.learned, b: infoDeck.total }) }}</div>
+        <v-progress-linear :model-value="infoLearnedPercent" height="6" rounded color="primary" bg-color="surface-variant" class="mt-3" />
+        <div class="d-flex justify-space-between mt-3 text-center">
+          <div v-for="k in (['new', 'learning', 'learned', 'skipped'] as const)" :key="k">
+            <div class="text-h6">{{ infoDeck.counts[k] }}</div>
+            <div class="text-caption">{{ t(`status.${k}`) }}</div>
+          </div>
+        </div>
+        <div v-if="infoAllLearned" class="text-body-2 mt-3"><v-icon icon="mdi-check-circle" color="primary" size="18" class="mr-1" />{{ t('study.infoAllDone') }}</div>
+      </div>
+      <v-progress-linear v-else-if="infoLoading" indeterminate class="mt-6" color="primary" />
       <v-btn color="primary" size="large" prepend-icon="mdi-cards-outline" class="mt-6" :data-tip="t('tip.choose')" @click="router.replace('/')">{{ t('study.choose') }}</v-btn>
     </v-container>
   </template>
@@ -303,8 +365,8 @@ onUnmounted(() => {
   <!-- Finished -->
   <template v-else-if="s.finished">
     <TopBar :title="t('study.finished')" />
-    <v-container class="text-center">
-      <div class="paper-card pa-6 mt-4">
+    <v-container fluid class="text-center px-3 pt-1">
+      <div class="paper-card pa-6">
         <Hanko char="完" :size="84" stamping />
         <div class="text-h6 mt-4">{{ t('study.finishedCount', { n: s.total }) }}</div>
         <v-row class="mt-4" dense>
@@ -320,7 +382,7 @@ onUnmounted(() => {
       <v-btn v-if="s.againCards.length" block color="primary" size="large" prepend-icon="mdi-refresh" class="mt-4" :data-tip="t('tip.retryAgain')" @click="retryAgain">
         {{ t('study.reviewMissed', { n: s.againCards.length }) }}
       </v-btn>
-      <v-btn block variant="tonal" size="large" prepend-icon="mdi-cards-outline" class="mt-2" :data-tip="t('tip.backToDecks')" @click="router.replace('/')">{{ t('study.backToDecks') }}</v-btn>
+      <v-btn block color="primary" size="large" prepend-icon="mdi-cards-outline" class="mt-2" :data-tip="t('tip.backToDecks')" @click="router.replace('/')">{{ t('study.backToDecks') }}</v-btn>
     </v-container>
   </template>
 
@@ -873,30 +935,36 @@ onUnmounted(() => {
   font-size: var(--s-question);
   color: var(--c-question, inherit);
 }
-/* The card turns over like a real one: the front is the word, the back is the details. */
-.card {
-  perspective: 1400px;
-}
+/* Front and back swap with a quick cross-fade (no sliding, no 3D turning, which looked confusing). */
 .flipper {
   position: relative;
   flex: 1;
   min-height: 0;
-  transform-style: preserve-3d;
-  transition: transform 0.45s ease;
-}
-.flipper.back {
-  transform: rotateY(180deg);
 }
 .face {
   position: absolute;
   inset: 0;
   display: flex;
   flex-direction: column;
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
+  transition: opacity 0.3s ease, visibility 0s linear 0s;
 }
 .back-face {
-  transform: rotateY(180deg);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.3s ease, visibility 0s linear 0.3s;
+}
+.flipper.back .face:not(.back-face) {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.3s ease, visibility 0s linear 0.3s;
+}
+.flipper.back .back-face {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition: opacity 0.3s ease 0.08s, visibility 0s linear 0s;
 }
 .detail {
   flex: 1;

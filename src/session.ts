@@ -7,6 +7,27 @@ import type { LightCard as Card, StudyResult } from './types';
 export interface SessionOptions {
   reverse: boolean; // Việt -> Nhật
   showReading: boolean;
+  /** Which deck (and tags) the run comes from; shown at the top of the word list. */
+  deckName?: string;
+  tags?: string[];
+}
+
+/* A run written down so it survives a page reload (see store.ts). */
+export interface RunSnapshot {
+  v: 1;
+  cards: Card[];
+  queue: string[];
+  flipped: boolean;
+  showReading: boolean;
+  reverse: boolean;
+  learned: number;
+  again: number;
+  skipped: number;
+  againIds: string[];
+  learnedIds: string[];
+  skippedIds: string[];
+  deckName: string;
+  tags: string[];
 }
 
 export class StudySession {
@@ -14,6 +35,8 @@ export class StudySession {
   flipped = false;
   showReading: boolean;
   readonly reverse: boolean;
+  readonly deckName: string;
+  readonly tags: string[];
   learned = 0;
   again = 0;
   skipped = 0;
@@ -30,8 +53,42 @@ export class StudySession {
     this.total = cards.length;
     this.cards = [...cards];
     this.reverse = options.reverse;
+    this.deckName = options.deckName ?? '';
+    this.tags = options.tags ?? [];
     this.showReading = options.showReading;
     for (const c of cards) this.byId.set(c.id, c);
+  }
+
+  snapshot(): RunSnapshot {
+    return {
+      v: 1,
+      cards: this.cards,
+      queue: this.queue.map((c) => c.id),
+      flipped: this.flipped,
+      showReading: this.showReading,
+      reverse: this.reverse,
+      learned: this.learned,
+      again: this.again,
+      skipped: this.skipped,
+      againIds: [...this.againIds],
+      learnedIds: [...this.learnedIds],
+      skippedIds: [...this.skippedIds],
+      deckName: this.deckName,
+      tags: this.tags
+    };
+  }
+
+  static fromSnapshot(snap: RunSnapshot): StudySession {
+    const run = new StudySession(snap.cards, { reverse: snap.reverse, showReading: snap.showReading, deckName: snap.deckName, tags: snap.tags });
+    run.queue = snap.queue.map((id) => run.byId.get(id)).filter((c): c is Card => !!c);
+    run.flipped = snap.flipped;
+    run.learned = snap.learned;
+    run.again = snap.again;
+    run.skipped = snap.skipped;
+    for (const id of snap.againIds) run.againIds.add(id);
+    for (const id of snap.learnedIds) run.learnedIds.add(id);
+    for (const id of snap.skippedIds) run.skippedIds.add(id);
+    return run;
   }
 
   get current(): Card | undefined {

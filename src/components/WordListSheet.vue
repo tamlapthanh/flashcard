@@ -128,15 +128,32 @@ const norm = (text: string | null | undefined): string =>
     .replace(/đ/gi, 'd')
     .replace(/[\u30a1-\u30f6]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0x60))
     .toLowerCase();
+/* Search options (the gear at the right end of the box fans them out, like the eye button on the card; lit = included):
+   learned words, and words not learned yet (again / skipped / not seen). At least one stays on. */
+const inLearned = ref(true);
+const inTodo = ref(true);
+const optsOpen = ref(false);
+const searchOpts = computed(() => [
+  { key: 'learned', glyph: '済', label: t('list.fLearned'), on: inLearned.value, dx: 0, dy: 40, toggle: () => ((inLearned.value = !inLearned.value), !inLearned.value && (inTodo.value = true)) },
+  { key: 'todo', glyph: '未', label: t('list.fTodo'), on: inTodo.value, dx: 0, dy: 76, toggle: () => ((inTodo.value = !inTodo.value), !inTodo.value && (inLearned.value = true)) }
+]);
+const foldOpts = (): void => {
+  optsOpen.value = false;
+};
+watch(optsOpen, (isOpen) => {
+  if (isOpen) setTimeout(() => window.addEventListener('click', foldOpts, { once: true }), 0);
+  else window.removeEventListener('click', foldOpts);
+});
 const matches = computed(() => {
   const q = norm((query.value ?? '').trim());
-  const all = props.session.cards.map((c, i) => ({ c, n: i + 1 }));
+  let all = props.session.cards.map((c, i) => ({ c, n: i + 1 }));
+  if (!(inLearned.value && inTodo.value)) all = all.filter(({ c }) => (props.session.status(c.id) === 'learned') === inLearned.value);
   if (!q) return all;
   return all.filter(({ c }) => norm([c.headword, c.reading, c.hanviet, c.meaning, c.example, c.exampleVi].join(' ')).includes(q));
 });
 const visibleCards = computed(() => matches.value.slice(0, shown.value));
 const hasMore = computed(() => shown.value < matches.value.length);
-watch(query, () => {
+watch([query, inLearned, inTodo], () => {
   shown.value = CHUNK;
   if (rowsEl.value) rowsEl.value.scrollTop = 0;
 });
@@ -169,6 +186,8 @@ watch(
       shown.value = CHUNK;
     } else {
       query.value = ''; // the search box is empty and hidden again next time
+      inLearned.value = inTodo.value = true;
+      optsOpen.value = false;
       searchOpen.value = withMouse;
     }
   }
@@ -194,6 +213,17 @@ function updateThumb(): void {
   thumbTimer = setTimeout(() => (thumb.visible = false), 900);
 }
 
+/* The heading: which deck the list is of, how many of its words are learned (saved progress + this run), and the tags it was opened with. */
+const learnedCount = computed(() => props.session.cards.filter((c) => props.session.status(c.id) === 'learned' || c.progress.status === 'learned').length);
+
+/* Wide web (1200px and up): as many columns as fit (each wants about 560px), 2 to 4. Narrower: one column. */
+const winW = ref(typeof window !== 'undefined' ? window.innerWidth : 1200);
+const onResize = (): void => void (winW.value = window.innerWidth);
+window.addEventListener('resize', onResize);
+onBeforeUnmount(() => window.removeEventListener('resize', onResize));
+const cols = computed(() => (winW.value < 1200 ? 1 : Math.max(2, Math.min(4, Math.floor(winW.value / 560)))));
+const altRow = (idx: number): boolean => Math.floor(idx / cols.value) % 2 === 1;
+
 const currentId = computed(() => props.session.current?.id ?? null);
 </script>
 
@@ -202,6 +232,10 @@ const currentId = computed(() => props.session.current?.id ?? null);
   <v-bottom-sheet :model-value="open" @update:model-value="(v: boolean) => !v && emit('close')">
     <v-card class="sheet" rounded="t-xl">
       <div class="grip" @touchstart.passive="swipe.onTouchstart" @touchend.passive="swipe.onTouchend" />
+      <!-- which deck this list is of -->
+      <div v-if="session.deckName" class="deckhead mx-3">
+        <span class="dname">{{ session.deckName }}<span class="dcount"> · {{ t('list.learnedOf', { a: learnedCount, b: session.cards.length }) }}<template v-if="session.tags.length"> · {{ t('list.tagsOf', { tags: session.tags.join(', ') }) }}</template></span></span>
+      </div>
       <!-- the magnifier is pinned in the top right corner (next to the grip): it never moves, with the box shown or hidden -->
       <v-btn class="searchbtn" :icon="searchOpen ? 'mdi-magnify-close' : 'mdi-magnify'" variant="text" size="x-small" density="comfortable" :aria-label="t('list.search')" :aria-expanded="searchOpen" @click="toggleSearch" />
       <!-- the search box takes room only while it is shown (no empty space reserved for it) -->
@@ -220,16 +254,32 @@ const currentId = computed(() => props.session.current?.id ?? null);
           autocomplete="off"
           spellcheck="false"
         />
+        <!-- the options gear, at the far right of the box: tap to fan out the switches (lit = included in the search) -->
+        <div class="sfan" :class="{ open: optsOpen }">
+          <button
+            v-for="(o, idx) in searchOpts"
+            :key="o.key"
+            type="button"
+            class="sopt"
+            :class="{ on: o.on }"
+            :style="{ '--dx': o.dx + 'px', '--dy': o.dy + 'px', '--i': idx }"
+            :title="o.label"
+            :aria-label="o.label"
+            :aria-pressed="o.on"
+            @click.stop="o.toggle()"
+          >{{ o.glyph }}</button>
+          <v-btn icon="mdi-tune-variant" variant="text" color="primary" size="x-small" density="comfortable" class="gear" :class="{ active: !(inLearned && inTodo) }" :aria-label="t('list.options')" :aria-expanded="optsOpen" @click.stop="optsOpen = !optsOpen" />
+        </div>
       </div>
       <div class="rowswrap">
-      <div ref="rowsEl" class="rows px-3 pb-3" @scroll.passive="updateThumb" @touchstart.passive="onTouchStart" @touchmove.passive="onTouchMove" @touchend.passive="onTouchEnd" @touchcancel.passive="onTouchEnd" @wheel="onWheel">
-        <template v-for="{ c, n } in visibleCards" :key="c.id">
+      <div ref="rowsEl" class="rows px-3 pb-3" :style="{ '--cols': cols }" @scroll.passive="updateThumb" @touchstart.passive="onTouchStart" @touchmove.passive="onTouchMove" @touchend.passive="onTouchEnd" @touchcancel.passive="onTouchEnd" @wheel="onWheel">
+        <template v-for="({ c, n }, idx) in visibleCards" :key="c.id">
         <div
           role="button"
           tabindex="0"
           :data-tip="t('tip.row')"
           class="row"
-          :class="[session.status(c.id), { now: c.id === pickedId && c.id === currentId }]"
+          :class="[session.status(c.id), { now: c.id === pickedId && c.id === currentId, alt: altRow(idx) }]"
           @click="onRowClick(c.id)"
           @keydown.enter.self.prevent="onRowClick(c.id)"
           @keydown.space.self.prevent="onRowClick(c.id)"
@@ -283,6 +333,72 @@ const currentId = computed(() => props.session.current?.id ?? null);
   background: rgb(var(--v-theme-primary)) !important; /* same green as the other buttons */
   box-shadow: 0 2px 0 #3f8a1f !important; /* small 3D edge underneath */
 }
+/* options gear at the right end of the search box */
+.search {
+  display: flex;
+  align-items: center;
+}
+.search :deep(.v-input) {
+  flex: 1;
+  min-width: 0;
+}
+.sfan {
+  position: relative;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  margin-left: 4px;
+}
+.gear {
+  width: 30px !important;
+  height: 30px !important;
+  background: var(--paper) !important;
+  border: 1px solid var(--paper-edge);
+  box-shadow: 0 2px 0 rgba(31, 77, 36, 0.35);
+}
+.gear.active {
+  background: rgb(var(--v-theme-primary)) !important;
+  color: #fff !important; /* some words are filtered out: the gear is lit */
+  border-color: transparent;
+  box-shadow: 0 2px 0 #3f8a1f;
+}
+.sopt {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 5;
+  width: 30px;
+  height: 30px;
+  box-sizing: border-box;
+  border: 1.5px solid var(--leaf);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-jp);
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  background: var(--paper);
+  color: var(--leaf);
+  box-shadow: 0 2px 0 rgba(31, 77, 36, 0.35);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(0, 0) scale(0.4);
+  transition: transform 0.4s cubic-bezier(0.45, 0, 0.2, 1) calc((1 - var(--i)) * 70ms), opacity 0.35s ease calc((1 - var(--i)) * 70ms);
+}
+.sfan.open .sopt {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(var(--dx), var(--dy)) scale(1);
+  transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) calc(var(--i) * 55ms), opacity 0.36s ease calc(var(--i) * 55ms);
+}
+.sopt.on {
+  background: rgb(var(--v-theme-primary)); /* lit = included */
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 2px 0 #3f8a1f;
+}
 .searchbtn {
   transition: transform 0.12s ease, box-shadow 0.12s ease;
 }
@@ -300,6 +416,7 @@ const currentId = computed(() => props.session.current?.id ?? null);
   background: color-mix(in srgb, rgb(var(--v-theme-primary)) 80%, #000) !important; /* a darker green while the box is open (no movement) */
 }
 .search {
+  position: relative;
   flex: 0 0 auto;
   padding: 0 10px;
   border: 1.5px solid var(--leaf); /* green border, like the current row */
@@ -363,6 +480,31 @@ const currentId = computed(() => props.session.current?.id ?? null);
   background: var(--paper-edge);
   margin: 8px auto 16px; /* the magnifier sits beside it, in the top right corner */
 }
+.deckhead {
+  /* on the very top line: left of the grip, level with the magnifier in the right corner */
+  position: absolute;
+  top: 5px;
+  left: 0;
+  max-width: calc(50% - 26px);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  z-index: 1;
+}
+.dname {
+  min-width: 0;
+  font-weight: 700;
+  font-size: 0.78rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dcount {
+  font-weight: 400;
+  font-size: 0.7rem;
+  opacity: 0.7;
+}
 .rows {
   flex: 1 1 auto;
   min-height: 0;
@@ -419,6 +561,9 @@ const currentId = computed(() => props.session.current?.id ?? null);
   user-select: text; /* words, readings and meanings can be selected and copied */
   color: var(--jp); /* the app's ink colour (dark in light mode, light in dark mode), never the browser's button / white text */
   text-align: start;
+}
+.row.alt {
+  background: color-mix(in srgb, var(--jp) 6%, var(--paper)); /* every second line a little darker (a little lighter in dark mode); on wide screens a "line" is one row of columns */
 }
 .row.learned {
   background: color-mix(in srgb, var(--leaf) 22%, var(--paper)); /* already learned */
@@ -582,7 +727,7 @@ const currentId = computed(() => props.session.current?.id ?? null);
    start at the same left edge; the number sits small in the bottom right corner of the card. */
 @media (min-width: 1200px) {
   .rows {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-columns: repeat(var(--cols, 2), minmax(0, 1fr));
     align-items: stretch;
     column-gap: 8px;
   }

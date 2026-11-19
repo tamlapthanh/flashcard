@@ -1,13 +1,16 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, ref, shallowRef, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { api, ApiError } from '../api';
+import { auth } from '../auth';
 import { t } from '../i18n';
 import TopBar from '../components/TopBar.vue';
+import WordListSheet from '../components/WordListSheet.vue';
 import { clearDetails, ensureDetails } from '../lib/cardDetail';
+import { tileMark } from '../lib/deckMark';
 import { StudySession } from '../session';
 import { settings } from '../settings';
-import { activeSession } from '../store';
+import { setActiveSession } from '../store';
 import type { Deck, StudyStatus } from '../types';
 
 const router = useRouter();
@@ -44,6 +47,30 @@ const startCount = computed(() => {
   return Math.min(eligible.value, tagged);
 });
 
+/* Tapping a deck's tile opens the word list of that whole deck (every card, whatever its status), like the list button of the study screen. */
+const listSession = shallowRef<StudySession | null>(null);
+const listOpen = ref(false);
+const listLoadingId = ref<string | null>(null);
+async function openList(d: Deck): Promise<void> {
+  if (listLoadingId.value) return;
+  listLoadingId.value = d.id;
+  error.value = '';
+  try {
+    const { cards } = await api.cards({ deck: d.id, tags: [], status: STATUS_ORDER });
+    const list = new StudySession(cards, { reverse: false, showReading: settings.showReading, deckName: d.name });
+    for (const c of cards) {
+      if (c.progress.status === 'learned') list.learnedIds.add(c.id);
+      else if (c.progress.status === 'skipped') list.skippedIds.add(c.id);
+    }
+    listSession.value = list;
+    listOpen.value = true;
+  } catch {
+    error.value = t('err.load');
+  } finally {
+    listLoadingId.value = null;
+  }
+}
+
 const learnedPercent = (d: Deck): number => (d.total ? Math.round((100 * d.counts.learned) / d.total) : 0);
 
 /* One-line summary of the filter, shown on the main screen. */
@@ -51,7 +78,38 @@ const filterSummary = computed(() => {
   return [statuses.value.map((s) => statusLabel(s)).join(' + ') || t('filter.allStatus')];
 });
 
-watch(deckId, () => (tags.value = []));
+/* The last pick (deck, tags, status filter) is remembered on this device, per user, and is back the next time this screen opens. */
+const PICK_KEY = (): string => `flashmobile.deckPick.${auth.user ?? ''}`;
+let restored = false; // nothing is saved before the remembered pick has been put back
+function savePick(): void {
+  if (!restored) return;
+  try {
+    localStorage.setItem(PICK_KEY(), JSON.stringify({ deckId: deckId.value, tags: tags.value, statuses: statuses.value }));
+  } catch {
+    /* storage unavailable: the pick is simply not remembered */
+  }
+}
+function restorePick(): void {
+  try {
+    const saved = JSON.parse(localStorage.getItem(PICK_KEY()) ?? 'null') as { deckId?: unknown; tags?: unknown; statuses?: unknown } | null;
+    const picked = decks.value.find((d) => d.id === saved?.deckId);
+    if (saved && picked) {
+      deckId.value = picked.id;
+      if (Array.isArray(saved.tags)) tags.value = saved.tags.filter((x): x is string => typeof x === 'string' && picked.tags.some((tg) => tg.tag === x));
+    }
+    if (Array.isArray(saved?.statuses)) {
+      const ok = saved.statuses.filter((x): x is StudyStatus => STATUS_ORDER.includes(x as StudyStatus));
+      if (ok.length) statuses.value = ok;
+    }
+  } catch {
+    /* a damaged value is ignored */
+  }
+}
+
+watch(deckId, (_now, before) => {
+  if (before !== null) tags.value = []; // a deck picked by hand starts with no tag (the first value is the remembered / default one)
+});
+watch([deckId, tags, statuses], savePick, { deep: true });
 
 async function load(): Promise<void> {
   loading.value = true;
@@ -60,7 +118,10 @@ async function load(): Promise<void> {
   const wakeTimer = setTimeout(() => (waking.value = true), 2500);
   try {
     decks.value = await api.decks();
+    restorePick();
     deckId.value ??= decks.value[0]?.id ?? null;
+    restored = true;
+    savePick();
   } catch (e) {
     error.value = e instanceof ApiError && e.status === 401 ? t('err.key') : t('err.conn');
   } finally {
@@ -82,7 +143,7 @@ async function start(): Promise<void> {
     }
     clearDetails();
     await ensureDetails(cards.slice(0, 7).map((c) => c.id)); // the first cards are complete when the study screen opens
-    activeSession.value = new StudySession(cards, { reverse: settings.direction === 'reverse', showReading: settings.showReading });
+    setActiveSession(new StudySession(cards, { reverse: settings.direction === 'reverse', showReading: settings.showReading, deckName: deck.value.name, tags: [...tags.value] }));
     await router.push('/study');
   } catch {
     error.value = t('err.load');
@@ -109,7 +170,7 @@ onMounted(load);
       <div class="decks">
         <button v-for="d in decks" :key="d.id" type="button" class="paper-card deck" :class="{ on: d.id === deckId }" :data-tip="t('tip.deck')" @click="deckId = d.id">
           <div class="d-flex align-center ga-3">
-            <div class="deck-tile jp" aria-hidden="true">札</div>
+            <div class="deck-tile jp" :class="{ two: tileMark(d.name).length > 1, busy: listLoadingId === d.id }" role="button" :aria-label="t('list.open')" :data-tip="t('list.open')" @click.stop="openList(d)">{{ tileMark(d.name) }}</div>
             <div class="flex-grow-1 text-start">
               <div class="text-subtitle-1 font-weight-medium">{{ d.name }}</div>
               <div class="text-caption text-medium-emphasis">{{ t('deck.count', { total: d.total, fresh: d.counts.new }) }}</div>
@@ -148,6 +209,9 @@ onMounted(load);
       <span class="jp-start">始める</span>&nbsp;· {{ t('deck.start', { n: startCount }) }}
     </v-btn>
   </v-footer>
+
+  <!-- word list of a whole deck (opened from the tile of a deck); picking a word only closes it -->
+  <WordListSheet v-if="listSession" :open="listOpen" :session="listSession" @close="listOpen = false" @pick="listOpen = false" />
 
   <!-- filter sheet: status (tags live on the main screen; there is no limit on the number of cards) -->
   <v-bottom-sheet v-model="filterOpen">
@@ -226,6 +290,16 @@ onMounted(load);
   color: #fff !important;
   font-size: 1.35rem;
   flex-shrink: 0;
+}
+.deck-tile {
+  cursor: pointer;
+}
+.deck-tile.busy {
+  opacity: 0.6;
+}
+.deck-tile.two {
+  font-size: 1.1rem;
+  letter-spacing: -0.02em;
 }
 .filter {
   display: flex;

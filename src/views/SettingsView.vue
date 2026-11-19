@@ -4,18 +4,30 @@ import { pendingResults } from '../api';
 import Flag from '../components/Flag.vue';
 import TopBar from '../components/TopBar.vue';
 import { t } from '../i18n';
-import { CARD_TEXTS } from '../cardText';
 import CardTextEditor from '../components/CardTextEditor.vue';
 import { settings } from '../settings';
 
 /* The three groups of settings fold away: tap a heading to show or hide it (all folded at first, each with a one-line summary). */
 const open = reactive({ size: false, direction: false, display: false });
-const sizeSummary = computed(() => `${CARD_TEXTS.length}`);
 const directionSummary = computed(() => (settings.direction === 'forward' ? t('deck.dirForward') : t('deck.dirReverse')));
-const displaySummary = computed(() => `${[settings.showReading, settings.showMeaning, settings.showHanViet, settings.showEnglish, settings.naturalVoice, settings.dark].filter(Boolean).length} / 6`);
 </script>
 
 <style scoped>
+/* The list of switches is a Vuetify v-list, which paints its own surface colour over .soft-card: give it the same paper as every other card. */
+.soft-card.v-list,
+.soft-card.v-list :deep(.v-list-item) {
+  background: var(--paper);
+}
+/* Light mode: the texts of this screen are a dark warm brown (easier on the eyes than black); the Vuetify text colour is the one setting. */
+.warm {
+  --v-theme-on-surface: 43, 33, 24; /* #2b2118 */
+  color: #2b2118;
+}
+.warm :deep(.v-list-item-subtitle),
+.warm .hint {
+  color: #6b5a4a !important;
+  opacity: 1;
+}
 /* Phones have no mouse, hence no tooltips: the tooltip switch is hidden there. */
 @media not all and (hover: hover) and (pointer: fine) {
   .webonly {
@@ -47,14 +59,36 @@ const displaySummary = computed(() => `${[settings.showReading, settings.showMea
   gap: 8px;
   width: 100%;
   margin: 0 0 8px;
-  padding: 8px 12px;
-  border: 0;
+  padding: 10px 12px;
+  border: 1.5px solid var(--paper-edge);
   border-radius: 14px;
-  background: transparent;
-  color: var(--forest); /* the same colour as the "Settings" title in the top bar */
+  background: color-mix(in srgb, var(--leaf) 10%, var(--paper)); /* a soft leaf-tinted bar */
+  box-shadow: 0 2px 0 rgba(31, 77, 36, 0.18); /* small 3D edge, like the buttons */
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.12s ease;
+  color: #4e342e; /* deep brown: the three section headings stand apart from the green title above them */
   font-weight: 700;
   text-align: start;
   cursor: pointer;
+}
+.sechead {
+  outline: none; /* no black focus ring: the green edge below is the focus / open mark */
+}
+.sechead:focus-visible,
+.sechead[aria-expanded='true'] {
+  border-color: var(--leaf); /* the open section has a green edge */
+}
+.sechead[aria-expanded='true'] {
+  background: color-mix(in srgb, var(--leaf) 18%, var(--paper));
+  margin-bottom: 1px; /* what opens under it sits right up against it */
+}
+.sechead:active {
+  box-shadow: 0 0 0 rgba(31, 77, 36, 0.18);
+  transform: translateY(2px);
+}
+@media (hover: hover) and (pointer: fine) {
+  .sechead:hover {
+    border-color: var(--leaf);
+  }
 }
 .v-theme--dark .sechead {
   color: #eef8e4; /* the top bar's colour in dark mode */
@@ -73,9 +107,7 @@ const displaySummary = computed(() => `${[settings.showReading, settings.showMea
 .sechead .name {
   flex: 0 0 auto;
   white-space: nowrap; /* the heading stays on one line; the summary beside it is the one that gives way */
-  font-size: 0.82rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-size: 0.9rem;
 }
 .sechead .sum {
   flex: 1;
@@ -168,9 +200,9 @@ const displaySummary = computed(() => `${[settings.showReading, settings.showMea
 <template>
   <TopBar :title="t('set.title')" />
 
-  <v-container>
+  <v-container fluid class="px-3 pt-1" :class="{ warm: !settings.dark }">
     <button type="button" class="sechead" :data-tip="t('tip.section')" :aria-expanded="open.size" @click="open.size = !open.size">
-      <span class="glyph">字</span><span class="name">{{ t('set.fontSize') }}</span><span class="sum">{{ sizeSummary }}</span>
+      <span class="glyph">字</span><span class="name">{{ t('set.fontSize') }}</span><span class="sum" />
       <v-icon :icon="open.size ? 'mdi-chevron-up' : 'mdi-chevron-down'" size="20" />
     </button>
     <v-expand-transition>
@@ -180,7 +212,7 @@ const displaySummary = computed(() => `${[settings.showReading, settings.showMea
     </v-expand-transition>
 
     <button type="button" class="sechead" :data-tip="t('tip.section')" :aria-expanded="open.direction" @click="open.direction = !open.direction">
-      <span class="glyph">向</span><span class="name">{{ t('set.direction') }}</span><span class="sum">{{ directionSummary }}</span>
+      <span class="glyph">向</span><span class="name">{{ directionSummary }}</span><span class="sum" />
       <v-icon :icon="open.direction ? 'mdi-chevron-up' : 'mdi-chevron-down'" size="20" />
     </button>
     <v-expand-transition>
@@ -210,7 +242,7 @@ const displaySummary = computed(() => `${[settings.showReading, settings.showMea
     </v-expand-transition>
 
     <button type="button" class="sechead" :data-tip="t('tip.section')" :aria-expanded="open.display" @click="open.display = !open.display">
-      <span class="glyph">示</span><span class="name">{{ t('set.display') }}</span><span class="sum">{{ displaySummary }}</span>
+      <span class="glyph">示</span><span class="name">{{ t('set.display') }}</span><span class="sum" />
       <v-icon :icon="open.display ? 'mdi-chevron-up' : 'mdi-chevron-down'" size="20" />
     </button>
     <v-expand-transition>

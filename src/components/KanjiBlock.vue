@@ -141,9 +141,7 @@ onMounted(() => void fitHint());
 }
 .hint {
   margin-top: 12px;
-  padding: 10px 12px;
-  border-radius: 14px;
-  background: var(--grid-soft);
+  padding: 10px 0;
 }
 .hint-toggle {
   display: flex;

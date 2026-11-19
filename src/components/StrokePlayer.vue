@@ -8,6 +8,7 @@ const props = defineProps<{ literal: string; paths: string[] }>();
 const step = ref(props.paths.length); // how many strokes are drawn (all = finished character)
 const playing = ref(false);
 const animating = ref(false); // the newest stroke draws itself
+const done = ref(false); // the last stroke has finished drawing: it turns black like the rest (the newest stroke is red only while it is the "current" one)
 let timer: ReturnType<typeof setInterval> | null = null;
 
 // The stroke order plays by itself as soon as the player appears (and again when the kanji changes).
@@ -19,6 +20,8 @@ watch(
     play();
   }
 );
+
+watch(step, () => (done.value = false));
 
 const starts = computed(() => props.paths.map(strokeStart));
 
@@ -73,7 +76,8 @@ onUnmounted(stop);
           :d="d"
           pathLength="1"
           class="stroke"
-          :class="{ current: i === step - 1, anim: i === step - 1 && animating }"
+          :class="{ current: i === step - 1 && !(done && i === paths.length - 1), anim: i === step - 1 && animating }"
+          @animationend="i === paths.length - 1 && (done = true)"
         />
       </template>
       <template v-for="(p, i) in starts" :key="'n' + i">
