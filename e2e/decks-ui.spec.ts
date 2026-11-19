@@ -69,7 +69,7 @@ test.describe('word list of a whole deck (tile of the deck screen)', () => {
     await expect.poll(() => page.locator('.row').count()).toBeGreaterThan(40);
   });
 
-  test('the options gear fans out learned / not learned; at least one stays lit', async ({ page, request }) => {
+  test('the options gear fans out learned / skipped / not learned, each can be switched off', async ({ page, request }) => {
     const deck = (await apiDecks(request, 'alice')).find((d) => d.total > 0);
     test.skip(!deck, 'no deck with cards');
     await openSignedIn(page, request, 'alice');
@@ -80,27 +80,38 @@ test.describe('word list of a whole deck (tile of the deck screen)', () => {
 
     const gear = page.getByRole('button', { name: 'Search options' });
     const learned = page.locator('.sopt[title="Learned"]');
+    const skipped = page.locator('.sopt[title="Skipped"]');
     const todo = page.locator('.sopt[title="Not learned"]');
     await expect(page.locator('.sfan')).not.toHaveClass(/open/); // folded
     await gear.click();
     await expect(page.locator('.sfan')).toHaveClass(/open/);
-    await expect(learned).toBeVisible();
-    await expect(todo).toBeVisible();
-    await expect(learned).toHaveAttribute('aria-pressed', 'true');
-    await expect(todo).toHaveAttribute('aria-pressed', 'true');
-    await expect(gear).not.toHaveClass(/active/);
+    for (const o of [learned, skipped, todo]) {
+      await expect(o).toBeVisible();
+      await expect(o).toHaveAttribute('aria-pressed', 'true');
+    }
+    await expect(gear).not.toHaveClass(/filtered/); // every option on: the gear is green
 
-    // learned off: only the not learned words stay
+    // learned off: no learned word stays
     await learned.click();
     await expect(learned).toHaveAttribute('aria-pressed', 'false');
-    await expect(gear).toHaveClass(/active/); // some words are filtered out
+    await expect(gear).toHaveClass(/filtered/); // an option is off: the gear turns pale
     await expect(page.locator('.row.learned')).toHaveCount(0);
 
-    // turning the last lit one off turns the other one back on
+    // skipped off too: only the rest (not seen / again) stays
+    await skipped.click();
+    await expect(skipped).toHaveAttribute('aria-pressed', 'false');
+    await expect(page.locator('.row.learned, .row.skipped')).toHaveCount(0);
+
+    // every option may be off: then nothing is listed
     await todo.click();
     await expect(todo).toHaveAttribute('aria-pressed', 'false');
-    await expect(learned).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.locator('.row:not(.learned)')).toHaveCount(0);
+    await expect(page.locator('.row')).toHaveCount(0);
+    await expect(page.getByText('No word matches')).toBeVisible();
+
+    // skipped alone: nothing but skipped words
+    await skipped.click();
+    await expect(skipped).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('.row:not(.skipped)')).toHaveCount(0);
 
     // a tap elsewhere folds the options
     await page.locator('.sheet .grip').click({ force: true });

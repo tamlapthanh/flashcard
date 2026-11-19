@@ -149,3 +149,26 @@ test.describe('study card layout', () => {
     }
   });
 });
+
+test.describe('Start with nothing to study', () => {
+  test('the Start button stays enabled and opens the "Deck finished" screen', async ({ page, request }) => {
+    await page.route('**/api/decks', async (route) => {
+      const res = await route.fetch();
+      const body = (await res.json()) as { decks: { total: number; counts: Record<string, number> }[] };
+      for (const d of body.decks) d.counts = { new: 0, learning: 0, learned: d.total, skipped: 0 };
+      await route.fulfill({ response: res, json: body });
+    });
+    await page.route('**/api/cards?*', (route) => route.fulfill({ json: { total: 0, cards: [] } }));
+    await openSignedIn(page, request, 'bob');
+    const start = page.getByRole('button', { name: /始める/ });
+    await expect(start).toBeEnabled(); // not greyed out although there is nothing new or learning
+    await expect(start).toContainText('0 cards');
+    await start.click();
+    await expect(page).toHaveURL(/#\/study/);
+    await expect(page.getByText('Deck finished').first()).toBeVisible();
+    await expect(page.getByText(/^Finished \d+ cards$/)).toBeVisible();
+    await expect(page.getByText('No cards match the filter.')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Back to decks' }).click();
+    await expect(page).toHaveURL(/#\/$/);
+  });
+});

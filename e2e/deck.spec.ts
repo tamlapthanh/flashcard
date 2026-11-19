@@ -18,8 +18,7 @@ test.describe('decks', () => {
     const eligible = first!.counts.new + first!.counts.learning;
     const start = page.getByRole('button', { name: /始める/ });
     await expect(start).toContainText(`${eligible} cards`);
-    if (eligible === 0) await expect(start).toBeDisabled();
-    else await expect(start).toBeEnabled();
+    await expect(start).toBeEnabled(); // always: with nothing to study it opens the "Deck finished" screen
   });
 
   test('the filter sheet lists the four study statuses', async ({ page, request }) => {
