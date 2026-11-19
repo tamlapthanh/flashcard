@@ -141,6 +141,7 @@ function speak(): void {
 }
 
 function flip(): void {
+  autoStop();
   stopSpeaking();
   speaking.value = false;
   s.flip();
@@ -151,6 +152,7 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
 /* Swipe left = next word, swipe right = previous word (browsing only, nothing is graded); swipe up = Details. */
 /* Opening the details also reveals the answer side, so the card is already flipped when the sheet is closed. */
 function openDetail(): void {
+  autoStop();
   if (!hasDetail.value) return;
   if (!s.flipped) s.flip();
   detailOpen.value = true;
@@ -174,6 +176,7 @@ let startX = 0;
 let startY = 0;
 
 function browse(direction: 'next' | 'previous'): void {
+  autoStop();
   if (stamping.value) return;
   slide.value = direction === 'next' ? 'slide-next' : 'slide-prev';
   detailOpen.value = false;
@@ -228,6 +231,7 @@ function gesture(dx: number, dy: number): void {
 
 /* Tapped a word in the list: show that card (when it is still in the deck) and close the list. */
 function pickWord(id: string): void {
+  autoStop();
   listOpen.value = false;
   if (stamping.value || id === s.current?.id) return;
   slide.value = 'slide-next';
@@ -238,6 +242,7 @@ function pickWord(id: string): void {
 }
 
 async function answer(result: StudyResult): Promise<void> {
+  autoStop();
   if (stamping.value) return; // one answer at a time while the seal is pressing
   if (result === 'learned') {
     stamping.value = true;
@@ -270,6 +275,101 @@ function openKanji(literal: string): void {
   kanjiSel.value = literal;
 }
 
+/*
+ * Auto play: the front of a card stays autoFrontSec, then the answer side autoBackSec, then the next card - one pass over the
+ * cards that are left, then it stops. It only browses: nothing is graded and the progress is not touched. Any tap, swipe, key,
+ * the list or a popup stops it (those go through flip / browse / openDetail / answer / pickWord, which call autoStop).
+ */
+const autoplay = ref(false);
+const autoDone = ref(false); // shows the "finished" message
+let autoToken = 0; // a run only goes on while its token is the current one
+let autoTimer: ReturnType<typeof setTimeout> | undefined;
+type WakeLock = { release: () => Promise<void> };
+let wakeLock: WakeLock | null = null;
+
+const autoPause = (seconds: number): Promise<void> =>
+  new Promise((resolve) => {
+    autoTimer = setTimeout(resolve, seconds * 1000);
+  });
+
+/* Reads the word and resolves when the voice has finished (never waits for ever on a voice that does not answer). */
+function autoSpeakWord(): Promise<void> {
+  const c = card.value;
+  if (!settings.autoSpeak || !c || !canSpeakNow.value) return Promise.resolve();
+  return new Promise((resolve) => {
+    speaking.value = true;
+    const guard = setTimeout(resolve, 10_000);
+    speakJapanese(c.reading || c.headword, () => {
+      clearTimeout(guard);
+      speaking.value = false;
+      resolve();
+    });
+  });
+}
+
+async function acquireWakeLock(): Promise<void> {
+  try {
+    const nav = navigator as Navigator & { wakeLock?: { request: (type: 'screen') => Promise<WakeLock> } };
+    wakeLock = (await nav.wakeLock?.request('screen')) ?? null; // the phone keeps the screen on while it plays
+  } catch {
+    wakeLock = null;
+  }
+}
+
+async function releaseWakeLock(): Promise<void> {
+  try {
+    await wakeLock?.release();
+  } catch {
+    /* already released */
+  }
+  wakeLock = null;
+}
+
+async function autoRun(token: number): Promise<void> {
+  let left = s.queue.length;
+  while (token === autoToken && left > 0 && !s.finished) {
+    if (s.flipped) s.flip(); // the front of the card (the session itself, not flip(): that one would stop the auto play)
+    detailOpen.value = false;
+    await Promise.all([autoPause(settings.autoFrontSec), s.reverse ? Promise.resolve() : autoSpeakWord()]);
+    if (token !== autoToken) return;
+    s.flip(); // the answer side
+    await Promise.all([autoPause(settings.autoBackSec), s.reverse ? autoSpeakWord() : Promise.resolve()]);
+    if (token !== autoToken) return;
+    left--;
+    if (left <= 0) break;
+    slide.value = 'slide-next';
+    s.next();
+  }
+  if (token !== autoToken) return;
+  autoplay.value = false; // one pass is done
+  autoDone.value = true;
+  stopSpeaking();
+  speaking.value = false;
+  void releaseWakeLock();
+}
+
+function autoStart(): void {
+  if (autoplay.value || !hasSession || s.finished) return;
+  autoplay.value = true;
+  autoDone.value = false;
+  detailOpen.value = false;
+  void acquireWakeLock();
+  void autoRun(++autoToken);
+}
+
+function autoStop(): void {
+  if (!autoplay.value) return;
+  autoToken++; // the running loop notices and quits
+  clearTimeout(autoTimer);
+  autoplay.value = false;
+  stopSpeaking();
+  speaking.value = false;
+  void releaseWakeLock();
+}
+
+const autoToggle = (): void => (autoplay.value ? autoStop() : autoStart());
+watch([listOpen, kanjiSel, related], () => autoStop()); // a popup over the card pauses it
+
 function onKey(e: KeyboardEvent): void {
   if (!hasSession || s.finished) return;
   if (e.key === ' ' || e.key === 'Enter') {
@@ -280,6 +380,7 @@ function onKey(e: KeyboardEvent): void {
   else if (e.key === 'ArrowLeft') browse('previous');
   else if (e.key === '1') void answer('again');
   else if (e.key === '2') void answer('learned');
+  else if (e.key.toLowerCase() === 'a') autoToggle();
   else if (e.key.toLowerCase() === 'p' && canSpeakNow.value) speak();
 }
 
@@ -316,6 +417,7 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('keydown', onKey);
   window.removeEventListener('resize', onResize);
+  autoStop();
   stopSpeaking();
 });
 </script>
@@ -398,7 +500,7 @@ onUnmounted(() => {
         <v-btn class="act" prepend-icon="mdi-help-circle-outline" variant="flat" color="primary" :disabled="stamping" :aria-label="t('btn.again')" :data-tip="t('tip.again')" @click="answer('again')"><span class="lbl">{{ t('btn.again') }}</span></v-btn>
         <v-btn class="act" prepend-icon="mdi-check" variant="flat" color="primary" :disabled="stamping" :aria-label="t('btn.learned')" :data-tip="t('tip.learned')" @click="answer('learned')"><span class="lbl">{{ t('btn.learned') }}</span></v-btn>
         <v-btn class="act" prepend-icon="mdi-skip-next-outline" variant="flat" color="primary" :disabled="stamping" :aria-label="t('btn.skip')" :data-tip="t('tip.skip')" @click="answer('skip')"><span class="lbl">{{ t('btn.skip') }}</span></v-btn>
-        <v-btn class="act listbtn" icon="mdi-format-list-bulleted" variant="flat" color="primary" :aria-label="t('list.open')" @click="listOpen = true" />
+        <v-btn class="act" prepend-icon="mdi-format-list-bulleted" variant="flat" color="primary" :aria-label="t('list.open')" @click="listOpen = true"><span class="lbl">{{ t('list.short') }}</span></v-btn>
       </div>
     </TopBar>
 
@@ -447,6 +549,8 @@ onUnmounted(() => {
               <div v-if="card.reading && s.showReading" class="reading rd">{{ card.reading }}</div>
             </template>
           </template>
+          <!-- auto play: a small button right under the last line of the card (a tap on it must not flip the card) -->
+          <v-btn class="autobtn" :class="{ playing: autoplay }" size="x-small" variant="flat" color="primary" :prepend-icon="autoplay ? 'mdi-pause' : 'mdi-play'" :aria-label="autoplay ? t('auto.pause') : t('auto.play')" :aria-pressed="autoplay" :data-tip="t('tip.auto')" @click.stop="autoToggle"><span class="lbl">{{ autoplay ? t('auto.pauseShort') : t('auto.play') }}</span></v-btn>
           </div>
           </Transition>
 
@@ -598,6 +702,7 @@ onUnmounted(() => {
     </div>
 
 
+    <v-snackbar v-model="autoDone" :timeout="4000" color="primary">{{ t('auto.done') }}</v-snackbar>
     <WordListSheet :open="listOpen" :session="s" @close="listOpen = false" @pick="pickWord" />
     <KanjiSheet :kanji="card.kanji" :selected="kanjiSel" @close="kanjiSel = null" @select="(l: string) => (kanjiSel = l)" />
     <RelatedDialog :headword="related?.headword ?? null" :reading="related?.reading ?? null" :fallback-meaning="related?.meaning ?? ''" @close="related = null" />
@@ -721,9 +826,32 @@ onUnmounted(() => {
     margin-inline: 0;
   }
 }
-.listbtn.v-btn {
-  width: 40px !important; /* round-ish icon-only button, same height as the other three */
-  padding: 0;
+.autobtn.v-btn {
+  margin-top: 12px;
+  height: 24px !important;
+  min-width: 0;
+  padding: 0 10px;
+  font-size: 0.7rem;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+@media (max-width: 560px) {
+  /* phone: icon only (the shared .lbl rule hides the text); the icon is centred in a round-ish button */
+  .autobtn.v-btn {
+    min-width: 32px;
+    padding: 0 8px;
+  }
+  .autobtn.v-btn :deep(.v-btn__prepend) {
+    margin-inline: 0;
+  }
+}
+.autobtn.v-btn :deep(.v-icon) {
+  font-size: 14px;
+}
+.autobtn.playing.v-btn:not(.v-btn--disabled),
+.act.playing.v-btn:not(.v-btn--disabled) {
+  background: #9be35f !important; /* running: the lighter green, like a button under the mouse */
+  color: #4e342e !important;
 }
 /* Again and Skip are pressed-in 3D buttons too, like Learned (darker edge underneath, sinks when pressed). */
 .act.v-btn--variant-tonal:not(.v-btn--disabled) {

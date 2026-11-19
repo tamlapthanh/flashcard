@@ -5,10 +5,15 @@ import Flag from '../components/Flag.vue';
 import TopBar from '../components/TopBar.vue';
 import { t } from '../i18n';
 import CardTextEditor from '../components/CardTextEditor.vue';
-import { settings } from '../settings';
+import { AUTO_MAX_SEC, AUTO_MIN_SEC, settings } from '../settings';
 
 /* The three groups of settings fold away: tap a heading to show or hide it (all folded at first, each with a one-line summary). */
-const open = reactive({ size: false, direction: false, display: false });
+const open = reactive({ size: false, direction: false, display: false, auto: false });
+
+/* Auto play times: whole seconds, within the limits of the settings. */
+function bump(key: 'autoFrontSec' | 'autoBackSec', delta: number): void {
+  settings[key] = Math.min(AUTO_MAX_SEC, Math.max(AUTO_MIN_SEC, settings[key] + delta));
+}
 const directionSummary = computed(() => (settings.direction === 'forward' ? t('deck.dirForward') : t('deck.dirReverse')));
 </script>
 
@@ -120,6 +125,16 @@ const directionSummary = computed(() => (settings.direction === 'forward' ? t('d
   font-weight: 500;
   opacity: 0.75;
   text-transform: none;
+}
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.secs {
+  min-width: 54px;
+  text-align: center;
+  font-weight: 700;
 }
 .dirs {
   display: grid;
@@ -246,7 +261,7 @@ const directionSummary = computed(() => (settings.direction === 'forward' ? t('d
       <v-icon :icon="open.display ? 'mdi-chevron-up' : 'mdi-chevron-down'" size="20" />
     </button>
     <v-expand-transition>
-    <v-list v-show="open.display" class="soft-card pa-0" lines="two">
+    <v-list v-show="open.display" class="soft-card pa-0 mb-3" lines="two">
       <v-list-item :title="t('set.showReading')" :subtitle="t('set.showReadingSub')">
         <template #prepend><v-avatar color="info" variant="tonal" size="38"><v-icon icon="mdi-eye-outline" /></v-avatar></template>
         <template #append><v-switch v-model="settings.showReading" color="primary" hide-details density="compact" /></template>
@@ -292,6 +307,38 @@ const directionSummary = computed(() => (settings.direction === 'forward' ? t('d
             <button type="button" role="radio" class="langpick" :class="{ on: settings.language === 'en' }" :aria-checked="settings.language === 'en'" :aria-label="t('flag.us')" @click="settings.language = 'en'"><Flag country="us" :size="46" /></button>
           </div>
         </template>
+      </v-list-item>
+    </v-list>
+    </v-expand-transition>
+
+    <button type="button" class="sechead" :data-tip="t('tip.section')" :aria-expanded="open.auto" @click="open.auto = !open.auto">
+      <span class="glyph">自</span><span class="name">{{ t('set.auto') }}</span><span class="sum" />
+      <v-icon :icon="open.auto ? 'mdi-chevron-up' : 'mdi-chevron-down'" size="20" />
+    </button>
+    <v-expand-transition>
+    <v-list v-show="open.auto" class="soft-card pa-0 mb-3" lines="two">
+      <v-list-item :title="t('set.autoFront')" :subtitle="t('set.autoFrontSub')">
+        <template #append>
+          <div class="stepper">
+            <v-btn icon="mdi-minus" variant="text" size="small" :aria-label="t('set.autoFront') + ' −'" :disabled="settings.autoFrontSec <= AUTO_MIN_SEC" @click="bump('autoFrontSec', -1)" />
+            <span class="secs" data-testid="auto-front">{{ t('set.seconds', { n: settings.autoFrontSec }) }}</span>
+            <v-btn icon="mdi-plus" variant="text" size="small" :aria-label="t('set.autoFront') + ' +'" :disabled="settings.autoFrontSec >= AUTO_MAX_SEC" @click="bump('autoFrontSec', 1)" />
+          </div>
+        </template>
+      </v-list-item>
+      <v-divider />
+      <v-list-item :title="t('set.autoBack')" :subtitle="t('set.autoBackSub')">
+        <template #append>
+          <div class="stepper">
+            <v-btn icon="mdi-minus" variant="text" size="small" :aria-label="t('set.autoBack') + ' −'" :disabled="settings.autoBackSec <= AUTO_MIN_SEC" @click="bump('autoBackSec', -1)" />
+            <span class="secs" data-testid="auto-back">{{ t('set.seconds', { n: settings.autoBackSec }) }}</span>
+            <v-btn icon="mdi-plus" variant="text" size="small" :aria-label="t('set.autoBack') + ' +'" :disabled="settings.autoBackSec >= AUTO_MAX_SEC" @click="bump('autoBackSec', 1)" />
+          </div>
+        </template>
+      </v-list-item>
+      <v-divider />
+      <v-list-item :title="t('set.autoSpeak')" :subtitle="t('set.autoSpeakSub')">
+        <template #append><v-switch v-model="settings.autoSpeak" color="primary" hide-details density="compact" :aria-label="t('set.autoSpeak')" /></template>
       </v-list-item>
     </v-list>
     </v-expand-transition>
