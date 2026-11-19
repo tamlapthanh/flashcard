@@ -5,6 +5,7 @@ import 'vuetify/styles';
 import App from './App.vue';
 import { installTooltips } from './lib/tooltip';
 import { router } from './router';
+import { startSettingsSync } from './settingsSync';
 import './style.css';
 
 /*
@@ -59,3 +60,4 @@ const vuetify = createVuetify({
 
 createApp(App).use(vuetify).use(router).mount('#app');
 installTooltips();
+startSettingsSync();

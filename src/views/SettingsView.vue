@@ -4,11 +4,13 @@ import { pendingResults } from '../api';
 import Flag from '../components/Flag.vue';
 import TopBar from '../components/TopBar.vue';
 import { t } from '../i18n';
-import { clampScale, settings } from '../settings';
+import { CARD_TEXTS } from '../cardText';
+import CardTextEditor from '../components/CardTextEditor.vue';
+import { settings } from '../settings';
 
 /* The three groups of settings fold away: tap a heading to show or hide it (all folded at first, each with a one-line summary). */
 const open = reactive({ size: false, direction: false, display: false });
-const sizeSummary = computed(() => `${settings.fontScale.toFixed(1)}×`);
+const sizeSummary = computed(() => `${CARD_TEXTS.length}`);
 const directionSummary = computed(() => (settings.direction === 'forward' ? t('deck.dirForward') : t('deck.dirReverse')));
 const displaySummary = computed(() => `${[settings.showReading, settings.showMeaning, settings.showHanViet, settings.showEnglish, settings.naturalVoice, settings.dark].filter(Boolean).length} / 6`);
 </script>
@@ -173,18 +175,7 @@ const displaySummary = computed(() => `${[settings.showReading, settings.showMea
     </button>
     <v-expand-transition>
     <div v-show="open.size" class="soft-card pa-4 mb-3">
-      <v-slider
-        :model-value="settings.fontScale"
-        :min="0.8"
-        :max="2.5"
-        :step="0.1"
-        hide-details
-        color="primary"
-        prepend-icon="mdi-format-font-size-decrease"
-        append-icon="mdi-format-font-size-increase"
-        @update:model-value="(v: number) => (settings.fontScale = clampScale(v))"
-      />
-      <div class="text-center jp mt-2" :style="{ fontSize: 1.8 * settings.fontScale + 'rem' }">香り</div>
+      <CardTextEditor />
     </div>
     </v-expand-transition>
 

@@ -61,6 +61,9 @@ export const api = {
     if (reading) q.set('reading', reading);
     return request<LookupResult>('/api/lookup?' + q.toString());
   },
+  /** The user's saved app settings (null when none yet). */
+  getSettings: () => request<{ settings: Record<string, unknown> | null; updatedAt: string | null }>('/api/settings'),
+  putSettings: (settings: unknown) => request<{ updatedAt: string }>('/api/settings', { method: 'PUT', body: JSON.stringify({ settings }) }),
   /** Free servers sleep: ping /health first so the UI can say "waking up". */
   health: () => request<{ ok: boolean }>('/health')
 };

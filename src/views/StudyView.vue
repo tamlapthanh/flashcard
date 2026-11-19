@@ -14,6 +14,7 @@ import { detailOf, ensureDetails } from '../lib/cardDetail';
 import { parseNote, type RelatedWord } from '../lib/note';
 import { swipeDown } from '../lib/swipeDown';
 import { canSpeak, speakJapanese, stopSpeaking } from '../lib/speech';
+import { cardTextVars } from '../cardText';
 import { StudySession } from '../session';
 import { settings } from '../settings';
 import { activeSession } from '../store';
@@ -70,7 +71,8 @@ const useRuby = computed(() => !s.reverse && !!card.value?.ruby && readingVisibl
 const noteLines = computed(() => parseNote(card.value?.note));
 const plainNotes = computed(() => noteLines.value.filter((l) => !l.related));
 const relatedLines = computed(() => noteLines.value.filter((l) => !!l.related));
-const scale = computed(() => settings.fontScale);
+const textVars = computed(() => cardTextVars(settings.cardText)); // --s-<text> (size) and --c-<text> (colour) for every text on the card
+const scale = computed(() => JSON.stringify(settings.cardText)); // changes whenever a size changes: the Notes re-fit
 
 /* On a touch screen the Notes are folded, but they open by themselves when the Details still fit without scrolling:
    open them, let the layout settle (before anything is painted), and fold them again if the Details now overflow.
@@ -335,9 +337,9 @@ onUnmounted(() => {
       </div>
     </TopBar>
 
-    <div class="stage" :style="{ '--fs': scale }" @touchstart.passive="touchStart" @touchend.passive="touchEnd" @mousedown="mouseDown" @mouseup="mouseUp">
+    <div class="stage" :style="textVars" @touchstart.passive="touchStart" @touchend.passive="touchEnd" @mousedown="mouseDown" @mouseup="mouseUp">
       <div class="paper-card card">
-        <!-- position in the run, top right of the card; tap it for the word list -->
+        <!-- position in the run, bottom centre of the card; tap it for the word list -->
         <button type="button" class="counter" :aria-label="t('list.open')" @click.stop="listOpen = true">
           {{ s.position }} / {{ s.total }}
           <v-icon v-if="pending > 0" icon="mdi-cloud-upload-outline" size="14" class="ml-1" :title="t('study.unsentTip')" />
@@ -352,7 +354,7 @@ onUnmounted(() => {
           <div :key="card.id" class="wordbody">
           <!-- step 1 / 2: the word (normal) or the meaning (reverse) -->
           <template v-if="!s.reverse">
-            <RubyWord v-if="useRuby && card.ruby" :cells="card.ruby" :scale="scale" />
+            <RubyWord v-if="useRuby && card.ruby" :cells="card.ruby" />
             <template v-else>
               <div class="word jp">{{ card.headword }}</div>
               <div v-if="readingVisible && card.reading" class="reading rd">
@@ -434,15 +436,23 @@ onUnmounted(() => {
                 :aria-label="speaking ? t('study.stop') : t('study.read')"
                 @click.stop="speak"
               />
-              <span class="jp bw">{{ card.headword }}</span>
-              <span v-if="card.reading" class="rd br">
-                <PitchLine v-if="card.pitch" :morae="card.pitch.morae" />
-                <template v-else>{{ card.reading }}</template>
-              </span>
+              <!-- the word with its reading under it (furigana over each kanji when the card has them), like the front -->
+              <div class="bwcol">
+                <RubyWord v-if="card.ruby" :cells="card.ruby" />
+                <template v-else>
+                  <span class="jp bw">{{ card.headword }}</span>
+                  <span v-if="card.reading" class="rd br">
+                    <PitchLine v-if="card.pitch" :morae="card.pitch.morae" />
+                    <template v-else>{{ card.reading }}</template>
+                  </span>
+                </template>
+              </div>
+              <!-- Sino-Vietnamese over the Vietnamese meaning, in the place the reading used to be -->
+              <div class="bside">
+                <div v-if="card.hanviet" class="hv hanviet bhv">{{ card.hanviet.toUpperCase() }}</div>
+                <div class="bm">{{ card.meaning }}</div>
+              </div>
             </div>
-            <!-- the word's own Sino-Vietnamese text sits right above the Vietnamese meaning, like on the front of the card -->
-            <div v-if="card.hanviet" class="hv hanviet bhv">{{ card.hanviet.toUpperCase() }}</div>
-            <div class="bm">{{ card.meaning }}</div>
           </div>
 
           <!-- the Details always show everything the card has; the Settings switches only affect the front -->
@@ -461,13 +471,13 @@ onUnmounted(() => {
             </div>
             <div v-if="card.pos" class="item">
               <v-icon icon="mdi-tag-outline" color="warning" />
-              <div><div class="label">{{ t('detail.pos') }}</div>{{ card.pos }}</div>
+              <div><div class="label">{{ t('detail.pos') }}</div><span class="posv">{{ card.pos }}</span></div>
             </div>
           </div>
 
           <div v-if="card.english" class="item">
             <v-icon icon="mdi-alphabetical-variant" color="info" />
-            <div><div class="label">English</div><i>{{ card.english.replace(/\n/g, '; ') }}</i></div>
+            <div><div class="label">English</div><i class="den">{{ card.english.replace(/\n/g, '; ') }}</i></div>
           </div>
 
           <div v-if="card.example" class="item">
@@ -484,7 +494,7 @@ onUnmounted(() => {
             <div>
               <div class="label">{{ t('detail.pitch') }}</div>
               <PitchLine :morae="card.pitch.morae" />
-              <span class="ml-2 text-medium-emphasis">{{ card.pitch.label }}<span v-if="card.pitch.note"> · {{ card.pitch.note }}</span></span>
+              <span class="ml-2 text-medium-emphasis pitchv">{{ card.pitch.label }}<span v-if="card.pitch.note"> · {{ card.pitch.note }}</span></span>
             </div>
           </div>
 
@@ -600,17 +610,19 @@ onUnmounted(() => {
 /* The three grading buttons: a row of their own above the card, not inside it. */
 .counter {
   position: absolute;
-  top: 1px;
-  right: 10px;
+  /* bottom centre of the card, between the eye button (left) and the speaker (right); no background */
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  height: 34px; /* same height as the tool buttons, so it is vertically centred with them */
   z-index: 3;
   display: inline-flex;
   align-items: center;
-  padding: 1px 7px;
-  border-radius: 999px;
-  font-size: 0.68rem;
+  padding: 0 7px;
+  font-size: var(--s-counter);
   font-weight: 700;
-  color: var(--leaf);
-  background: color-mix(in srgb, var(--leaf) 12%, transparent);
+  color: var(--c-counter, var(--leaf));
+  background: none;
   cursor: pointer;
 }
 .acts {
@@ -813,16 +825,18 @@ onUnmounted(() => {
   margin-left: auto; /* stays on the right even when the reading toggle is not shown */
 }
 .word {
-  font-size: calc(3.6rem * var(--fs));
+  font-size: var(--s-word);
   line-height: 1.2;
-  color: var(--headword); /* the headword is red, as on LCT's lookup card */
+  color: var(--c-word, var(--headword)); /* the headword is red, as on LCT's lookup card */
   font-weight: 700;
 }
 .word.small {
-  font-size: calc(2.2rem * var(--fs));
+  font-size: var(--s-answerWord);
+  color: var(--c-answerWord, var(--headword));
 }
 .reading {
-  font-size: calc(1.05rem * var(--fs));
+  font-size: var(--s-reading);
+  color: var(--c-reading, var(--rd));
   margin-top: 2px;
 }
 .sep {
@@ -832,13 +846,15 @@ onUnmounted(() => {
   margin: 16px 0;
 }
 .meaning {
-  font-size: calc(1.35rem * var(--fs));
+  font-size: var(--s-meaning);
+  color: var(--c-meaning, inherit);
   font-weight: 500;
   line-height: 1.4;
   white-space: pre-line;
 }
 .hanviet {
-  font-size: calc(0.95rem * var(--fs));
+  font-size: var(--s-hanviet);
+  color: var(--c-hanviet, var(--hv));
   font-weight: 700;
   letter-spacing: 0.12em;
 }
@@ -847,13 +863,15 @@ onUnmounted(() => {
 }
 .english {
   margin-top: 4px;
-  font-size: calc(0.95rem * var(--fs));
+  font-size: var(--s-english);
+  color: var(--c-english, inherit);
   font-style: italic;
   opacity: 0.8;
 }
 .meaning.big {
   font-family: var(--font-jp);
-  font-size: calc(1.8rem * var(--fs));
+  font-size: var(--s-question);
+  color: var(--c-question, inherit);
 }
 /* The card turns over like a real one: the front is the word, the back is the details. */
 .card {
@@ -902,18 +920,46 @@ onUnmounted(() => {
   flex: 0 0 auto;
   margin-left: -6px;
 }
+.bwcol {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.bside {
+  flex: 1 1 140px;
+  min-width: 0;
+}
 .bw {
-  font-size: 1.7rem;
+  font-size: var(--s-word);
   line-height: 1.2;
-  color: var(--headword);
+  color: var(--c-word, var(--headword));
   font-weight: 700;
 }
 .br {
-  font-size: 1.05rem;
+  font-size: var(--s-backReading);
+  color: var(--c-backReading, var(--rd));
   opacity: 0.9;
 }
 .bhv {
   margin-top: 4px;
+  font-size: var(--s-backHanviet);
+  color: var(--c-backHanviet, var(--hv));
+}
+.label {
+  font-size: var(--s-label);
+  color: var(--c-label, var(--leaf));
+}
+.den {
+  font-size: var(--s-detailEnglish);
+  color: var(--c-detailEnglish, inherit);
+}
+.posv {
+  font-size: var(--s-pos);
+  color: var(--c-pos, inherit);
+}
+.pitchv {
+  font-size: var(--s-pitchLabel);
+  color: var(--c-pitchLabel, inherit);
 }
 .notes-toggle {
   display: inline-flex;
@@ -926,16 +972,20 @@ onUnmounted(() => {
   cursor: pointer;
 }
 .example {
-  font-size: 1.05rem;
+  font-size: var(--s-example);
+  color: var(--c-example, var(--jp));
   line-height: 1.5;
 }
 .exvi {
-  font-size: 0.88rem;
+  font-size: var(--s-exampleVi);
+  color: var(--c-exampleVi, inherit);
   font-style: italic;
   opacity: 0.8;
 }
 .bm {
   margin-top: 2px;
+  font-size: var(--s-backMeaning);
+  color: var(--c-backMeaning, inherit);
   font-weight: 600;
   white-space: pre-line;
 }
@@ -955,6 +1005,10 @@ onUnmounted(() => {
 .item .grow {
   flex: 1;
   min-width: 0;
+}
+.noteline {
+  font-size: var(--s-notes);
+  color: var(--c-notes, inherit);
 }
 .noteline + .noteline {
   margin-top: 3px;
@@ -983,11 +1037,11 @@ onUnmounted(() => {
 .hvp .k {
   font-family: var(--font-jp);
   cursor: pointer;
-  color: var(--headword); /* same red as the kanji in the word list */
+  color: var(--c-kanjiChar, var(--headword)); /* same red as the kanji in the word list */
   min-width: 42px;
   padding: 2px 8px;
   text-align: center;
-  font-size: 1.3rem;
+  font-size: var(--s-kanjiChar);
   line-height: 1.2;
   background: rgb(var(--v-theme-surface));
   border: 1px solid var(--paper-edge);
@@ -997,11 +1051,17 @@ onUnmounted(() => {
   border-color: var(--leaf);
 }
 .hvp .hm {
-  font-size: 0.85rem;
+  font-size: var(--s-kanjiMeaning);
+  color: var(--c-kanjiMeaning, inherit);
   opacity: 0.85;
 }
+.hvp .hv {
+  font-size: var(--s-kanjiSound);
+  color: var(--c-kanjiSound, var(--hv));
+}
 .related {
-  color: var(--forest);
+  font-size: var(--s-related);
+  color: var(--c-related, var(--forest));
   font-weight: 700;
   text-decoration: underline;
   text-decoration-color: var(--leaf);

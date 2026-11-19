@@ -3,14 +3,14 @@ import { computed } from 'vue';
 import type { RubyCell } from '../types';
 import PitchLine from './PitchLine.vue';
 
-const props = defineProps<{ cells: RubyCell[]; scale: number }>();
+const props = defineProps<{ cells: RubyCell[] }>();
 
 // When the pitch fits the segments, the ruby row shows the FULL reading (kana segments too) with the pitch line on it.
 const withPitch = computed(() => props.cells.some((c) => c.morae));
 </script>
 
 <template>
-  <span class="ruby" :style="{ '--fs': scale }" :aria-label="cells.map((c) => c.text).join('')">
+  <span class="ruby" :aria-label="cells.map((c) => c.text).join('')">
     <span v-for="(c, i) in cells" :key="i" class="cell">
       <span class="top rd">
         <PitchLine v-if="withPitch && c.morae" :morae="c.morae" />
@@ -33,14 +33,15 @@ const withPitch = computed(() => props.cells.some((c) => c.morae));
   align-items: center;
 }
 .top {
-  font-size: calc(0.9rem * var(--fs));
-  min-height: calc(1.5rem * var(--fs));
+  font-size: var(--s-furigana);
+  color: var(--c-furigana, var(--rd));
+  min-height: calc(var(--s-furigana) * 1.667);
   white-space: nowrap;
 }
 .base {
-  font-size: calc(2.6rem * var(--fs));
+  font-size: var(--s-wordRuby);
   line-height: 1.1;
-  color: var(--headword);
+  color: var(--c-wordRuby, var(--headword));
   font-weight: 700;
 }
 </style>
