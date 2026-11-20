@@ -1,17 +1,34 @@
 <script setup lang="ts">
 /* One text of the sample card in Settings: click it to select; the selected text shows a small bar right under it
-   (size - / +, colour, reset) and the whole sample card changes at once. Size and colour come straight from settings. */
-import { computed } from 'vue';
-import { CARD_TEXTS, clampSize, defaultCardStyles } from '../cardText';
+   (size - / +, colour, reset) and the whole sample card changes at once. Size, colour and italic are edited on the draft the editor provides. */
+import { computed, inject, nextTick, ref, watch } from 'vue';
+import { CARD_DRAFT, CARD_TEXTS, clampSize, defaultCardStyles } from '../cardText';
 import { settings } from '../settings';
 
 const props = defineProps<{ k: string; sel: string | null; name: string; block?: boolean; nobar?: boolean; align?: 'left' | 'center' | 'right' }>();
 const emit = defineEmits<{ pick: [k: string] }>();
 
+/* The editor provides a draft copy of the styles (Save writes it to the settings); without one the settings themselves are edited. */
+const styles = inject(CARD_DRAFT, () => settings.cardText, true);
 const def = computed(() => CARD_TEXTS.find((d) => d.key === props.k)!);
-const style = computed(() => settings.cardText[props.k]!);
+const style = computed(() => styles[props.k]!);
 const color = computed(() => style.value.color || (settings.dark ? def.value.dark : def.value.light));
 const on = computed(() => props.sel === props.k);
+
+/* The bar opens under the text; a text near the bottom of the window (full screen: the counter) gets it above instead, so it is never cut off. */
+const barEl = ref<HTMLElement | null>(null);
+const up = ref(false);
+watch(on, async (isOn) => {
+  up.value = false;
+  if (!isOn) return;
+  await nextTick();
+  const bar = barEl.value;
+  const host = bar?.parentElement;
+  if (!bar || !host) return;
+  const b = bar.getBoundingClientRect();
+  const h = host.getBoundingClientRect();
+  if (b.bottom > window.innerHeight - 4 && h.top - b.height - 6 > 0) up.value = true;
+});
 
 function step(delta: number): void {
   style.value.size = clampSize(style.value.size + delta);
@@ -21,20 +38,21 @@ function typed(event: Event): void {
   if (Number.isFinite(n) && n > 0) style.value.size = clampSize(n);
 }
 function reset(): void {
-  settings.cardText[props.k] = { ...defaultCardStyles()[props.k]! };
+  styles[props.k] = { ...defaultCardStyles()[props.k]! };
 }
 </script>
 
 <template>
-  <component :is="block ? 'div' : 'span'" class="ed" :class="{ on }" :style="{ fontSize: style.size + 'px', color }" @click.stop="emit('pick', k)">
+  <component :is="block ? 'div' : 'span'" class="ed" :class="{ on }" :style="{ fontSize: style.size + 'px', color, fontStyle: style.italic ? 'italic' : 'normal' }" @click.stop="emit('pick', k)">
     <slot />
-    <span v-if="on && !nobar" class="bar" :class="'al-' + (align ?? 'center')" @click.stop>
+    <span v-if="on && !nobar" ref="barEl" class="bar" :class="['al-' + (align ?? 'center'), { up }]" @click.stop>
       <span class="nm">{{ name }}</span>
       <span class="ctl">
         <button type="button" aria-label="−" @click="step(-1)">−</button>
         <input class="num" type="number" min="8" max="120" step="1" :value="style.size" aria-label="px" @change="typed" />
         <button type="button" aria-label="+" @click="step(1)">+</button>
         <input class="clr" type="color" :value="color" aria-label="color" @input="style.color = ($event.target as HTMLInputElement).value" />
+        <button type="button" class="it-btn" :class="{ lit: style.italic }" aria-label="italic" :aria-pressed="style.italic" @click="style.italic = !style.italic">I</button>
         <button type="button" class="rs" aria-label="reset" @click="reset"><v-icon icon="mdi-restore" size="16" /></button>
       </span>
     </span>
@@ -79,6 +97,12 @@ function reset(): void {
   white-space: nowrap;
   cursor: default;
 }
+.bar.up {
+  top: auto;
+  bottom: 100%;
+  margin-top: 0;
+  margin-bottom: 6px;
+}
 .al-center {
   left: 50%;
   transform: translateX(-50%);
@@ -111,6 +135,15 @@ function reset(): void {
   width: 32px;
   font-size: 1.1rem;
   line-height: 1;
+}
+/* the italic switch: an "I" in italics, filled green while the text is italic */
+.ctl .it-btn {
+  font: italic 700 1rem/1 Georgia, 'Times New Roman', serif;
+}
+.ctl .it-btn.lit {
+  background: rgb(var(--v-theme-primary));
+  border-color: transparent;
+  color: #fff;
 }
 .num {
   width: 52px;

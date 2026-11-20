@@ -5,7 +5,7 @@
  */
 import { auth, clearSession, setSession } from './auth';
 import { t } from './i18n';
-import type { CardDetail, Deck, LightCard, LookupResult, StudyResult } from './types';
+import type { CardDetail, Deck, KanjiInfo, LightCard, LookupResult, StudyResult } from './types';
 
 const BASE = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 const KEY = import.meta.env.VITE_API_KEY ?? '';
@@ -56,6 +56,8 @@ export const api = {
   },
   /** The heavy part (furigana, pitch, kanji, note) of up to 30 cards. */
   cardDetails: (ids: string[]) => request<{ details: CardDetail[] }>('/api/cards/detail?ids=' + encodeURIComponent(ids.join(','))).then((r) => r.details),
+  /** Kanji records (with parts) for the given characters. */
+  kanji: (chars: string) => request<{ kanji: KanjiInfo[] }>('/api/kanji?chars=' + encodeURIComponent(chars)).then((r) => r.kanji),
   lookup: (headword: string, reading: string | null) => {
     const q = new URLSearchParams({ headword });
     if (reading) q.set('reading', reading);
@@ -72,10 +74,11 @@ export const api = {
 export type ServerVoiceSource = 'elevenlabs' | 'server-memory' | 'server-file' | 'server';
 
 /* The spoken word as an MP3 (ElevenLabs through the server) and where the server got it from. Rejects when the server has no voice or fails. */
-export async function fetchSpeech(text: string, deck = ''): Promise<{ blob: Blob; source: ServerVoiceSource }> {
+/* `save` false asks the server not to keep a file of this word (it still plays files it already has). */
+export async function fetchSpeech(text: string, deck = '', save = true): Promise<{ blob: Blob; source: ServerVoiceSource }> {
   let res: Response;
   try {
-    const query = `text=${encodeURIComponent(text)}${deck ? `&deck=${encodeURIComponent(deck)}` : ''}`;
+    const query = `text=${encodeURIComponent(text)}${deck ? `&deck=${encodeURIComponent(deck)}` : ''}${save ? '' : '&save=0'}`;
     res = await fetch(`${BASE}/api/speech?${query}`, { headers: authHeaders() });
   } catch {
     throw new ApiError(t('api.conn'), 0);

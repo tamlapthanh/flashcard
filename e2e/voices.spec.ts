@@ -45,8 +45,9 @@ test.beforeEach(async ({ page, request }) => {
   await startStudy(page, deck);
 });
 
-const badge = (page: Page) => page.getByTestId('voice-source');
-const speaker = (page: Page) => page.locator('.speak');
+/* The read-aloud button carries the source of the word (data-voice) while it plays, and its colour follows. */
+const badge = (page: Page) => page.locator('.speakc[data-voice]');
+const speaker = (page: Page) => page.locator('.speakc');
 
 /** The text the speaker reads for the card on screen (the reading when there is one), from the saved run. */
 const spokenText = (page: Page): Promise<string> =>
@@ -70,7 +71,7 @@ test.describe('where a spoken word comes from', () => {
 
   test('the first play asks the server with the deck name and shows that it was a new ElevenLabs call', async ({ page }) => {
     await play(page);
-    await expect(badge(page)).toHaveText('ElevenLabs (new)');
+    await expect(badge(page)).toHaveAttribute('data-voice', 'ElevenLabs (new)');
     expect(requests).toHaveLength(1);
     const url = new URL(requests[0]!);
     expect(url.searchParams.get('deck')).toBe(deck.name);
@@ -81,7 +82,7 @@ test.describe('where a spoken word comes from', () => {
     await play(page);
     await expect(badge(page)).toBeHidden({ timeout: 6000 }); // the badge fades after a moment
     await play(page);
-    await expect(badge(page)).toHaveText('Browser cache · ElevenLabs (new)'); // and where it was fetched from in the first place
+    await expect(badge(page)).toHaveAttribute('data-voice', 'Browser cache · ElevenLabs (new)'); // and where it was fetched from in the first place
     expect(requests).toHaveLength(1);
   });
 
@@ -107,11 +108,11 @@ test.describe('where a spoken word comes from', () => {
       [text, JSON.stringify([...WAV])]
     );
     await play(page);
-    await expect(badge(page)).toHaveText('Browser cache (other deck)');
+    await expect(badge(page)).toHaveAttribute('data-voice', 'Browser cache (other deck)');
     expect(requests).toHaveLength(0); // nothing was asked of the server
     await expect(badge(page)).toBeHidden({ timeout: 6000 });
     await play(page);
-    await expect(badge(page)).toHaveText('Browser cache'); // copied into this deck's own cache
+    await expect(badge(page)).toHaveAttribute('data-voice', 'Browser cache'); // copied into this deck's own cache
     const own = await page.evaluate(async (name) => (await (await caches.open(`flashmobile-speech-v4:${name}`)).keys()).length, deck.name);
     expect(own).toBe(1);
   });
@@ -127,36 +128,36 @@ test.describe('where a spoken word comes from', () => {
       await route.fulfill({ status: 200, headers: { 'content-type': 'audio/mpeg' }, body: WAV });
     });
     await play(page);
-    await expect(badge(page)).toHaveText('Saved file');
+    await expect(badge(page)).toHaveAttribute('data-voice', 'Saved file');
     expect(fileAsked).toContain(`${deck.name}/word.mp3`);
     expect(requests).toHaveLength(0);
     await expect(badge(page)).toBeHidden({ timeout: 6000 });
     await play(page);
-    await expect(badge(page)).toHaveText('Browser cache · Saved file'); // kept in the cache after the first play, with its origin
+    await expect(badge(page)).toHaveAttribute('data-voice', 'Browser cache · Saved file'); // kept in the cache after the first play, with its origin
   });
 
   test('the server says where its audio came from: its memory, its disk, or unknown', async ({ page }) => {
     serverSource = 'server-memory';
     await play(page);
-    await expect(badge(page)).toHaveText('Server cache');
+    await expect(badge(page)).toHaveAttribute('data-voice', 'Server cache');
     await expect(badge(page)).toBeHidden({ timeout: 6000 });
 
     await page.keyboard.press('ArrowRight'); // another word, not in the cache yet
     serverSource = 'server-file';
     await play(page);
-    await expect(badge(page)).toHaveText('Server file');
+    await expect(badge(page)).toHaveAttribute('data-voice', 'Server file');
     await expect(badge(page)).toBeHidden({ timeout: 6000 });
 
     await page.keyboard.press('ArrowRight');
     serverSource = null; // an older server sends no header
     await play(page);
-    await expect(badge(page)).toHaveText('Server');
+    await expect(badge(page)).toHaveAttribute('data-voice', 'Server');
   });
 
   test('without a natural voice from the server, the device voice reads it and the badge says so', async ({ page }) => {
     await page.unroute('**/api/speech*');
     await page.route('**/api/speech*', (route) => route.fulfill({ status: 404, json: { error: 'speech is not enabled' } }));
     await play(page);
-    await expect(badge(page)).toHaveText('Device voice');
+    await expect(badge(page)).toHaveAttribute('data-voice', 'Device voice');
   });
 });

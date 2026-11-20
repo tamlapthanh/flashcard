@@ -33,6 +33,7 @@ export interface KanjiPart {
   Literal: string;
   HanViet: string | null;
   Meaning: string | null;
+  Known?: boolean;
 }
 
 export interface KanjiInfo {
@@ -52,6 +53,8 @@ export interface KanjiInfo {
   Components: string[];
   /** Each component with its Han-Viet sound and meaning (filled by the server), for the memory hint. */
   Parts?: KanjiPart[];
+  /** Every node of the PartEdges graph with its Han-Viet sound (filled by the server). */
+  Tree?: KanjiPart[];
   StrokePaths?: string[] | null;
   PartEdges?: string[] | null;
 }

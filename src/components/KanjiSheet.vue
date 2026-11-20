@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { swipeDown } from '../lib/swipeDown';
+import { api } from '../api';
 import type { KanjiInfo } from '../types';
 import KanjiBlock from './KanjiBlock.vue';
 
@@ -22,32 +23,26 @@ onUnmounted(() => window.removeEventListener('resize', onResize));
 const multi = computed(() => mouse && winW.value >= 800 && props.kanji.length > 1);
 const cols = computed(() => {
   const fit = Math.max(1, Math.min(4, Math.floor(winW.value / 400)));
-  const rows = Math.ceil(props.kanji.length / fit);
-  return Math.ceil(props.kanji.length / rows);
+  return Math.min(fit, props.kanji.length); // fill each row up to 4 before starting the next
 });
 
-/* Side by side: when the content is taller than the screen it is shrunk (as little as possible) instead of scrolling. */
+/* Side by side at normal size: a tall sheet scrolls, nothing is shrunk. */
 const sheetRef = ref<{ $el: HTMLElement } | null>(null);
 const multiRef = ref<HTMLElement | null>(null);
-const zoom = ref(1);
-let fitTimer = 0;
-async function fitZoom(): Promise<void> {
-  zoom.value = 1;
-  await nextTick();
-  const sheet = sheetRef.value?.$el;
-  const block = multiRef.value;
-  if (!multi.value || !sheet || !block) return;
-  const over = sheet.scrollHeight - sheet.clientHeight;
-  if (over <= 1) return;
-  const h = block.offsetHeight;
-  zoom.value = Math.max(0.4, Math.floor(((h - over) / h) * 100) / 100 - 0.01);
-}
-function scheduleFit(): void {
-  cancelAnimationFrame(fitTimer);
-  fitTimer = requestAnimationFrame(() => void fitZoom());
-}
 
-watch([open, multi, cols, winW, () => props.kanji], () => open.value && scheduleFit(), { flush: 'post' });
+/* A component opened from the graph: shown alone (with a way back) on top of the card's own kanji. */
+const trail = ref<KanjiInfo[]>([]);
+const drilled = computed(() => trail.value[trail.value.length - 1] ?? null);
+async function openPart(literal: string): Promise<void> {
+  try {
+    const [k] = await api.kanji(literal);
+    if (k) trail.value = [...trail.value, k];
+  } catch {
+    /* offline or unknown: stay where we are */
+  }
+}
+const back = (): void => void (trail.value = trail.value.slice(0, -1));
+watch([open, () => props.selected, () => props.kanji], () => void (trail.value = []));
 
 const swipe = swipeDown(() => emit('close')); // drag the sheet down to close it
 
@@ -66,15 +61,21 @@ watch(open, (isOpen) => isOpen && opened.value++, { immediate: true });
     <v-card ref="sheetRef" class="sheet" rounded="t-xl" @touchstart.passive="swipe.onTouchstart" @touchend.passive="swipe.onTouchend">
       <div class="grip" />
       <div class="px-4 pb-4">
-        <div v-if="multi" ref="multiRef" :key="opened" class="multi" :style="{ zoom, gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, maxWidth: `${cols * 520}px` }">
-          <KanjiBlock v-for="(k, i) in kanji" :key="k.Literal" :kanji="k" class="cell" :class="{ divided: i % cols !== 0 }" />
+        <div v-if="drilled" class="stage">
+          <v-btn variant="tonal" color="primary" size="large" prepend-icon="mdi-arrow-left" class="back mb-2" @click="back">
+            <span class="jp back-ch">{{ trail.length > 1 ? trail[trail.length - 2]?.Literal : (selected ?? '') }}</span>
+          </v-btn>
+          <KanjiBlock :key="drilled.Literal" :kanji="drilled" @open="openPart" />
         </div>
-        <template v-else>
+        <div v-else-if="multi" ref="multiRef" :key="opened" class="multi" :style="{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, maxWidth: `${cols * 520}px`, margin: '0 auto' }">
+          <KanjiBlock v-for="(k, i) in kanji" :key="k.Literal" :kanji="k" class="cell" :class="{ divided: i % cols !== 0, rowdiv: i >= cols }" @open="openPart" />
+        </div>
+        <div v-else class="stage">
         <v-chip-group v-if="kanji.length > 1" :model-value="selected" mandatory color="primary" class="mb-1" @update:model-value="(v: string | null) => v && emit('select', v)">
           <v-chip v-for="k in kanji" :key="k.Literal" :value="k.Literal"><span class="jp">{{ k.Literal }}</span></v-chip>
         </v-chip-group>
-        <KanjiBlock v-if="shown" :key="`${shown.Literal}-${opened}`" :kanji="shown" />
-        </template>
+        <KanjiBlock v-if="shown" :key="`${shown.Literal}-${opened}`" :kanji="shown" @open="openPart" />
+        </div>
       </div>
     </v-card>
   </v-bottom-sheet>
@@ -83,19 +84,46 @@ watch(open, (isOpen) => isOpen && opened.value++, { immediate: true });
 <style scoped>
 .sheet {
   background: var(--paper);
-  max-height: 90dvh; /* never taller than the screen: it scrolls instead (KanjiBlock measures this to decide whether the hint fits) */
+  max-height: 95dvh; /* never taller than the screen: it scrolls instead (KanjiBlock measures this to decide whether the hint fits) */
   overflow-y: auto;
+  scrollbar-width: thin; /* a slim scrollbar, as small as the browser allows */
+  scrollbar-color: var(--paper-edge) transparent;
+}
+.sheet::-webkit-scrollbar {
+  width: 4px;
+}
+.sheet::-webkit-scrollbar-thumb {
+  background: var(--paper-edge);
+  border-radius: 2px;
+}
+.sheet::-webkit-scrollbar-track {
+  background: transparent;
 }
 .multi {
   display: grid;
-  gap: 18px 0;
+  gap: 0;
 }
 .cell {
   padding: 0 16px 0 0;
 }
+.cell.rowdiv {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--paper-edge); /* the same line as the vertical dividers, between the rows */
+}
 .cell.divided {
   padding-left: 16px;
   border-left: 1px solid var(--paper-edge);
+}
+.stage {
+  max-width: 520px;
+  margin: 0 auto; /* one kanji sits in the middle of the sheet, whether it is the card's own or a component opened from the graph */
+}
+.back {
+  font-weight: 700;
+}
+.back-ch {
+  font-size: 1.25rem;
 }
 .grip {
   width: 34px;

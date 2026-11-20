@@ -2,13 +2,15 @@
 import { computed, nextTick, onMounted, ref } from 'vue';
 import { t } from '../i18n';
 import type { KanjiInfo } from '../types';
+import KanjiTree from './KanjiTree.vue';
 import StrokePlayer from './StrokePlayer.vue';
 
 const props = defineProps<{ kanji: KanjiInfo }>();
+const emit = defineEmits<{ open: [literal: string] }>();
 
 /* On a touch screen (phone, tablet) the Memory hint stays folded until tapped; with a mouse there is room, so it always shows. */
 const touchOnly = typeof window !== 'undefined' && !window.matchMedia('(hover: hover) and (pointer: fine)').matches;
-const hintOpen = ref(false);
+const hintOpen = ref(!touchOnly); // with a mouse it starts open; both can be folded with the toggle
 
 const meaning = computed(() => (props.kanji.MeaningsVi.length ? props.kanji.MeaningsVi : props.kanji.MeaningsEn).slice(0, 3).join('; '));
 const jlpt = computed(() => (props.kanji.Jlpt ? `N${props.kanji.Jlpt}` : null)); // LCT stores the OLD 1-4 scale
@@ -64,11 +66,10 @@ onMounted(() => void fitHint());
     <!-- Memory hint: the kanji as the sum of its parts. Every part is a same-size tile holding only the character; its sound
          and meaning sit beside it, so the rows line up: whole | = / + | part | what it is. -->
     <div v-if="parts.length" class="hint">
-      <button v-if="touchOnly" type="button" class="label hint-toggle" :aria-expanded="hintOpen" @click="toggleHint">
+      <button type="button" class="label hint-toggle" :aria-expanded="hintOpen" @click="toggleHint">
         <v-icon icon="mdi-lightbulb-on-outline" size="14" />{{ t('kanji.hint') }}<v-icon :icon="hintOpen ? 'mdi-chevron-up' : 'mdi-chevron-down'" size="16" />
       </button>
-      <div v-else class="label"><v-icon icon="mdi-lightbulb-on-outline" size="14" />{{ t('kanji.hint') }}</div>
-      <div v-if="!touchOnly || hintOpen" class="formula">
+      <div v-if="hintOpen" class="formula">
         <span class="whole jp" :style="{ gridRow: `1 / span ${parts.length + (firstMeaning ? 1 : 0)}` }">{{ kanji.Literal }}</span>
         <template v-for="(p, i) in parts" :key="i">
           <span class="pg jp">{{ p.Literal }}</span>
@@ -81,6 +82,8 @@ onMounted(() => void fitHint());
         </template>
       </div>
     </div>
+
+    <KanjiTree v-if="kanji.PartEdges?.length" :literal="kanji.Literal" :edges="kanji.PartEdges" :names="kanji.Tree ?? []" :root-hv="kanji.HanViet" @open="(l: string) => emit('open', l)" />
   </div>
 </template>
 
@@ -95,6 +98,7 @@ onMounted(() => void fitHint());
   line-height: 1;
   min-width: 52px;
   text-align: center;
+  color: var(--headword); /* the same red as the word on the card */
 }
 .info {
   flex: 1;
@@ -167,6 +171,7 @@ onMounted(() => void fitHint());
   padding-right: 6px;
   font-size: 3rem;
   line-height: 1;
+  color: var(--headword);
 }
 .op {
   grid-column: 2;

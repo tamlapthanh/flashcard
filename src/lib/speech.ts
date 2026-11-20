@@ -85,7 +85,7 @@ async function remember(store: Cache | null, key: Request, blob: Blob, origin?: 
   await store?.put(key, new Response(blob, { headers })).catch(() => undefined);
 }
 
-async function cachedSpeech(text: string, deck: string): Promise<{ blob: Blob; source: VoiceSource; origin?: VoiceOrigin }> {
+async function cachedSpeech(text: string, deck: string, save = true): Promise<{ blob: Blob; source: VoiceSource; origin?: VoiceOrigin }> {
   const hasCaches = typeof caches !== 'undefined';
   const key = new Request(entryUrl(text, deck));
   const store = hasCaches ? await caches.open(CACHE_PREFIX + (deck || '_')).catch(() => null) : null;
@@ -108,7 +108,7 @@ async function cachedSpeech(text: string, deck: string): Promise<{ blob: Blob; s
     return { blob: file, source: 'file' };
   }
 
-  const served = await fetchSpeech(text, deck);
+  const served = await fetchSpeech(text, deck, save);
   await remember(store, key, served.blob, served.source);
   return { blob: served.blob, source: served.source };
 }
@@ -129,8 +129,9 @@ function speakWithDevice(text: string, onEnd?: () => void): void {
   window.speechSynthesis.speak(utterance);
 }
 
-/** `deck` is the name of the deck the word is studied in; without it the word is kept in a common cache. */
-export function speakJapanese(text: string, onEnd?: () => void, deck = ''): void {
+/** `deck` is the name of the deck the word is studied in; without it the word is kept in a common cache. `save` false: the server
+    plays the word without keeping a file of it (the browser's own cache still keeps it). */
+export function speakJapanese(text: string, onEnd?: () => void, deck = '', save = true): void {
   const id = ++current;
   stopOutput();
   if (!text) {
@@ -141,7 +142,7 @@ export function speakJapanese(text: string, onEnd?: () => void, deck = ''): void
     speakWithDevice(text, onEnd);
     return;
   }
-  void cachedSpeech(text, deck).then(
+  void cachedSpeech(text, deck, save).then(
     ({ blob, source, origin }) => {
       if (id !== current) return; // stopped or replaced while the voice was loading
       announce(source, origin); // known as soon as the file is in hand (a failing player below then says "device" instead)
@@ -164,9 +165,9 @@ export function speakJapanese(text: string, onEnd?: () => void, deck = ''): void
 }
 
 /** Gets a word ready (into the browser's cache) without playing it, so it starts at once when its turn comes. */
-export function prefetchSpeech(text: string, deck = ''): void {
+export function prefetchSpeech(text: string, deck = '', save = true): void {
   if (!text || !settings.naturalVoice || typeof Audio === 'undefined') return;
-  void cachedSpeech(text, deck).catch(() => undefined);
+  void cachedSpeech(text, deck, save).catch(() => undefined);
 }
 
 function stopOutput(): void {

@@ -83,6 +83,20 @@ describe('StudySession', () => {
     s.answer('learned');
     expect(s.position).toBe(2);
   });
+
+  it('position follows Prev/Next and word-list jumps', () => {
+    const s = new StudySession([card('a'), card('b'), card('c')], { reverse: false, showReading: false });
+    s.next();
+    expect(s.position).toBe(2);
+    s.next();
+    expect(s.position).toBe(3);
+    s.next();
+    expect(s.position).toBe(1);
+    s.previous();
+    expect(s.position).toBe(3);
+    s.jumpTo('b');
+    expect(s.position).toBe(2);
+  });
 });
 
 describe('parseNote', () => {

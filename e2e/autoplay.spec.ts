@@ -3,7 +3,12 @@ import { apiDeck, apiPutSettings, apiSettings, counter, expect, openSignedIn, re
 
 /* Auto play: front for N seconds, answer side for M seconds, next card; browsing only, nothing is graded. bob is used, with short
    times and the voice off so the tests are quick and quiet; every test leaves bob with nothing saved. */
-const play = (page: Page) => page.getByRole('button', { name: 'Auto play', exact: true });
+const play = (page: Page) => page.getByRole('button', { name: /^(Auto play|Pause auto play)$/ });
+/* Auto play lives in the fan of the speaker button: open it, then tap the option. */
+const tapPlay = async (page: Page) => {
+  await page.getByRole('button', { name: 'Auto play options' }).click();
+  await play(page).click();
+};
 const pause = (page: Page) => page.getByRole('button', { name: 'Pause auto play' });
 const headword = async (page: Page): Promise<string> => ((await page.locator('.wordbody').innerText()).split('\n')[0] ?? '').trim();
 
@@ -26,7 +31,7 @@ test.describe('auto play', () => {
   test('the play button starts it, the cards change by themselves, the pause button stops it', async ({ page }) => {
     const first = await headword(page);
     await expect(play(page)).toHaveAttribute('aria-pressed', 'false');
-    await play(page).click();
+    await tapPlay(page);
     await expect(pause(page)).toHaveAttribute('aria-pressed', 'true');
     await expect.poll(() => headword(page), { timeout: 12_000 }).not.toBe(first); // moved on to another card
 
@@ -45,18 +50,18 @@ test.describe('auto play', () => {
   });
 
   test('a browse key, the word list or a tap on the card stops it', async ({ page }) => {
-    await play(page).click();
+    await tapPlay(page);
     await expect(pause(page)).toBeVisible();
     await page.keyboard.press('ArrowRight');
     await expect(play(page)).toBeVisible();
 
-    await play(page).click();
+    await tapPlay(page);
     await expect(pause(page)).toBeVisible();
     await counter(page).click(); // opens the word list
     await expect(play(page)).toBeVisible();
     await page.keyboard.press('Escape');
 
-    await play(page).click();
+    await tapPlay(page);
     await expect(pause(page)).toBeVisible();
     await page.locator('.wordarea').click({ position: { x: 10, y: 10 } });
     await expect(play(page)).toBeVisible();
@@ -65,11 +70,13 @@ test.describe('auto play', () => {
   test('it only browses: nothing is graded on the server', async ({ page, request }) => {
     const before = (await apiDeck(request, 'bob', deck.id)).counts;
     const position = (await counter(page).innerText()).trim();
-    await play(page).click();
+    await tapPlay(page);
     await page.waitForTimeout(4500); // two or three cards go by
     await pause(page).click();
     expect((await apiDeck(request, 'bob', deck.id)).counts).toEqual(before);
-    expect((await counter(page).innerText()).trim()).toBe(position); // the "n / N" counts cards left, browsing does not move it
+    const after = (await counter(page).innerText()).trim();
+    expect(after).not.toBe(position); // the counter follows the browsing: "n" is the card on screen
+    expect(after.split('/')[1]!.trim()).toBe(position.split('/')[1]!.trim()); // the total of the run stays
   });
 });
 
@@ -87,7 +94,7 @@ test.describe('auto play: one pass, then it stops', () => {
     await openSignedIn(page, request, 'bob');
     await startStudy(page, richest!);
     await expect(counter(page)).toContainText('/ 2');
-    await play(page).click();
+    await tapPlay(page);
     await expect(page.getByText('Auto play finished')).toBeVisible({ timeout: 15_000 });
     await expect(play(page)).toHaveAttribute('aria-pressed', 'false');
     await resetSettings(request, 'bob');
@@ -115,7 +122,7 @@ test.describe('auto play settings', () => {
     await expect.poll(async () => (await apiSettings(request, 'bob')).settings?.autoFrontSec, { timeout: 10_000 }).toBe(4);
     expect((await apiSettings(request, 'bob')).settings?.autoBackSec).toBe(3);
 
-    const voice = page.getByRole('switch', { name: 'Read the word aloud' });
+    const voice = page.getByRole('checkbox', { name: 'Read the word aloud' });
     await expect(voice).toBeChecked();
     await voice.click({ force: true });
     await expect.poll(async () => (await apiSettings(request, 'bob')).settings?.autoSpeak, { timeout: 10_000 }).toBe(false);
@@ -134,5 +141,47 @@ test.describe('auto play settings', () => {
     await expect
       .poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('flashmobile.settings') ?? '{}') as { autoFrontSec?: number; autoBackSec?: number }), { timeout: 10_000 })
       .toMatchObject({ autoFrontSec: 30, autoBackSec: 1 });
+  });
+});
+
+/* "Save voice files": with the switch off, auto play asks the server for each word with save=0 (the server plays it but keeps no file);
+   with it on (the default) there is no such parameter. The speaker button is not affected. The server is stubbed: no real voice. */
+test.describe('auto play: save voice files', () => {
+  let deck: DeckInfo;
+  let speechUrls: string[];
+
+  test.beforeEach(async ({ page, request }) => {
+    const richest = await richestDeck(request, 'bob');
+    test.skip(!richest || richest.counts.new + richest.counts.learning < 3, 'needs at least three new/learning cards');
+    deck = richest!;
+    speechUrls = [];
+    await page.route('**/api/speech*', async (route) => {
+      speechUrls.push(route.request().url());
+      await route.fulfill({ status: 404, json: { error: 'speech is not enabled' } }); // the device voice takes over
+    });
+  });
+
+  test.afterEach(async ({ request }) => {
+    await resetSettings(request, 'bob');
+  });
+
+  async function runAutoPlay(page: Page, request: import('@playwright/test').APIRequestContext, autoSaveVoice: boolean): Promise<void> {
+    await apiPutSettings(request, 'bob', { autoFrontSec: 1, autoBackSec: 1, autoSpeak: true, naturalVoice: true, autoSaveVoice });
+    await openSignedIn(page, request, 'bob');
+    await startStudy(page, deck);
+    test.skip(!(await page.locator('.speak').isVisible()), 'the speaker button only shows when the browser can speak');
+    await tapPlay(page);
+    await expect.poll(() => speechUrls.length, { timeout: 15_000 }).toBeGreaterThan(0);
+    await pause(page).click();
+  }
+
+  test('switched off: every word auto play asks for carries save=0', async ({ page, request }) => {
+    await runAutoPlay(page, request, false);
+    expect(speechUrls.every((u) => new URL(u).searchParams.get('save') === '0')).toBe(true);
+  });
+
+  test('switched on (the default): no save parameter, so the server keeps its files as before', async ({ page, request }) => {
+    await runAutoPlay(page, request, true);
+    expect(speechUrls.every((u) => !new URL(u).searchParams.has('save'))).toBe(true);
   });
 });

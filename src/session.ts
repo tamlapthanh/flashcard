@@ -103,9 +103,11 @@ export class StudySession {
     return this.queue.length === 0;
   }
 
-  /* 1-based position of the current card among the cards of this run (Again cards keep their number). */
+  /* 1-based position of the current card among the cards of this run, in the run's original order: it follows Prev/Next/word-list jumps, and Again cards keep their number. */
   get position(): number {
-    return Math.min(this.total, this.total - this.queue.length + 1);
+    const current = this.queue[0];
+    const i = current ? this.cards.indexOf(current) : -1;
+    return i < 0 ? this.total : i + 1;
   }
 
   /* Cards that got Again at least once and are not finished yet or were finished after an Again. */

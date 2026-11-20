@@ -34,12 +34,14 @@ const withPitch = computed(() => props.cells.some((c) => c.morae));
 }
 .top {
   font-size: var(--s-furigana);
+  font-style: var(--i-furigana);
   color: var(--c-furigana, var(--rd));
   min-height: calc(var(--s-furigana) * 1.667);
   white-space: nowrap;
 }
 .base {
   font-size: var(--s-wordRuby);
+  font-style: var(--i-wordRuby);
   line-height: 1.1;
   color: var(--c-wordRuby, var(--headword));
   font-weight: 700;

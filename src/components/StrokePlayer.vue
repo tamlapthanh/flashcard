@@ -5,6 +5,7 @@ import { strokeStart } from '../lib/strokes';
 
 const props = defineProps<{ literal: string; paths: string[] }>();
 
+const stripOpen = ref(true); // the stroke-by-stroke row can be folded away
 const step = ref(props.paths.length); // how many strokes are drawn (all = finished character)
 const playing = ref(false);
 const animating = ref(false); // the newest stroke draws itself
@@ -96,7 +97,11 @@ onUnmounted(stop);
     </div>
 
     <!-- stroke by stroke: one small picture per stroke, click to jump there. Desktop only (hidden on touch screens). -->
-    <div class="strip" role="list">
+    <div class="stripwrap">
+    <button type="button" class="label strip-toggle" :aria-expanded="stripOpen" @click="stripOpen = !stripOpen">
+      <v-icon icon="mdi-draw" size="14" />{{ t('kanji.stroke') }}<v-icon :icon="stripOpen ? 'mdi-chevron-up' : 'mdi-chevron-down'" size="16" />
+    </button>
+    <div v-if="stripOpen" class="strip" role="list">
       <button
         v-for="(_, n) in paths"
         :key="n"
@@ -112,6 +117,7 @@ onUnmounted(stop);
         </svg>
         <span class="n">{{ n + 1 }}</span>
       </button>
+    </div>
     </div>
   </div>
 </template>
@@ -147,7 +153,7 @@ onUnmounted(stop);
 }
 .stroke {
   fill: none;
-  stroke: rgb(var(--v-theme-on-surface));
+  stroke: var(--headword); /* drawn strokes in the same red as the kanji on the card */
   stroke-width: 3.4;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -156,7 +162,7 @@ onUnmounted(stop);
   stroke: rgba(var(--v-border-color), 0.35);
 }
 .current {
-  stroke: var(--shu);
+  stroke: rgb(var(--v-theme-primary));
 }
 .anim {
   stroke-dasharray: 1;
@@ -198,16 +204,30 @@ onUnmounted(stop);
   opacity: 0.7;
   margin-top: 2px;
 }
-.strip {
+.stripwrap {
   display: none;
   grid-area: strip;
 }
+.strip-toggle {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: inherit;
+  cursor: pointer;
+}
 @media (hover: hover) and (pointer: fine) {
+  .stripwrap {
+    display: block;
+    margin-top: 8px;
+  }
   .strip {
     display: flex;
     flex-wrap: wrap;
     gap: 4px;
-    margin-top: 8px;
+    margin-top: 6px;
   }
   .thumb {
     position: relative;
@@ -236,7 +256,7 @@ onUnmounted(stop);
   }
   .ts {
     fill: none;
-    stroke: rgb(var(--v-theme-on-surface));
+    stroke: var(--headword);
     stroke-width: 6;
     stroke-linecap: round;
     stroke-linejoin: round;
@@ -245,7 +265,7 @@ onUnmounted(stop);
     stroke: rgba(var(--v-border-color), 0.25);
   }
   .ts.now {
-    stroke: var(--shu);
+    stroke: rgb(var(--v-theme-primary));
   }
   .thumb .n {
     position: absolute;

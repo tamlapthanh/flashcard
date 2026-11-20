@@ -340,6 +340,10 @@ const directionSummary = computed(() => (settings.direction === 'forward' ? t('d
       <v-list-item :title="t('set.autoSpeak')" :subtitle="t('set.autoSpeakSub')">
         <template #append><v-switch v-model="settings.autoSpeak" color="primary" hide-details density="compact" :aria-label="t('set.autoSpeak')" /></template>
       </v-list-item>
+      <v-divider />
+      <v-list-item :title="t('set.autoSaveVoice')" :subtitle="t('set.autoSaveVoiceSub')">
+        <template #append><v-switch v-model="settings.autoSaveVoice" color="primary" hide-details density="compact" :aria-label="t('set.autoSaveVoice')" data-testid="auto-save-voice" /></template>
+      </v-list-item>
     </v-list>
     </v-expand-transition>
 

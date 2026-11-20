@@ -51,9 +51,21 @@ const fanOptions = computed(() => [
 ]);
 const foldFan = (): void => {
   fanOpen.value = false;
+  audioOpen.value = false;
 };
-watch(fanOpen, (isOpen) => {
-  if (isOpen) setTimeout(() => window.addEventListener('click', foldFan, { once: true }), 0);
+/* The bottom-right button fans out three options: auto play, read aloud while auto playing, keep the voice files. */
+const audioOpen = ref(false);
+const audioOptions = computed(() => [
+  { key: 'auto', icon: autoplay.value ? 'mdi-pause' : 'mdi-play', label: autoplay.value ? t('auto.pause') : t('auto.play'), on: autoplay.value, dx: 0, dy: -62, run: () => { audioOpen.value = false; autoToggle(); } },
+  { key: 'sound', icon: settings.autoSpeak ? 'mdi-volume-high' : 'mdi-volume-off', label: t('set.autoSpeak'), on: settings.autoSpeak, dx: -44, dy: -44, run: () => (settings.autoSpeak = !settings.autoSpeak) },
+  { key: 'save', icon: settings.autoSaveVoice ? 'mdi-content-save' : 'mdi-content-save-off-outline', label: t('set.autoSaveVoice'), on: settings.autoSaveVoice, dx: -62, dy: 0, run: () => (settings.autoSaveVoice = !settings.autoSaveVoice) }
+]);
+/* The button is green only while all three options are on; any option off turns it orange. */
+const audioAllOn = computed(() => audioOptions.value.every((o) => o.on));
+watch(fanOpen, (isOpen) => isOpen && (audioOpen.value = false));
+watch(audioOpen, (isOpen) => isOpen && (fanOpen.value = false));
+watch([fanOpen, audioOpen], ([eye, audio]) => {
+  if (eye || audio) setTimeout(() => window.addEventListener('click', foldFan, { once: true }), 0);
   else window.removeEventListener('click', foldFan);
 });
 const stamping = ref(false); // the "習" seal is being pressed onto the card
@@ -128,19 +140,16 @@ const englishOn = computed(() => settings.showEnglish && !!card.value?.english);
 const answerShown = computed(() => s.flipped || (!s.reverse && (settings.showMeaning || hanvietOn.value || englishOn.value)));
 const canSpeakNow = computed(() => canSpeak() && !!card.value && card.value.lang === 'ja' && (!s.reverse || s.flipped));
 
-/* Where the word that was just spoken came from (browser cache, a saved file, the server's memory or disk, a paid ElevenLabs call, the device): shown for a moment next to the speaker. */
+/* Where the word that is being spoken came from (browser cache, a saved file, the server's memory or disk, a paid ElevenLabs call, the device): the read-aloud button takes a colour for it while it plays (the text is its tooltip). */
 const voiceBadge = ref<{ source: VoiceSource; origin?: VoiceOrigin } | null>(null);
 const voiceBadgeText = computed(() => {
   const b = voiceBadge.value;
   return b ? t(`voice.${b.source}`) + (b.origin ? ` · ${t(`voice.${b.origin}`)}` : '') : ''; // "Browser cache · Saved file": it was fetched ahead from a saved file
 });
-let voiceBadgeTimer: ReturnType<typeof setTimeout> | undefined;
 watch(voiceSource, (heard) => {
-  if (!heard) return;
-  voiceBadge.value = { source: heard.source, origin: heard.origin };
-  clearTimeout(voiceBadgeTimer);
-  voiceBadgeTimer = setTimeout(() => (voiceBadge.value = null), 2500);
+  if (heard) voiceBadge.value = { source: heard.source, origin: heard.origin };
 });
+watch(speaking, (isSpeaking) => !isSpeaking && (voiceBadge.value = null)); // the word is finished: the button turns back to its usual colour
 
 function speak(): void {
   const c = card.value;
@@ -320,7 +329,8 @@ function autoSpeakWord(): Promise<void> {
         speaking.value = false;
         resolve();
       },
-      s.deckName
+      s.deckName,
+      settings.autoSaveVoice
     );
   });
 }
@@ -347,7 +357,7 @@ async function autoRun(token: number): Promise<void> {
   let left = s.queue.length;
   while (token === autoToken && left > 0 && !s.finished) {
     const upcoming = s.queue[1]; // the next word's voice is fetched while this card is on screen
-    if (settings.autoSpeak && upcoming?.lang === 'ja') prefetchSpeech(upcoming.reading || upcoming.headword, s.deckName);
+    if (settings.autoSpeak && upcoming?.lang === 'ja') prefetchSpeech(upcoming.reading || upcoming.headword, s.deckName, settings.autoSaveVoice);
     if (s.flipped) s.flip(); // the front of the card (the session itself, not flip(): that one would stop the auto play)
     detailOpen.value = false;
     await Promise.all([autoPause(settings.autoFrontSec), s.reverse ? Promise.resolve() : autoSpeakWord()]);
@@ -569,14 +579,13 @@ onUnmounted(() => {
               <div v-if="card.reading && s.showReading" class="reading rd">{{ card.reading }}</div>
             </template>
           </template>
-          <!-- auto play: a small button right under the last line of the card (a tap on it must not flip the card) -->
-          <v-btn class="autobtn" :class="{ playing: autoplay }" size="x-small" variant="flat" color="primary" :prepend-icon="autoplay ? 'mdi-pause' : 'mdi-play'" :aria-label="autoplay ? t('auto.pause') : t('auto.play')" :aria-pressed="autoplay" :data-tip="t('tip.auto')" @click.stop="autoToggle"><span class="lbl">{{ autoplay ? t('auto.pauseShort') : t('auto.play') }}</span></v-btn>
+          <!-- read aloud: right under the last line of the card, in the middle (a tap on it must not flip the card) -->
+          <v-btn v-if="canSpeakNow" class="tool3d speakc" :class="speaking && voiceBadge ? 'src-' + voiceBadge.source : ''" :data-voice="speaking && voiceBadge ? voiceBadgeText : undefined" :title="speaking && voiceBadge ? voiceBadgeText : undefined" variant="text" color="primary" :icon="speaking ? 'mdi-stop' : 'mdi-volume-high'" :aria-label="speaking ? t('study.stop') : t('study.read')" :data-tip="t('study.read')" @click.stop="speak" />
           </div>
           </Transition>
 
           <!-- reading toggle at the bottom left, speaker at the bottom right -->
           <div class="tools">
-            <span v-if="voiceBadge" class="srcbadge" :class="'src-' + voiceBadge.source" data-testid="voice-source" role="status">{{ voiceBadgeText }}</span>
             <!-- the eye fans out three small round options around itself: hiragana, Vietnamese meaning, Hán Việt (lit = shown) -->
             <div class="fan" :class="{ open: fanOpen }">
               <button
@@ -596,15 +605,22 @@ onUnmounted(() => {
                 <span class="marks"><span v-for="o in fanOptions" :key="o.key" class="mk" :class="['k-' + o.key, { on: o.on }]">{{ o.glyph }}</span></span>
               </v-btn>
             </div>
-            <v-btn
-              v-if="canSpeakNow"
-              :icon="speaking ? 'mdi-stop' : 'mdi-volume-high'"
-              variant="text"
-              color="primary"
-              class="tool3d speak"
-              :aria-label="speaking ? t('study.stop') : t('study.read')"
-              @click.stop="speak"
-            />
+            <!-- auto play options: auto play, read aloud while auto playing, keep the voice files -->
+            <div class="fan speakfan" :class="{ open: audioOpen }">
+              <button
+                v-for="(o, idx) in audioOptions"
+                :key="o.key"
+                type="button"
+                class="fanopt"
+                :class="['a-' + o.key, { on: o.on }]"
+                :style="{ '--dx': o.dx + 'px', '--dy': o.dy + 'px', '--i': idx, '--n': audioOptions.length }"
+                :title="o.label"
+                :aria-label="o.label"
+                :aria-pressed="o.on"
+                @click.stop="o.run()"
+              ><v-icon :icon="o.icon" size="18" /></button>
+              <v-btn variant="text" color="primary" class="tool3d speak" :class="{ partial: !audioAllOn }" :icon="autoplay ? 'mdi-pause' : 'mdi-play-box-multiple-outline'" :aria-label="t('auto.menu')" :aria-expanded="audioOpen" @click.stop="audioOpen = !audioOpen" />
+            </div>
           </div>
         </div>
 
@@ -811,6 +827,7 @@ onUnmounted(() => {
   align-items: center;
   padding: 0 7px;
   font-size: var(--s-counter);
+  font-style: var(--i-counter);
   font-weight: 700;
   color: var(--c-counter, var(--leaf));
   background: none;
@@ -847,29 +864,6 @@ onUnmounted(() => {
     margin-inline: 0;
   }
 }
-.autobtn.v-btn {
-  margin-top: 12px;
-  height: 24px !important;
-  min-width: 0;
-  padding: 0 10px;
-  font-size: 0.7rem;
-  letter-spacing: 0.02em;
-  text-transform: none;
-}
-@media (max-width: 560px) {
-  /* phone: icon only (the shared .lbl rule hides the text); the icon is centred in a round-ish button */
-  .autobtn.v-btn {
-    min-width: 32px;
-    padding: 0 8px;
-  }
-  .autobtn.v-btn :deep(.v-btn__prepend) {
-    margin-inline: 0;
-  }
-}
-.autobtn.v-btn :deep(.v-icon) {
-  font-size: 14px;
-}
-.autobtn.playing.v-btn:not(.v-btn--disabled),
 .act.playing.v-btn:not(.v-btn--disabled) {
   background: #9be35f !important; /* running: the lighter green, like a button under the mouse */
   color: #4e342e !important;
@@ -924,40 +918,26 @@ onUnmounted(() => {
   align-items: center;
   pointer-events: none; /* the empty middle of the strip must not swallow taps meant for the card */
 }
-.srcbadge {
-  position: absolute;
-  right: 0;
-  bottom: 44px;
-  max-width: 70%;
-  padding: 2px 9px;
-  border-radius: 999px;
-  font-size: 0.68rem;
-  font-weight: 700;
-  line-height: 1.5;
-  color: #fff;
-  background: #5a8f3c; /* free and instant: browser cache, saved file */
-  pointer-events: none;
-  animation: srcfade 2.5s ease forwards;
+.speakc.v-btn:not(.v-btn--disabled)[class*='src-'] {
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.25);
 }
-.srcbadge.src-server-memory,
-.srcbadge.src-server-file,
-.srcbadge.src-server {
-  background: #2f80d1; /* from the server, no charge */
+.speakc.src-browser.v-btn:not(.v-btn--disabled),
+.speakc.src-browser-other.v-btn:not(.v-btn--disabled) {
+  background: #8e4ec6 !important; /* the browser's own cache */
 }
-.srcbadge.src-elevenlabs {
-  background: #ef8a17; /* a paid ElevenLabs call */
+.speakc.src-file.v-btn:not(.v-btn--disabled) {
+  background: #1a9c9c !important; /* a voice file shipped with the app */
 }
-.srcbadge.src-device {
-  background: #7a7a7a; /* the phone's own voice */
+.speakc.src-server-memory.v-btn:not(.v-btn--disabled),
+.speakc.src-server-file.v-btn:not(.v-btn--disabled),
+.speakc.src-server.v-btn:not(.v-btn--disabled) {
+  background: #2f80d1 !important; /* from the server, no charge */
 }
-@keyframes srcfade {
-  0%,
-  70% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0;
-  }
+.speakc.src-elevenlabs.v-btn:not(.v-btn--disabled) {
+  background: #ef8a17 !important; /* a paid ElevenLabs call */
+}
+.speakc.src-device.v-btn:not(.v-btn--disabled) {
+  background: #7a7a7a !important; /* the phone's own voice */
 }
 .tools > * {
   pointer-events: auto;
@@ -1061,6 +1041,27 @@ onUnmounted(() => {
   --oc: #8e4ec6;
   --od: #6a3499;
 }
+.fanopt.a-sound {
+  --oc: #ef8a17;
+  --od: #b8600f;
+}
+.fanopt.a-save {
+  --oc: #8e4ec6;
+  --od: #6a3499;
+}
+.speakc.v-btn {
+  display: flex;
+  margin: 10px auto 0;
+  width: 40px !important;
+  height: 34px !important;
+}
+.speakc.v-btn .v-icon {
+  font-size: 22px;
+}
+.tools .speak.partial.v-btn:not(.v-btn--disabled) {
+  background: #ef8a17 !important; /* not every auto play option is on: an orange button instead of the green one */
+  box-shadow: 0 3px 0 #b8600f;
+}
 .fanopt.on {
   background: var(--oc, rgb(var(--v-theme-primary))); /* lit = shown on the card */
   border-style: solid;
@@ -1101,21 +1102,24 @@ onUnmounted(() => {
     font-size: 1rem;
   }
 }
-.tools .speak {
+.tools .speakfan {
   margin-left: auto; /* stays on the right even when the reading toggle is not shown */
 }
 .word {
   font-size: var(--s-word);
+  font-style: var(--i-word);
   line-height: 1.2;
   color: var(--c-word, var(--headword)); /* the headword is red, as on LCT's lookup card */
   font-weight: 700;
 }
 .word.small {
   font-size: var(--s-answerWord);
+  font-style: var(--i-answerWord);
   color: var(--c-answerWord, var(--headword));
 }
 .reading {
   font-size: var(--s-reading);
+  font-style: var(--i-reading);
   color: var(--c-reading, var(--rd));
   margin-top: 2px;
 }
@@ -1127,6 +1131,7 @@ onUnmounted(() => {
 }
 .meaning {
   font-size: var(--s-meaning);
+  font-style: var(--i-meaning);
   color: var(--c-meaning, inherit);
   font-weight: 500;
   line-height: 1.4;
@@ -1134,6 +1139,7 @@ onUnmounted(() => {
 }
 .hanviet {
   font-size: var(--s-hanviet);
+  font-style: var(--i-hanviet);
   color: var(--c-hanviet, var(--hv));
   font-weight: 700;
   letter-spacing: 0.12em;
@@ -1144,13 +1150,14 @@ onUnmounted(() => {
 .english {
   margin-top: 4px;
   font-size: var(--s-english);
+  font-style: var(--i-english);
   color: var(--c-english, inherit);
-  font-style: italic;
   opacity: 0.8;
 }
 .meaning.big {
   font-family: var(--font-jp);
   font-size: var(--s-question);
+  font-style: var(--i-question);
   color: var(--c-question, inherit);
 }
 /* Front and back swap with a quick cross-fade (no sliding, no 3D turning, which looked confusing). */
@@ -1192,6 +1199,12 @@ onUnmounted(() => {
   min-height: 0;
   overflow-y: auto; /* the sheet never cuts content: it scrolls only if the card has more than fits */
 }
+/* On a wide screen the details sit in a centred column (like the front of the card) instead of hugging the left edge. */
+.detail > * {
+  width: 100%;
+  max-width: 720px;
+  margin-inline: auto;
+}
 .back-head {
   padding-bottom: 10px;
   border-bottom: 1px solid var(--paper-edge);
@@ -1217,34 +1230,41 @@ onUnmounted(() => {
 }
 .bw {
   font-size: var(--s-word);
+  font-style: var(--i-word);
   line-height: 1.2;
   color: var(--c-word, var(--headword));
   font-weight: 700;
 }
 .br {
   font-size: var(--s-backReading);
+  font-style: var(--i-backReading);
   color: var(--c-backReading, var(--rd));
   opacity: 0.9;
 }
 .bhv {
   margin-top: 4px;
   font-size: var(--s-backHanviet);
+  font-style: var(--i-backHanviet);
   color: var(--c-backHanviet, var(--hv));
 }
 .label {
   font-size: var(--s-label);
+  font-style: var(--i-label);
   color: var(--c-label, var(--leaf));
 }
 .den {
   font-size: var(--s-detailEnglish);
+  font-style: var(--i-detailEnglish);
   color: var(--c-detailEnglish, inherit);
 }
 .posv {
   font-size: var(--s-pos);
+  font-style: var(--i-pos);
   color: var(--c-pos, inherit);
 }
 .pitchv {
   font-size: var(--s-pitchLabel);
+  font-style: var(--i-pitchLabel);
   color: var(--c-pitchLabel, inherit);
 }
 .notes-toggle {
@@ -1259,18 +1279,20 @@ onUnmounted(() => {
 }
 .example {
   font-size: var(--s-example);
+  font-style: var(--i-example);
   color: var(--c-example, var(--jp));
   line-height: 1.5;
 }
 .exvi {
   font-size: var(--s-exampleVi);
+  font-style: var(--i-exampleVi);
   color: var(--c-exampleVi, inherit);
-  font-style: italic;
   opacity: 0.8;
 }
 .bm {
   margin-top: 2px;
   font-size: var(--s-backMeaning);
+  font-style: var(--i-backMeaning);
   color: var(--c-backMeaning, inherit);
   font-weight: 600;
   white-space: pre-line;
@@ -1294,6 +1316,7 @@ onUnmounted(() => {
 }
 .noteline {
   font-size: var(--s-notes);
+  font-style: var(--i-notes);
   color: var(--c-notes, inherit);
 }
 .noteline + .noteline {
@@ -1328,6 +1351,7 @@ onUnmounted(() => {
   padding: 2px 8px;
   text-align: center;
   font-size: var(--s-kanjiChar);
+  font-style: var(--i-kanjiChar);
   line-height: 1.2;
   background: rgb(var(--v-theme-surface));
   border: 1px solid var(--paper-edge);
@@ -1338,15 +1362,18 @@ onUnmounted(() => {
 }
 .hvp .hm {
   font-size: var(--s-kanjiMeaning);
+  font-style: var(--i-kanjiMeaning);
   color: var(--c-kanjiMeaning, inherit);
   opacity: 0.85;
 }
 .hvp .hv {
   font-size: var(--s-kanjiSound);
+  font-style: var(--i-kanjiSound);
   color: var(--c-kanjiSound, var(--hv));
 }
 .related {
   font-size: var(--s-related);
+  font-style: var(--i-related);
   color: var(--c-related, var(--forest));
   font-weight: 700;
   text-decoration: underline;
