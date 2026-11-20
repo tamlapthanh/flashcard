@@ -1,6 +1,9 @@
 {
  "version": 1,
  "decks": {
+  "Default": {
+   "せっちりつ": "Default/せっちりつ.mp3"
+  },
   "Shigoto-no-nihongo-it-tagged": {
    "あきはばら": "Shigoto-no-nihongo-it-tagged/あきはばら.mp3",
    "あたたかい": "Shigoto-no-nihongo-it-tagged/あたたかい.mp3",
