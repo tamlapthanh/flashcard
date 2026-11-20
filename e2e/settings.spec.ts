@@ -162,7 +162,7 @@ test.describe('card text size and colour editor', () => {
   test('the sample has what the study screen has: menu, Auto play, the eye marks, and labelled details on the back', async ({ page }) => {
     await expect(page.locator('.ced .top .gbtn')).toHaveCount(5); // menu + again / learned / skip / list
     await expect(page.locator('.ced .abtn')).toBeVisible();
-    await expect(page.locator('.ced .tools .mk')).toHaveText(['あ', 'Vi', 'En', '漢']);
+    await expect(page.locator('.ced .tools .mk')).toHaveText(['あ', 'V', 'E', '漢']);
     await page.locator('.ced .chips .chip').first().click(); // Front -> Back
     await expect(page.locator('.ced .detail .lbl')).toHaveCount(7); // Sino-Viet, part of speech, English, example, pitch, notes, related
   });

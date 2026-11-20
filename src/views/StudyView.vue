@@ -45,8 +45,8 @@ const speaking = ref(false);
 const fanOpen = ref(false);
 const fanOptions = computed(() => [
   { key: 'reading', glyph: 'あ', label: t('show.reading'), on: s.showReading, dx: 0, dy: -62, toggle: () => (settings.showReading = s.showReading = !s.showReading) },
-  { key: 'meaning', glyph: 'Vi', label: t('show.meaning'), on: settings.showMeaning, dx: 31, dy: -54, toggle: () => (settings.showMeaning = !settings.showMeaning) },
-  { key: 'english', glyph: 'En', label: t('show.english'), on: settings.showEnglish, dx: 54, dy: -31, toggle: () => (settings.showEnglish = !settings.showEnglish) },
+  { key: 'meaning', glyph: 'V', full: 'Vi', label: t('show.meaning'), on: settings.showMeaning, dx: 31, dy: -54, toggle: () => (settings.showMeaning = !settings.showMeaning) },
+  { key: 'english', glyph: 'E', full: 'En', label: t('show.english'), on: settings.showEnglish, dx: 54, dy: -31, toggle: () => (settings.showEnglish = !settings.showEnglish) },
   { key: 'hanviet', glyph: '漢', label: t('show.hanviet'), on: settings.showHanViet, dx: 62, dy: 0, toggle: () => (settings.showHanViet = !settings.showHanViet) }
 ]);
 const foldFan = (): void => {
@@ -599,7 +599,7 @@ onUnmounted(() => {
                 :aria-label="o.label"
                 :aria-pressed="o.on"
                 @click.stop="o.toggle()"
-              >{{ o.glyph }}</button>
+              >{{ 'full' in o ? o.full : o.glyph }}</button>
               <!-- the button itself shows the four options as tiny marks: lit = shown on the card, dim = hidden -->
               <v-btn variant="text" color="primary" class="tool3d eye4" :aria-label="t('show.title')" :aria-expanded="fanOpen" @click.stop="fanOpen = !fanOpen">
                 <span class="marks"><span v-for="o in fanOptions" :key="o.key" class="mk" :class="['k-' + o.key, { on: o.on }]">{{ o.glyph }}</span></span>
@@ -618,7 +618,7 @@ onUnmounted(() => {
                 :aria-label="o.label"
                 :aria-pressed="o.on"
                 @click.stop="o.run()"
-              ><v-icon :icon="o.icon" size="18" /></button>
+              ><v-icon :icon="o.icon" /></button>
               <v-btn variant="text" color="primary" class="tool3d speak" :class="{ partial: !audioAllOn }" :icon="autoplay ? 'mdi-pause' : 'mdi-play-box-multiple-outline'" :aria-label="t('auto.menu')" :aria-expanded="audioOpen" @click.stop="audioOpen = !audioOpen" />
             </div>
           </div>
@@ -1049,14 +1049,30 @@ onUnmounted(() => {
   --oc: #8e4ec6;
   --od: #6a3499;
 }
+/* the read-aloud button under the card: the phone size of the other card buttons, a little larger with a mouse */
 .speakc.v-btn {
   display: flex;
   margin: 10px auto 0;
-  width: 40px !important;
-  height: 34px !important;
+  width: 34px !important;
+  height: 28px !important;
 }
 .speakc.v-btn .v-icon {
-  font-size: 22px;
+  font-size: 18px;
+}
+.fanopt .v-icon {
+  font-size: 16px; /* icons inside the fanned-out options: phone */
+}
+@media (hover: hover) and (pointer: fine) {
+  .speakc.v-btn {
+    width: 52px !important;
+    height: 43px !important;
+  }
+  .speakc.v-btn .v-icon {
+    font-size: 25px;
+  }
+  .fanopt .v-icon {
+    font-size: 24px; /* web: the options are larger too (they sit in 40px circles) */
+  }
 }
 .tools .speak.partial.v-btn:not(.v-btn--disabled) {
   background: #ef8a17 !important; /* not every auto play option is on: an orange button instead of the green one */

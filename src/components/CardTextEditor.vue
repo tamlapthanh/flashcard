@@ -65,8 +65,8 @@ onBeforeUnmount(() => {
 /* The four marks of the eye button, in the colours of the real one (lit = shown on the card). */
 const marks = computed(() => [
   { key: 'reading', glyph: 'あ', on: settings.showReading },
-  { key: 'meaning', glyph: 'Vi', on: settings.showMeaning },
-  { key: 'english', glyph: 'En', on: settings.showEnglish },
+  { key: 'meaning', glyph: 'V', on: settings.showMeaning },
+  { key: 'english', glyph: 'E', on: settings.showEnglish },
   { key: 'hanviet', glyph: '漢', on: settings.showHanViet }
 ]);
 /* 香り (かおり), pitch [0] heiban: the sample's pitch line. */
