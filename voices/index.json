@@ -4,6 +4,17 @@
   "Default": {
    "せっちりつ": "Default/せっちりつ.mp3"
   },
+  "JLPT N3": {
+   "いのち": "JLPT N3/いのち.mp3",
+   "おうだん": "JLPT N3/おうだん.mp3",
+   "きおん": "JLPT N3/きおん.mp3",
+   "さく": "JLPT N3/さく.mp3",
+   "じゅうたい": "JLPT N3/じゅうたい.mp3",
+   "せいふく": "JLPT N3/せいふく.mp3",
+   "つうきん": "JLPT N3/つうきん.mp3",
+   "ながす": "JLPT N3/ながす.mp3",
+   "ふくざつ": "JLPT N3/ふくざつ.mp3"
+  },
   "Shigoto-no-nihongo-it-tagged": {
    "あきはばら": "Shigoto-no-nihongo-it-tagged/あきはばら.mp3",
    "あたたかい": "Shigoto-no-nihongo-it-tagged/あたたかい.mp3",
