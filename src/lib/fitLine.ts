@@ -3,6 +3,8 @@ import type { Directive } from 'vue';
 /*
  * v-fit-line (mobile only): the text stays on ONE line, whatever size is set for it. When it is wider than the card it is shrunk (zoomed out)
  * just enough to fit; when there is room it keeps the size that was set. Measured again when the word, the size or the window changes.
+ * Used on the word, the Sino-Vietnamese line, the Vietnamese meaning and the English meaning. A text that has line breaks of its own
+ * (the meaning keeps them: white-space pre-line) keeps those breaks, and the widest of its lines decides the size.
  */
 const watchers = new WeakMap<HTMLElement, ResizeObserver>();
 
@@ -11,17 +13,16 @@ const desktop = (): boolean => typeof window !== 'undefined' && window.matchMedi
 
 function fit(el: HTMLElement): void {
   el.style.zoom = ''; // back to the size that was set, then measure
-  if (desktop()) {
-    el.style.whiteSpace = '';
-    return;
-  }
-  el.style.whiteSpace = 'nowrap';
+  el.style.whiteSpace = ''; // back to the stylesheet's own value (read below)
+  if (desktop()) return;
+  // a text whose style keeps its own line breaks (pre-line) must keep them: `pre` does that without wrapping; the rest is `nowrap`
+  el.style.whiteSpace = getComputedStyle(el).whiteSpace.startsWith('pre') ? 'pre' : 'nowrap';
   const area = el.closest<HTMLElement>('.wordarea') ?? el.parentElement;
   if (!area) return;
   const cs = getComputedStyle(area);
   const room = area.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
   const need = Math.max(el.scrollWidth, el.getBoundingClientRect().width);
-  if (room > 0 && need > room) el.style.zoom = String(Math.floor((room / need) * 100) / 100);
+  if (room > 0 && need > room) el.style.zoom = String(Math.max(0.05, Math.floor((room / need) * 100) / 100)); // never 0: a very long line at the biggest size would vanish
 }
 
 export const vFitLine: Directive<HTMLElement> = {

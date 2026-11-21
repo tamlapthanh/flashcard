@@ -567,16 +567,16 @@ onUnmounted(() => {
             <template v-if="settings.showMeaning || hanvietOn || englishOn">
               <div class="sep" />
               <!-- Sino-Vietnamese right above the Vietnamese meaning; each can be switched off in Settings -->
-              <div v-if="hanvietOn" class="hv hanviet top">{{ card.hanviet!.toUpperCase() }}</div>
-              <div v-if="settings.showMeaning" class="meaning">{{ card.meaning }}</div>
-              <div v-if="englishOn" class="english">{{ card.english }}</div>
+              <div v-if="hanvietOn" v-fit-line class="hv hanviet top">{{ card.hanviet!.toUpperCase() }}</div>
+              <div v-if="settings.showMeaning" v-fit-line class="meaning">{{ card.meaning }}</div>
+              <div v-if="englishOn" v-fit-line class="english">{{ card.english }}</div>
             </template>
           </template>
           <template v-else>
-            <div v-if="hanvietOn" class="hv hanviet top">{{ card.hanviet!.toUpperCase() }}</div>
+            <div v-if="hanvietOn" v-fit-line class="hv hanviet top">{{ card.hanviet!.toUpperCase() }}</div>
             <!-- in reverse mode the meaning is the question, so it is always shown -->
-            <div class="meaning" :class="{ big: !s.flipped }">{{ card.meaning }}</div>
-            <div v-if="englishOn" class="english">{{ card.english }}</div>
+            <div v-fit-line class="meaning" :class="{ big: !s.flipped }">{{ card.meaning }}</div>
+            <div v-if="englishOn" v-fit-line class="english">{{ card.english }}</div>
             <template v-if="s.flipped">
               <div class="sep" />
               <div v-fit-line class="word jp small">{{ card.headword }}</div>
