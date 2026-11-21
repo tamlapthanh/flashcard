@@ -2,10 +2,16 @@ import type { APIRequestContext, Page } from '@playwright/test';
 import { expect, openSignedIn, richestDeck, startStudy, test } from './fixtures';
 
 /*
- * Handwriting practice in the kanji sheet: the strokes are drawn with the real mouse (pointer events) along the faint outline
- * of the kanji, so the check runs on the real stroke data of the local dictionary.
+ * Handwriting practice: the pencil button of the kanji sheet opens a screen of its own (like a component opened from the graph) with
+ * the question (sound, meaning, readings, parts) and a big drawing area, but not the kanji itself. The strokes are drawn with the real
+ * mouse (pointer events), along the stroke data the player of the same kanji had just drawn, so the check runs on the real data.
  */
-async function openPractice(page: Page, request: APIRequestContext): Promise<number> {
+interface Opened {
+  literal: string; // the kanji, read before the practice screen hides it
+  paths: string[]; // its strokes (SVG paths in the 109 x 109 box)
+}
+
+async function openPractice(page: Page, request: APIRequestContext): Promise<Opened> {
   const deck = await richestDeck(request, 'alice');
   test.skip(!deck || deck.counts.new + deck.counts.learning === 0, 'no new/learning cards in the local data');
   await openSignedIn(page, request, 'alice');
@@ -20,24 +26,32 @@ async function openPractice(page: Page, request: APIRequestContext): Promise<num
   test.skip(!found, 'no card with kanji in the first 20 cards of the local data');
   await rows.first().locator('button.k').click();
   await expect(page.locator('.kanji')).toBeVisible();
+  const literal = ((await page.locator('.kanji .glyph').first().textContent()) ?? '').trim();
+  const paths = await page.locator('.kanji .canvas svg.big path.ghost').evaluateAll((els) => els.map((e) => e.getAttribute('d') ?? ''));
   await page.getByRole('button', { name: 'Practice writing' }).click();
-  const prompt = page.locator('.practice .count');
-  await expect(prompt).toHaveText(/Write stroke 1 of \d+/);
-  return Number(/of (\d+)/.exec((await prompt.textContent()) ?? '')![1]);
+  await expect(page.locator('.kp')).toBeVisible();
+  await expect(page.locator('.practice .count')).toHaveText(`Write stroke 1 of ${paths.length}`);
+  return { literal, paths };
 }
 
-/* Draws stroke `index` with the mouse along the faint outline (or backwards), 30 steps. */
-async function drawStroke(page: Page, index: number, backwards = false): Promise<void> {
-  const pts = await page.evaluate(({ index }) => {
-    const svg = document.querySelector('.practice svg')!;
-    const path = svg.querySelectorAll('path.stroke.ghost')[index] as SVGPathElement;
+/* Draws the stroke `d` with the mouse along its line (or backwards), 30 steps, on the drawing area. */
+async function drawStroke(page: Page, d: string, backwards = false): Promise<void> {
+  const pts = await page.evaluate(({ d }) => {
+    const ns = 'http://www.w3.org/2000/svg';
+    const tmp = document.createElementNS(ns, 'svg');
+    const path = document.createElementNS(ns, 'path');
+    path.setAttribute('d', d);
+    tmp.appendChild(path);
+    document.body.appendChild(tmp); // a path has a length only inside the document
     const len = path.getTotalLength();
-    const box = svg.getBoundingClientRect();
-    return Array.from({ length: 31 }, (_, i) => {
+    const box = document.querySelector('.practice svg.big')!.getBoundingClientRect();
+    const out = Array.from({ length: 31 }, (_, i) => {
       const q = path.getPointAtLength((len * i) / 30);
       return { x: box.left + (q.x / 109) * box.width, y: box.top + (q.y / 109) * box.height };
     });
-  }, { index });
+    tmp.remove();
+    return out;
+  }, { d });
   if (backwards) pts.reverse();
   await page.mouse.move(pts[0]!.x, pts[0]!.y);
   await page.mouse.down();
@@ -46,81 +60,119 @@ async function drawStroke(page: Page, index: number, backwards = false): Promise
 }
 
 test.describe('kanji handwriting practice', () => {
-  test('a stroke drawn right moves on to the next one; the whole kanji ends with "Done"', async ({ page, request }) => {
-    const strokes = await openPractice(page, request);
-    const prompt = page.locator('.practice .count');
-    for (let i = 0; i < strokes; i++) {
-      await drawStroke(page, i);
-      if (i < strokes - 1) await expect(prompt).toHaveText(`Write stroke ${i + 2} of ${strokes}`);
+  test('the pencil opens a screen of its own: the question is there, the kanji is not, and Back returns to the same kanji', async ({ page, request }) => {
+    const { literal, paths } = await openPractice(page, request);
+    const screen = page.locator('.kp');
+    await expect(screen).not.toContainText(literal); // the answer is not on screen
+    await expect(screen.locator('.glyph')).toHaveText('?');
+    // the parts (Memory hint) are a help the user asks for: folded at first
+    const toggle = screen.getByRole('button', { name: 'Memory hint' });
+    if (await toggle.count()) {
+      await expect(screen.locator('.part')).toHaveCount(0);
+      await toggle.click();
+      await expect(screen.locator('.part').first()).toBeVisible();
+      await toggle.click();
+      await expect(screen.locator('.part')).toHaveCount(0);
     }
-    // finished with no wrong stroke: shown by a red seal and icons, not by a sentence (the sentence is only for screen readers)
+    await expect(page.locator('.kanji')).toHaveCount(0); // the kanji block (with its big kanji, formula and graph) is gone
+    await expect(page.locator('.practice svg.big')).toBeVisible();
+    const box = (await page.locator('.practice svg.big').boundingBox())!;
+    expect(box.width).toBeGreaterThan(220); // a big drawing area, not the 210px column of the player
+    expect(paths.length).toBeGreaterThan(0);
+
+    await page.getByRole('button', { name: 'Back' }).click();
+    await expect(page.locator('.kp')).toHaveCount(0);
+    await expect(page.locator('.kanji .glyph').first()).toHaveText(literal);
+    await expect(page.getByRole('button', { name: 'Practice writing' })).toBeVisible();
+  });
+
+  test('on a wide window the question is not squeezed: the sheet is narrower than the window, and the layout follows the sheet', async ({ page, request }) => {
+    await page.setViewportSize({ width: 1207, height: 990 });
+    await openPractice(page, request);
+    const cue = (await page.locator('.cue').boundingBox())!;
+    const info = (await page.locator('.cue .info').boundingBox())!;
+    expect(cue.width).toBeGreaterThan(300); // it once got ~60px, with the meaning written one letter per line
+    expect(info.width).toBeGreaterThan(150);
+    expect(info.height).toBeLessThan(120);
+    const board = (await page.locator('.practice svg.big').boundingBox())!;
+    expect(board.width).toBeGreaterThan(300);
+  });
+
+  test('written from memory, all strokes right: the kanji appears and the seal is 合; the sentence is only for screen readers', async ({ page, request }) => {
+    const { literal, paths } = await openPractice(page, request);
+    const prompt = page.locator('.practice .count');
+    for (let i = 0; i < paths.length; i++) {
+      await drawStroke(page, paths[i]!);
+      if (i < paths.length - 1) await expect(prompt).toHaveText(`Write stroke ${i + 2} of ${paths.length}`);
+    }
     await expect(page.locator('.practice .hanko')).toHaveText('合');
     await expect(page.locator('.practice .count .mdi-check-circle')).toBeVisible();
     await expect(page.locator('.practice .count .mdi-close-circle')).toHaveCount(0);
     await expect(page.locator('.practice .sr')).toHaveText('Done, no wrong stroke!');
-    await expect(page.locator('.practice svg path.stroke:not(.ghost)')).toHaveCount(strokes); // every stroke is now drawn clean
+    await expect(page.locator('.kp .glyph')).toHaveText(literal); // revealed
+    await expect(page.locator('.practice svg path.stroke:not(.ghost)')).toHaveCount(paths.length); // every stroke drawn clean
   });
 
-  test('a stroke drawn backwards is refused with the reason, and the same stroke is still expected', async ({ page, request }) => {
-    const strokes = await openPractice(page, request);
-    const prompt = page.locator('.practice .count');
-    // the first stroke of a kanji can be a short dot: judged by its place only, so take a kanji where it can go backwards
-    const length = await page.evaluate(() => (document.querySelector('.practice svg path.stroke.ghost') as SVGPathElement).getTotalLength());
-    test.skip(length < 30, 'the first stroke of this kanji is too short to have a direction');
-    await drawStroke(page, 0, true);
+  test('looking at the outline reveals the kanji and the seal is only 済', async ({ page, request }) => {
+    const { literal, paths } = await openPractice(page, request);
+    await page.getByRole('button', { name: 'Show or hide the faint outline' }).click();
+    await expect(page.locator('.practice svg path.stroke.ghost')).toHaveCount(paths.length);
+    await expect(page.locator('.kp .glyph')).toHaveText(literal);
+    for (const d of paths) await drawStroke(page, d);
+    await expect(page.locator('.practice .hanko')).toHaveText('済');
+    // outline off again, and starting again: back to writing from memory, the kanji hidden
+    await page.getByRole('button', { name: 'Start again' }).click();
+    await expect(page.locator('.practice svg path.stroke.ghost')).toHaveCount(0);
+    await expect(page.locator('.kp .glyph')).toHaveText('?');
+  });
+
+  test('a stroke drawn backwards: refused with the reason; the right stroke is shown from the second wrong try; then the right way is accepted', async ({ page, request }) => {
+    const { paths } = await openPractice(page, request);
+    // the first stroke long enough to have a direction (a dot or a tick has none); the strokes before it are written right
+    const lengths = await page.evaluate((all) => {
+      const ns = 'http://www.w3.org/2000/svg';
+      const svg = document.createElementNS(ns, 'svg');
+      document.body.appendChild(svg);
+      const out = all.map((d) => {
+        const path = document.createElementNS(ns, 'path');
+        path.setAttribute('d', d);
+        svg.appendChild(path);
+        return path.getTotalLength();
+      });
+      svg.remove();
+      return out;
+    }, paths);
+    const k = lengths.findIndex((length) => length >= 30);
+    test.skip(k < 0, 'no stroke of this kanji is long enough to have a direction');
+    for (let i = 0; i < k; i++) await drawStroke(page, paths[i]!);
+    await expect(page.locator('.practice .count')).toHaveText(`Write stroke ${k + 1} of ${paths.length}`);
+
+    const hint = page.locator('.practice svg path.hintp');
+    await drawStroke(page, paths[k]!, true);
     await expect(page.locator('.practice .why')).toHaveText(/Wrong direction/);
-    await expect(prompt).toHaveText(`Write stroke 1 of ${strokes}`);
-    // what the user sees: the frame goes red, the right stroke is drawn in green with its number, a start dot and an arrow
     await expect(page.locator('.practice svg.big')).toHaveClass(/bad/);
-    await expect(page.locator('.practice svg path.hintp')).toHaveCount(1);
+    await expect(hint).toHaveCount(0); // writing from memory: the first wrong try gets no help yet
+    await page.waitForTimeout(700);
+    await drawStroke(page, paths[k]!, true);
+    // the second: the right stroke in green with its number, a start dot and an arrow
+    await expect(hint).toHaveCount(1);
     await expect(page.locator('.practice svg circle.startdot')).toHaveCount(1);
     await expect(page.locator('.practice svg polygon.arrow')).toHaveCount(1);
-    await expect(page.locator('.practice svg text.num')).toHaveText('1');
-    await drawStroke(page, 0); // then the right way: it is accepted
+    await expect(page.locator('.practice svg text.num')).toHaveText(String(k + 1));
+    await expect(page.locator('.practice .count')).toHaveText(`Write stroke ${k + 1} of ${paths.length}`);
+    await drawStroke(page, paths[k]!); // the right way
     await expect(page.locator('.practice .why')).toHaveText('');
-    if (strokes > 1) await expect(prompt).toHaveText(`Write stroke 2 of ${strokes}`);
+    if (k + 1 < paths.length) await expect(page.locator('.practice .count')).toHaveText(`Write stroke ${k + 2} of ${paths.length}`);
   });
 
-  test('writing from memory (outline off): the right stroke is shown from the second wrong try, not the first', async ({ page, request }) => {
-    await openPractice(page, request);
-    await page.getByRole('button', { name: 'Show or hide the faint outline' }).click();
-    const hint = page.locator('.practice svg path.hintp');
-    // a big circle in the middle is no stroke of any kanji
-    const scribble = async (): Promise<void> => {
-      const box = (await page.locator('.practice svg.big').boundingBox())!;
-      const at = (a: number) => ({ x: box.x + box.width * (0.5 + 0.35 * Math.cos(a)), y: box.y + box.height * (0.5 + 0.35 * Math.sin(a)) });
-      await page.mouse.move(at(0).x, at(0).y);
-      await page.mouse.down();
-      for (let i = 1; i <= 24; i++) await page.mouse.move(at((i / 24) * 6.28).x, at((i / 24) * 6.28).y);
-      await page.mouse.up();
-    };
-    await scribble();
-    await expect(page.locator('.practice .why')).not.toHaveText('');
-    await expect(hint).toHaveCount(0); // once: not yet
-    await page.waitForTimeout(700);
-    await scribble();
-    await expect(hint).toHaveCount(1); // twice: the right stroke is shown
-  });
-
-  test('the buttons: hide the outline, show the next stroke, start again, and go back to the player', async ({ page, request }) => {
-    const strokes = await openPractice(page, request);
-    const ghosts = page.locator('.practice svg path.stroke.ghost');
-    await expect(ghosts).toHaveCount(strokes);
-    await page.getByRole('button', { name: 'Show or hide the faint outline' }).click();
-    await expect(ghosts).toHaveCount(0);
-
+  test('the buttons: show the next stroke (and it is no longer entirely from memory), start again', async ({ page, request }) => {
+    const { paths } = await openPractice(page, request);
     await page.getByRole('button', { name: 'Show the next stroke' }).click();
     await expect(page.locator('.practice svg path.hintp')).toHaveCount(1);
-
-    await page.getByRole('button', { name: 'Show or hide the faint outline' }).click(); // back on, to draw along it
-    await drawStroke(page, 0);
-    if (strokes > 1) await expect(page.locator('.practice .count')).toHaveText(`Write stroke 2 of ${strokes}`);
-    else await expect(page.locator('.practice .hanko')).toBeVisible();
+    for (const d of paths) await drawStroke(page, d);
+    await expect(page.locator('.practice .hanko')).toHaveText('済'); // the hint button was used
     await page.getByRole('button', { name: 'Start again' }).click();
-    await expect(page.locator('.practice .count')).toHaveText(`Write stroke 1 of ${strokes}`);
-
-    await page.getByRole('button', { name: 'Back to the stroke order' }).click();
-    await expect(page.locator('.practice')).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Practice writing' })).toBeVisible();
+    await expect(page.locator('.practice .count')).toHaveText(`Write stroke 1 of ${paths.length}`);
+    await expect(page.locator('.practice svg path.hintp')).toHaveCount(0);
   });
 });

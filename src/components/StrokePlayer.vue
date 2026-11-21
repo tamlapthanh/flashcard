@@ -2,7 +2,6 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { t } from '../i18n';
 import { strokeStart } from '../lib/strokes';
-import StrokePractice from './StrokePractice.vue';
 
 const props = defineProps<{ literal: string; paths: string[] }>();
 
@@ -59,10 +58,11 @@ function jump(n: number): void {
   animating.value = true; // the chosen stroke draws itself again
 }
 
-const practicing = ref(false); // writing practice instead of the player
+/* The pencil button: the kanji sheet opens its own practice screen (the player has no room for a big drawing area). */
+const emit = defineEmits<{ practice: [] }>();
 function startPractice(): void {
   stop();
-  practicing.value = true;
+  emit('practice');
 }
 
 onUnmounted(stop);
@@ -73,9 +73,6 @@ onUnmounted(stop);
        "strip" (one thumbnail per stroke), together with the readings. -->
   <div class="player">
     <div class="pmain">
-    <!-- practice: the user writes the kanji stroke by stroke instead of watching it -->
-    <StrokePractice v-if="practicing" :literal="literal" :paths="paths" @close="practicing = false" />
-    <template v-else>
     <div class="canvas">
     <svg viewBox="0 0 109 109" class="big" role="img" :aria-label="t('strokes.label', { c: literal })">
       <path d="M54.5 0V109M0 54.5H109" class="grid" />
@@ -105,11 +102,10 @@ onUnmounted(stop);
     </div>
     <!-- the stroke counter sits under the buttons, on its own line, so it can never run into the text beside the player -->
     <div class="count">{{ step }} / {{ paths.length }}</div>
-    </template>
     </div>
 
     <!-- stroke by stroke: one small picture per stroke, click to jump there. Desktop only (hidden on touch screens). -->
-    <div v-if="!practicing" class="stripwrap">
+    <div class="stripwrap">
     <button type="button" class="label strip-toggle" :aria-expanded="stripOpen" @click="stripOpen = !stripOpen">
       <v-icon icon="mdi-draw" size="14" />{{ t('kanji.stroke') }}<v-icon :icon="stripOpen ? 'mdi-chevron-up' : 'mdi-chevron-down'" size="16" />
     </button>

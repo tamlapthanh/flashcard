@@ -2,8 +2,10 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { swipeDown } from '../lib/swipeDown';
 import { api } from '../api';
+import { t } from '../i18n';
 import type { KanjiInfo } from '../types';
 import KanjiBlock from './KanjiBlock.vue';
+import KanjiPractice from './KanjiPractice.vue';
 
 const props = defineProps<{ kanji: KanjiInfo[]; selected: string | null }>();
 const emit = defineEmits<{ close: []; select: [literal: string] }>();
@@ -42,7 +44,14 @@ async function openPart(literal: string): Promise<void> {
   }
 }
 const back = (): void => void (trail.value = trail.value.slice(0, -1));
-watch([open, () => props.selected, () => props.kanji], () => void (trail.value = []));
+
+/* Handwriting practice of one kanji: shown alone, in place of everything else (the kanji itself is not on it), with a way back. */
+const practicing = ref<KanjiInfo | null>(null);
+const startPractice = (k: KanjiInfo): void => void (practicing.value = k);
+watch([open, () => props.selected, () => props.kanji], () => {
+  trail.value = [];
+  practicing.value = null;
+});
 
 const swipe = swipeDown(() => emit('close')); // drag the sheet down to close it
 
@@ -61,20 +70,24 @@ watch(open, (isOpen) => isOpen && opened.value++, { immediate: true });
     <v-card ref="sheetRef" class="sheet" rounded="t-xl" @touchstart.passive="swipe.onTouchstart" @touchend.passive="swipe.onTouchend">
       <div class="grip" />
       <div class="px-4 pb-4">
-        <div v-if="drilled" class="stage">
+        <div v-if="practicing" class="stage">
+          <v-btn variant="tonal" color="primary" size="large" prepend-icon="mdi-arrow-left" class="back mb-2" @click="practicing = null">{{ t('practice.back') }}</v-btn>
+          <KanjiPractice :key="practicing.Literal" :kanji="practicing" />
+        </div>
+        <div v-else-if="drilled" class="stage">
           <v-btn variant="tonal" color="primary" size="large" prepend-icon="mdi-arrow-left" class="back mb-2" @click="back">
             <span class="jp back-ch">{{ trail.length > 1 ? trail[trail.length - 2]?.Literal : (selected ?? '') }}</span>
           </v-btn>
-          <KanjiBlock :key="drilled.Literal" :kanji="drilled" @open="openPart" />
+          <KanjiBlock :key="drilled.Literal" :kanji="drilled" @open="openPart" @practice="startPractice" />
         </div>
         <div v-else-if="multi" ref="multiRef" :key="opened" class="multi" :style="{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, maxWidth: `${cols * 700}px`, margin: '0 auto' }">
-          <KanjiBlock v-for="(k, i) in kanji" :key="k.Literal" :kanji="k" class="cell" :class="{ divided: i % cols !== 0, rowdiv: i >= cols }" @open="openPart" />
+          <KanjiBlock v-for="(k, i) in kanji" :key="k.Literal" :kanji="k" class="cell" :class="{ divided: i % cols !== 0, rowdiv: i >= cols }" @open="openPart" @practice="startPractice" />
         </div>
         <div v-else class="stage">
         <v-chip-group v-if="kanji.length > 1" :model-value="selected" mandatory color="primary" class="mb-1" @update:model-value="(v: string | null) => v && emit('select', v)">
           <v-chip v-for="k in kanji" :key="k.Literal" :value="k.Literal"><span class="jp">{{ k.Literal }}</span></v-chip>
         </v-chip-group>
-        <KanjiBlock v-if="shown" :key="`${shown.Literal}-${opened}`" :kanji="shown" @open="openPart" />
+        <KanjiBlock v-if="shown" :key="`${shown.Literal}-${opened}`" :kanji="shown" @open="openPart" @practice="startPractice" />
         </div>
       </div>
     </v-card>

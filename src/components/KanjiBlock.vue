@@ -6,7 +6,7 @@ import KanjiTree from './KanjiTree.vue';
 import StrokePlayer from './StrokePlayer.vue';
 
 const props = defineProps<{ kanji: KanjiInfo }>();
-const emit = defineEmits<{ open: [literal: string] }>();
+const emit = defineEmits<{ open: [literal: string]; practice: [kanji: KanjiInfo] }>();
 
 /* On a touch screen (phone, tablet) the Memory hint stays folded until tapped; with a mouse there is room, so it always shows. */
 const touchOnly = typeof window !== 'undefined' && !window.matchMedia('(hover: hover) and (pointer: fine)').matches;
@@ -55,7 +55,7 @@ onMounted(() => void fitHint());
     </div>
 
     <div class="body" :class="{ single: !hasStrokes }">
-      <StrokePlayer v-if="hasStrokes" :literal="kanji.Literal" :paths="kanji.StrokePaths!" />
+      <StrokePlayer v-if="hasStrokes" :literal="kanji.Literal" :paths="kanji.StrokePaths!" @practice="emit('practice', kanji)" />
       <div class="side text-body-2">
         <div v-if="kanji.Onyomi.length"><div class="label">On</div><span class="rd">{{ kanji.Onyomi.join('、') }}</span></div>
         <div v-if="kanji.Kunyomi.length"><div class="label">Kun</div><span class="rd">{{ kanji.Kunyomi.join('、') }}</span></div>

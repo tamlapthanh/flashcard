@@ -14,8 +14,9 @@ import { strokeStart } from '../lib/strokes';
  * Finishing is shown by a red seal on the kanji (合 = no wrong stroke, 済 = done) and by icons, not by a sentence.
  * The check is lib/strokeMatch.ts.
  */
-const props = defineProps<{ literal: string; paths: string[] }>();
-const emit = defineEmits<{ close: [] }>();
+const props = defineProps<{ paths: string[] }>();
+/* `revealed`: the kanji may be shown now (the writing is finished, or the faint outline - the kanji itself - is on). */
+const emit = defineEmits<{ revealed: [value: boolean] }>();
 
 const BOX = 109; // the KanjiVG box
 const HINT_AFTER_FROM_MEMORY = 2; // wrong tries on one stroke, with the outline off, before the right stroke is shown (with it on: at once)
@@ -37,7 +38,8 @@ const starts = computed(() => props.paths.map(strokeStart));
 const step = ref(0); // strokes already written right
 const mistakes = ref(0); // wrong tries in all
 const tries = ref(0); // wrong tries on the current stroke
-const guide = ref(true); // the faint outline of the whole kanji is shown (trace it); off = write from memory
+const guide = ref(false); // the faint outline of the whole kanji is shown (trace it); off (the start) = write from memory
+const peeked = ref(false); // the outline or the hint button was used: the writing is not entirely from memory any more
 const hint = ref(false); // the next stroke is shown
 const message = ref('');
 const lastReason = ref(''); // why the last stroke was refused
@@ -77,6 +79,8 @@ function reset(): void {
   feedback.value = '';
   lastReason.value = '';
   step.value = 0;
+  guide.value = false;
+  peeked.value = false;
   mistakes.value = 0;
   tries.value = 0;
   hint.value = false;
@@ -164,6 +168,17 @@ function judge(pts: Pt[]): void {
 }
 
 const points = (pts: Pt[]): string => pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+function toggleGuide(): void {
+  guide.value = !guide.value;
+  if (guide.value) peeked.value = true;
+}
+function showHint(): void {
+  hint.value = true;
+  peeked.value = true;
+}
+const revealed = computed(() => finished.value || guide.value);
+watch(revealed, (value) => emit('revealed', value), { immediate: true });
+
 /* The text of the counter: shown on screen while writing; after the last stroke it is only read aloud (the screen shows the seal and icons). */
 const prompt = computed(() => (finished.value ? (mistakes.value === 0 ? t('practice.doneClean') : t('practice.done', { n: mistakes.value })) : t('practice.prompt', { n: step.value + 1, total: props.paths.length })));
 </script>
@@ -178,7 +193,7 @@ const prompt = computed(() => (finished.value ? (mistakes.value === 0 ? t('pract
         class="big"
         :class="feedback"
         role="img"
-        :aria-label="t('practice.label', { c: literal })"
+        :aria-label="t('practice.label')"
         @pointerdown.prevent="down"
         @pointermove="move"
         @pointerup="up"
@@ -204,14 +219,13 @@ const prompt = computed(() => (finished.value ? (mistakes.value === 0 ? t('pract
         <polyline v-if="live.length" :points="points(live)" class="stroke live" />
       </svg>
       <!-- finished: a red seal is pressed on the kanji (合 = no wrong stroke, 済 = done) -->
-      <Hanko v-if="finished" :char="mistakes === 0 ? '合' : '済'" :size="46" stamping class="seal" />
+      <Hanko v-if="finished" :char="mistakes === 0 && !peeked ? '合' : '済'" :size="38" stamping class="seal" />
     </div>
 
     <div class="controls">
-      <v-btn class="ctl" :icon="guide ? 'mdi-eye-outline' : 'mdi-eye-off-outline'" :variant="guide ? 'tonal' : 'text'" size="small" :aria-pressed="guide" :aria-label="t('practice.guide')" :title="t('practice.guide')" @click="guide = !guide" />
-      <v-btn class="ctl" icon="mdi-lightbulb-on-outline" variant="text" size="small" :disabled="finished" :aria-label="t('practice.hint')" :title="t('practice.hint')" @click="hint = true" />
+      <v-btn class="ctl" :icon="guide ? 'mdi-eye-outline' : 'mdi-eye-off-outline'" :variant="guide ? 'tonal' : 'text'" size="small" :aria-pressed="guide" :aria-label="t('practice.guide')" :title="t('practice.guide')" @click="toggleGuide" />
+      <v-btn class="ctl" icon="mdi-lightbulb-on-outline" variant="text" size="small" :disabled="finished" :aria-label="t('practice.hint')" :title="t('practice.hint')" @click="showHint" />
       <v-btn class="ctl" icon="mdi-refresh" variant="text" size="small" :aria-label="t('practice.reset')" :title="t('practice.reset')" @click="reset" />
-      <v-btn class="ctl" icon="mdi-close" variant="text" size="small" :aria-label="t('practice.stop')" :title="t('practice.stop')" @click="emit('close')" />
     </div>
     <div class="count">
       <template v-if="finished">
