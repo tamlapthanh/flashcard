@@ -1,6 +1,9 @@
 {
  "version": 1,
  "decks": {
+  "700 Kanji book": {
+   "れんしゅうする": "700 Kanji book/れんしゅうする.mp3"
+  },
   "Default": {
    "せっちりつ": "Default/せっちりつ.mp3"
   },
