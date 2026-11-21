@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { t } from '../i18n';
 import { strokeStart } from '../lib/strokes';
+import StrokePractice from './StrokePractice.vue';
 
 const props = defineProps<{ literal: string; paths: string[] }>();
 
@@ -58,6 +59,12 @@ function jump(n: number): void {
   animating.value = true; // the chosen stroke draws itself again
 }
 
+const practicing = ref(false); // writing practice instead of the player
+function startPractice(): void {
+  stop();
+  practicing.value = true;
+}
+
 onUnmounted(stop);
 </script>
 
@@ -66,6 +73,9 @@ onUnmounted(stop);
        "strip" (one thumbnail per stroke), together with the readings. -->
   <div class="player">
     <div class="pmain">
+    <!-- practice: the user writes the kanji stroke by stroke instead of watching it -->
+    <StrokePractice v-if="practicing" :literal="literal" :paths="paths" @close="practicing = false" />
+    <template v-else>
     <div class="canvas">
     <svg viewBox="0 0 109 109" class="big" role="img" :aria-label="t('strokes.label', { c: literal })">
       <path d="M54.5 0V109M0 54.5H109" class="grid" />
@@ -91,13 +101,15 @@ onUnmounted(stop);
       <v-btn class="ctl" icon="mdi-skip-previous" variant="text" size="small" :aria-label="t('strokes.prev')" @click="go(-1)" />
       <v-btn class="ctl" :icon="playing ? 'mdi-pause' : 'mdi-play'" variant="tonal" size="small" :aria-label="playing ? t('strokes.pause') : t('strokes.play')" @click="play" />
       <v-btn class="ctl" icon="mdi-skip-next" variant="text" size="small" :aria-label="t('strokes.next')" @click="go(1)" />
+      <v-btn class="ctl" icon="mdi-pencil" variant="text" size="small" :aria-label="t('practice.start')" :title="t('practice.start')" @click="startPractice" />
     </div>
     <!-- the stroke counter sits under the buttons, on its own line, so it can never run into the text beside the player -->
     <div class="count">{{ step }} / {{ paths.length }}</div>
+    </template>
     </div>
 
     <!-- stroke by stroke: one small picture per stroke, click to jump there. Desktop only (hidden on touch screens). -->
-    <div class="stripwrap">
+    <div v-if="!practicing" class="stripwrap">
     <button type="button" class="label strip-toggle" :aria-expanded="stripOpen" @click="stripOpen = !stripOpen">
       <v-icon icon="mdi-draw" size="14" />{{ t('kanji.stroke') }}<v-icon :icon="stripOpen ? 'mdi-chevron-up' : 'mdi-chevron-down'" size="16" />
     </button>

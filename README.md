@@ -8,6 +8,15 @@ tap again to turn the card over to the details: Sino-Viet, pitch, kanji blocks w
 related words; Again / Learned / Skip; swipe or arrows to change word; speech) -> summary; settings (font size,
 show reading / meaning / Hán Việt, natural voice, dark mode, language).
 
+Kanji sheet: the stroke-order player has a pencil button for **handwriting practice** (`StrokePractice.vue`): write the kanji
+stroke by stroke with a finger or the mouse. Each stroke is checked when the finger lifts (`src/lib/strokeMatch.ts`): its
+direction, its place and its rough shape against the KanjiVG stroke (the quality of the line is not judged). A right stroke is
+replaced by the clean one (green flash); a wrong one makes the frame shake and flash red, stays red with a dot where it began, and the right
+stroke is drawn in green with its number, a start dot and an arrow at its end, plus a short reason (wrong direction, shape or place, too short
+/ long, or a stroke that comes later). With the faint outline on that is at once; writing from memory, from the second wrong try. Buttons: faint outline on/off (trace or
+write from memory), show the next stroke, start again, back to the player. Finishing is shown by a red seal on the kanji (合 = no wrong stroke, 済 = done) with a ✓ count and a ✗ count of wrong tries, not by a sentence. The leniency is the `tolerance` argument of
+`matchStroke` / `judgeStroke` (1 = default, higher forgives more).
+
 Step-by-step guide (local run, build, deploy) in Vietnamese: [`../HUONG-DAN.md`](../HUONG-DAN.md).
 
 ## Run locally
