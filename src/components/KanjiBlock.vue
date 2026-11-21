@@ -144,10 +144,11 @@ onMounted(() => void fitHint());
   gap: 8px;
 }
 .hint {
-  margin-top: 12px;
-  padding: 10px 0;
+  margin-top: 6px;
+  padding: 6px 0;
 }
 .hint-toggle {
+  font-size: 0.8rem; /* the section titles (Stroke, Memory hint, Components) share this size */
   display: flex;
   align-items: center;
   width: 100%;
@@ -182,6 +183,7 @@ onMounted(() => void fitHint());
 /* every part is the same size, whatever the character */
 .pg {
   grid-column: 2;
+  font-weight: 700;
   width: 42px;
   padding: 2px 0;
   text-align: center;

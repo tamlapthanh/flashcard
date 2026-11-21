@@ -209,6 +209,7 @@ onUnmounted(stop);
   grid-area: strip;
 }
 .strip-toggle {
+  font-size: 0.8rem;
   display: flex;
   align-items: center;
   width: 100%;
@@ -221,7 +222,7 @@ onUnmounted(stop);
 @media (hover: hover) and (pointer: fine) {
   .stripwrap {
     display: block;
-    margin-top: 8px;
+    margin-top: 5px;
   }
   .strip {
     display: flex;

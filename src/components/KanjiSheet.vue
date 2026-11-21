@@ -67,7 +67,7 @@ watch(open, (isOpen) => isOpen && opened.value++, { immediate: true });
           </v-btn>
           <KanjiBlock :key="drilled.Literal" :kanji="drilled" @open="openPart" />
         </div>
-        <div v-else-if="multi" ref="multiRef" :key="opened" class="multi" :style="{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, maxWidth: `${cols * 520}px`, margin: '0 auto' }">
+        <div v-else-if="multi" ref="multiRef" :key="opened" class="multi" :style="{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, maxWidth: `${cols * 700}px`, margin: '0 auto' }">
           <KanjiBlock v-for="(k, i) in kanji" :key="k.Literal" :kanji="k" class="cell" :class="{ divided: i % cols !== 0, rowdiv: i >= cols }" @open="openPart" />
         </div>
         <div v-else class="stage">

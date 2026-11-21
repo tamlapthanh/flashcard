@@ -16,6 +16,7 @@ import { parseNote, type RelatedWord } from '../lib/note';
 import { swipeDown } from '../lib/swipeDown';
 import { canSpeak, prefetchSpeech, speakJapanese, stopSpeaking, voiceSource, type VoiceOrigin, type VoiceSource } from '../lib/speech';
 import { cardTextVars } from '../cardText';
+import { vFitLine } from '../lib/fitLine';
 import { StudySession } from '../session';
 import { settings } from '../settings';
 import { activeSession, saveRun, setActiveSession } from '../store';
@@ -56,7 +57,7 @@ const foldFan = (): void => {
 /* The bottom-right button fans out three options: auto play, read aloud while auto playing, keep the voice files. */
 const audioOpen = ref(false);
 const audioOptions = computed(() => [
-  { key: 'auto', icon: autoplay.value ? 'mdi-pause' : 'mdi-play', label: autoplay.value ? t('auto.pause') : t('auto.play'), on: autoplay.value, dx: 0, dy: -62, run: () => { audioOpen.value = false; autoToggle(); } },
+  { key: 'auto', icon: autoplay.value ? 'mdi-pause' : 'mdi-play', label: autoplay.value ? t('auto.pause') : t('auto.play'), on: autoplay.value, dx: 0, dy: -62, run: autoToggle },
   { key: 'sound', icon: settings.autoSpeak ? 'mdi-volume-high' : 'mdi-volume-off', label: t('set.autoSpeak'), on: settings.autoSpeak, dx: -44, dy: -44, run: () => (settings.autoSpeak = !settings.autoSpeak) },
   { key: 'save', icon: settings.autoSaveVoice ? 'mdi-content-save' : 'mdi-content-save-off-outline', label: t('set.autoSaveVoice'), on: settings.autoSaveVoice, dx: -62, dy: 0, run: () => (settings.autoSaveVoice = !settings.autoSaveVoice) }
 ]);
@@ -527,10 +528,10 @@ onUnmounted(() => {
       <!-- grading buttons live in the header, right of the counter; always usable (you may know the word without flipping).
            On narrow screens only the icons show (the names stay as accessible labels). -->
       <div class="acts">
-        <v-btn class="act" prepend-icon="mdi-help-circle-outline" variant="flat" color="primary" :disabled="stamping" :aria-label="t('btn.again')" :data-tip="t('tip.again')" @click="answer('again')"><span class="lbl">{{ t('btn.again') }}</span></v-btn>
-        <v-btn class="act" prepend-icon="mdi-check" variant="flat" color="primary" :disabled="stamping" :aria-label="t('btn.learned')" :data-tip="t('tip.learned')" @click="answer('learned')"><span class="lbl">{{ t('btn.learned') }}</span></v-btn>
-        <v-btn class="act" prepend-icon="mdi-skip-next-outline" variant="flat" color="primary" :disabled="stamping" :aria-label="t('btn.skip')" :data-tip="t('tip.skip')" @click="answer('skip')"><span class="lbl">{{ t('btn.skip') }}</span></v-btn>
-        <v-btn class="act" prepend-icon="mdi-format-list-bulleted" variant="flat" color="primary" :aria-label="t('list.open')" @click="listOpen = true"><span class="lbl">{{ t('list.short') }}</span></v-btn>
+        <v-btn class="act act-again" prepend-icon="mdi-help-circle-outline" variant="flat" color="primary" :disabled="stamping" :aria-label="t('btn.again')" :data-tip="t('tip.again')" @click="answer('again')"><span class="lbl">{{ t('btn.again') }}</span></v-btn>
+        <v-btn class="act act-learned" prepend-icon="mdi-check" variant="flat" color="primary" :disabled="stamping" :aria-label="t('btn.learned')" :data-tip="t('tip.learned')" @click="answer('learned')"><span class="lbl">{{ t('btn.learned') }}</span></v-btn>
+        <v-btn class="act act-skip" prepend-icon="mdi-skip-next-outline" variant="flat" color="primary" :disabled="stamping" :aria-label="t('btn.skip')" :data-tip="t('tip.skip')" @click="answer('skip')"><span class="lbl">{{ t('btn.skip') }}</span></v-btn>
+        <v-btn class="act act-list" prepend-icon="mdi-book-open-page-variant-outline" variant="flat" color="primary" :aria-label="t('list.open')" @click="listOpen = true"><span class="lbl">{{ t('list.short') }}</span></v-btn>
       </div>
     </TopBar>
 
@@ -551,9 +552,9 @@ onUnmounted(() => {
           <div :key="card.id" class="wordbody">
           <!-- step 1 / 2: the word (normal) or the meaning (reverse) -->
           <template v-if="!s.reverse">
-            <RubyWord v-if="useRuby && card.ruby" :cells="card.ruby" />
+            <RubyWord v-if="useRuby && card.ruby" v-fit-line :cells="card.ruby" />
             <template v-else>
-              <div class="word jp">{{ card.headword }}</div>
+              <div v-fit-line class="word jp">{{ card.headword }}</div>
               <div v-if="readingVisible && card.reading" class="reading rd">
                 <PitchLine v-if="card.pitch" :morae="card.pitch.morae" />
                 <template v-else>{{ card.reading }}</template>
@@ -575,7 +576,7 @@ onUnmounted(() => {
             <div v-if="englishOn" class="english">{{ card.english }}</div>
             <template v-if="s.flipped">
               <div class="sep" />
-              <div class="word jp small">{{ card.headword }}</div>
+              <div v-fit-line class="word jp small">{{ card.headword }}</div>
               <div v-if="card.reading && s.showReading" class="reading rd">{{ card.reading }}</div>
             </template>
           </template>
@@ -619,7 +620,10 @@ onUnmounted(() => {
                 :aria-pressed="o.on"
                 @click.stop="o.run()"
               ><v-icon :icon="o.icon" /></button>
-              <v-btn variant="text" color="primary" class="tool3d speak" :class="{ partial: !audioAllOn }" :icon="autoplay ? 'mdi-pause' : 'mdi-play-box-multiple-outline'" :aria-label="t('auto.menu')" :aria-expanded="audioOpen" @click.stop="audioOpen = !audioOpen" />
+              <v-btn variant="text" color="primary" class="tool3d speak eye4" :class="{ partial: !audioAllOn }" :aria-label="t('auto.menu')" :aria-expanded="audioOpen" @click.stop="audioOpen = !audioOpen">
+                <!-- like the eye: the three options as tiny marks, lit = on, dim = off -->
+                <span class="marks"><span v-for="o in audioOptions" :key="o.key" class="mk" :class="['a-' + o.key, { on: o.on }]"><v-icon :icon="o.icon" /></span></span>
+              </v-btn>
             </div>
           </div>
         </div>
@@ -864,6 +868,24 @@ onUnmounted(() => {
     margin-inline: 0;
   }
 }
+/* each button of the top bar has its own colour (--bc fill, --bd edge, --bh when the mouse is over): Again orange, Learned green, Skip blue, Words purple */
+.act-again { --bc: #ef8a17; --bd: #b8600f; --bh: #f7a94d; }
+.act-learned { --bc: #5db82f; --bd: #3f8a1f; --bh: #9be35f; }
+.act-skip { --bc: #2f80d1; --bd: #1f5a99; --bh: #5aa0e6; }
+.act-list { --bc: #8e4ec6; --bd: #6a3499; --bh: #aa75d8; }
+.act.v-btn.bg-primary:not(.v-btn--disabled) {
+  background-color: var(--bc) !important;
+  color: #fff !important;
+  box-shadow: 0 4px 0 var(--bd);
+}
+.act.v-btn.bg-primary:not(.v-btn--disabled):hover {
+  background-color: var(--bh) !important;
+  color: #fff !important;
+  box-shadow: 0 2px 0 var(--bd);
+}
+.act.v-btn.bg-primary:not(.v-btn--disabled):hover:active {
+  box-shadow: 0 1px 0 var(--bd);
+}
 .act.playing.v-btn:not(.v-btn--disabled) {
   background: #9be35f !important; /* running: the lighter green, like a button under the mouse */
   color: #4e342e !important;
@@ -1041,6 +1063,25 @@ onUnmounted(() => {
   --oc: #8e4ec6;
   --od: #6a3499;
 }
+.mk.a-auto,
+.fanopt.a-auto {
+  --oc: #2f80d1;
+  --od: #1f5a99;
+}
+.mk.a-sound {
+  --oc: #ef8a17;
+}
+.mk.a-save {
+  --oc: #8e4ec6;
+}
+.tools .tool3d.v-btn .mk .v-icon {
+  font-size: 9px !important; /* tiny marks: beats the 18px / 22px of the button's own icon rule */
+  width: auto;
+  height: auto;
+}
+.speak .marks .mk:nth-child(3) {
+  grid-column: 1 / -1; /* three marks: the last one sits centred under the other two */
+}
 .fanopt.a-sound {
   --oc: #ef8a17;
   --od: #b8600f;
@@ -1104,6 +1145,9 @@ onUnmounted(() => {
     height: 13px;
     padding: 0 2px;
     border-radius: 7px;
+  }
+  .tools .tool3d.v-btn .mk .v-icon {
+    font-size: 11px !important;
   }
   .fan {
     --k: 1.4;

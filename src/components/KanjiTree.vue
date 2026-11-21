@@ -103,10 +103,11 @@ const graph = computed(() => {
 
 <style scoped>
 .tree {
-  margin-top: 8px;
-  padding: 6px 0;
+  margin-top: 4px;
+  padding: 4px 0;
 }
 .tree-toggle {
+  font-size: 0.8rem;
   display: flex;
   align-items: center;
   width: 100%;
@@ -117,6 +118,7 @@ const graph = computed(() => {
   cursor: pointer;
 }
 .leaves {
+  font-weight: 700;
   margin-left: 10px;
   font-size: 1.8rem;
   line-height: 1;
@@ -136,7 +138,7 @@ svg {
 .lvl2 { fill: #9b6bd6; stroke: #9b6bd6; }
 .lvl3 { fill: #d6557a; stroke: #d6557a; }
 .whole { fill: rgb(var(--v-theme-primary)); stroke: rgb(var(--v-theme-primary)); stroke-width: 2; }
-.ch { font-size: 22px; fill: currentColor; }
+.ch { font-weight: 700; font-size: 22px; fill: currentColor; }
 .whole + .ch { fill: #fff; }
 .hv-label { font-size: 10px; font-weight: 700; fill: currentColor; stroke: var(--paper); stroke-width: 5px; stroke-linejoin: round; paint-order: stroke; }
 .odd { stroke-dasharray: 4 3; }
