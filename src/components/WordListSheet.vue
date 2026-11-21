@@ -107,7 +107,7 @@ const shown = ref(CHUNK);
 
 /*
  * Quick search: typing filters the list by kanji, reading, Hán Việt, meaning or example. Case, Vietnamese accents and
- * hiragana / katakana are ignored (ngan hang finds NGÂN HÀNG, カタカナ finds かたかな). Numbers keep the word's place in the run.
+ * hiragana / katakana are ignored (ngan hang finds NGÂN HÀNG, カタカナ finds かたかな). Numbers keep the word's place in the dictionary-ordered list.
  */
 const query = ref<string | null>(''); // the clear (x) button of the box sets it to null
 
@@ -119,7 +119,11 @@ const searchBox = ref<{ focus: () => void } | null>(null);
 function toggleSearch(): void {
   searchOpen.value = !searchOpen.value;
   if (searchOpen.value) void nextTick(() => searchBox.value?.focus());
-  else query.value = '';
+  else {
+    query.value = '';
+    selectedTags.value = []; // the tag button is hidden with the box, so its filter must not stay on unseen
+    tagsOpen.value = false;
+  }
 }
 const norm = (text: string | null | undefined): string =>
   (text ?? '')
@@ -150,9 +154,40 @@ watch(optsOpen, (isOpen) => {
   if (isOpen) setTimeout(() => window.addEventListener('click', foldOpts, { once: true }), 0);
   else window.removeEventListener('click', foldOpts);
 });
+/* Tag filter: the tags to choose from are the ones the run was opened with (or, with none picked, every tag on its cards).
+   With fewer than two to choose from there is nothing to filter by, so the button is not shown. Any match (like the server). */
+const selectedTags = ref<string[]>([]);
+const tagsOpen = ref(false);
+const tagChoices = computed(() => {
+  const counts = new Map<string, number>();
+  const only = props.session.tags.length ? new Set(props.session.tags) : null;
+  for (const c of props.session.cards) for (const tg of c.tags) if (!only || only.has(tg)) counts.set(tg, (counts.get(tg) ?? 0) + 1);
+  return [...counts.entries()].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)).map(([tag, count]) => ({ tag, count }));
+});
+const canFilterTags = computed(() => tagChoices.value.length >= 2);
+function toggleTag(tag: string): void {
+  selectedTags.value = selectedTags.value.includes(tag) ? selectedTags.value.filter((x) => x !== tag) : [...selectedTags.value, tag];
+}
+const foldTags = (): void => {
+  tagsOpen.value = false;
+};
+watch(tagsOpen, (isOpen) => {
+  if (isOpen) setTimeout(() => window.addEventListener('click', foldTags, { once: true }), 0);
+  else window.removeEventListener('click', foldTags);
+});
+/* The list is in dictionary order (reading in 五十音 order, the headword when there is no reading), however the run is shuffled for study.
+   The collator treats hiragana and katakana alike and puts Latin words before kana. */
+const collator = new Intl.Collator('ja');
+const dictOrder = computed(() =>
+  [...props.session.cards].sort((a, b) => collator.compare(a.reading || a.headword, b.reading || b.headword) || collator.compare(a.headword, b.headword))
+);
 const matches = computed(() => {
   const q = norm((query.value ?? '').trim());
-  let all = props.session.cards.map((c, i) => ({ c, n: i + 1 }));
+  let all = dictOrder.value.map((c, i) => ({ c, n: i + 1 }));
+  if (canFilterTags.value && selectedTags.value.length) {
+    const want = selectedTags.value;
+    all = all.filter(({ c }) => c.tags.some((tg) => want.includes(tg)));
+  }
   if (!(inLearned.value && inSkipped.value && inTodo.value)) {
     all = all.filter(({ c }) => {
       const st = props.session.status(c.id);
@@ -164,7 +199,7 @@ const matches = computed(() => {
 });
 const visibleCards = computed(() => matches.value.slice(0, shown.value));
 const hasMore = computed(() => shown.value < matches.value.length);
-watch([query, inLearned, inSkipped, inTodo], () => {
+watch([query, inLearned, inSkipped, inTodo, selectedTags], () => {
   shown.value = CHUNK;
   if (rowsEl.value) rowsEl.value.scrollTop = 0;
 });
@@ -199,6 +234,8 @@ watch(
       query.value = ''; // the search box is empty and hidden again next time
       inLearned.value = inSkipped.value = inTodo.value = true;
       optsOpen.value = false;
+      selectedTags.value = [];
+      tagsOpen.value = false;
       searchOpen.value = withMouse;
     }
   }
@@ -265,6 +302,23 @@ const currentId = computed(() => props.session.current?.id ?? null);
           autocomplete="off"
           spellcheck="false"
         />
+        <!-- tag filter, just left of the gear: the button fans the tags out downward (lit = kept; none lit = every word) -->
+        <div v-if="canFilterTags" class="tagfab" :class="{ open: tagsOpen }">
+          <div class="tagfan">
+            <button
+              v-for="(tg, idx) in tagChoices"
+              :key="tg.tag"
+              type="button"
+              class="tagopt"
+              :class="{ on: selectedTags.includes(tg.tag) }"
+              :style="{ '--i': idx }"
+              :aria-pressed="selectedTags.includes(tg.tag)"
+              @click.stop="toggleTag(tg.tag)"
+            >{{ tg.tag }}<span class="tn">{{ tg.count }}</span></button>
+          </div>
+          <v-btn icon="mdi-tag-multiple-outline" variant="text" size="x-small" density="comfortable" class="tagbtn" :class="{ filtered: selectedTags.length }" :aria-label="t('list.tags')" :aria-expanded="tagsOpen" @click.stop="tagsOpen = !tagsOpen" />
+          <span v-if="selectedTags.length" class="tcount">{{ selectedTags.length }}</span>
+        </div>
         <!-- the options gear, at the far right of the box: tap to fan out the switches (lit = included in the search) -->
         <div class="sfan" :class="{ open: optsOpen }">
           <button
@@ -352,6 +406,121 @@ const currentId = computed(() => props.session.current?.id ?? null);
 .search :deep(.v-input) {
   flex: 1;
   min-width: 0;
+}
+/* tag filter: a round 3D button left of the gear; its tags fan out downward as pills (same look as the card's options) */
+.tagfab {
+  position: relative;
+  flex: 0 0 auto;
+  align-self: center;
+  top: -1px; /* optical centring, like the gear */
+  width: 30px;
+  height: 30px;
+  margin-left: 4px;
+}
+.tagbtn.v-btn {
+  position: absolute;
+  inset: 0;
+  margin: 0 !important;
+  width: 30px !important;
+  height: 30px !important;
+  background: rgb(var(--v-theme-primary)) !important;
+  color: #fff !important;
+  box-shadow: 0 3px 0 #3f8a1f !important; /* pressed-in 3D edge, like the gear */
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.tagbtn.v-btn.filtered {
+  background: #ef8a17 !important; /* some tag is picked: orange, like the auto play button when not everything is on */
+  box-shadow: 0 3px 0 #b8600f !important;
+}
+.tagbtn.v-btn:active {
+  box-shadow: 0 0 0 transparent !important;
+  transform: translateY(3px);
+}
+.tcount {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  z-index: 1;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  box-sizing: border-box;
+  border-radius: 8px;
+  background: #fff;
+  border: 1px solid #ef8a17;
+  color: #b8600f;
+  font-size: 0.65rem;
+  font-weight: 800;
+  line-height: 13px;
+  text-align: center;
+  pointer-events: none;
+}
+.tagfan {
+  position: absolute;
+  top: 38px; /* right under the button, over the list */
+  right: 0;
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  max-height: calc(var(--sheet-h) - 130px); /* the rest of the sheet below the button (header + search box above it); more tags scroll */
+  overflow-y: auto; /* many tags scroll inside the fan */
+  padding: 3px 3px 5px;
+  scrollbar-width: none;
+  visibility: hidden;
+  transition: visibility 0s linear 0.5s; /* hidden only after the pills have folded */
+}
+.tagfan::-webkit-scrollbar {
+  display: none;
+}
+.tagfab.open .tagfan {
+  visibility: visible;
+  pointer-events: auto;
+  transition-delay: 0s;
+}
+.tagopt {
+  flex: 0 0 auto;
+  max-width: min(70vw, 320px);
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1.5px dashed var(--leaf); /* off: an empty dashed pill, like the card's options */
+  border-radius: 16px;
+  background: var(--paper);
+  color: var(--leaf);
+  font-family: var(--font-jp);
+  font-size: 0.85rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  box-shadow: 0 2px 0 rgba(31, 77, 36, 0.35);
+  opacity: 0;
+  transform: translateY(-14px) scale(0.5);
+  transform-origin: right top;
+  transition: transform 0.4s cubic-bezier(0.45, 0, 0.2, 1), opacity 0.35s ease;
+}
+.tagfab.open .tagopt {
+  opacity: 1;
+  transform: none;
+  transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) calc(var(--i) * 55ms), opacity 0.36s ease calc(var(--i) * 55ms);
+}
+.tagopt.on {
+  background: rgb(var(--v-theme-primary)); /* lit = words with this tag stay */
+  border-style: solid;
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 2px 0 #3f8a1f;
+}
+.tn {
+  font-size: 0.7rem;
+  font-weight: 600;
+  opacity: 0.75;
 }
 .sfan {
   position: relative;
