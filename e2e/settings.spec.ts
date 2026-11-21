@@ -59,7 +59,20 @@ test.describe('settings sync in the app', () => {
 });
 
 test.describe('auto play: save voice files', () => {
+  /* The e2e server has no SPEECH_SAVE_DIR, so it says saveVoice: false in /health; the switch only exists on a server that keeps voice files. */
+  const healthSaysSaveVoice = (page: import('@playwright/test').Page, saveVoice: boolean) =>
+    page.route('**/health', (route) => route.fulfill({ json: { ok: true, saveVoice } }));
+
+  test('on a server that cannot save voice files the switch is not shown', async ({ page, request }) => {
+    await openSignedIn(page, request, 'bob');
+    await page.goto('/#/settings');
+    await page.locator('.sechead').filter({ hasText: 'Auto play' }).click();
+    await expect(page.getByRole('checkbox', { name: 'Read the word aloud' })).toBeVisible(); // the section is open ...
+    await expect(page.getByRole('checkbox', { name: 'Save voice files' })).toHaveCount(0); // ... and the option is not in it
+  });
+
   test('the switch is on by default, is saved with the other settings, and can be turned off', async ({ page, request }) => {
+    await healthSaysSaveVoice(page, true);
     await openSignedIn(page, request, 'bob');
     await page.goto('/#/settings');
     await page.locator('.sechead').filter({ hasText: 'Auto play' }).click();

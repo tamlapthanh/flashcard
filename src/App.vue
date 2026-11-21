@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useTheme } from 'vuetify';
-import { flushResults } from './api';
+import { flushResults, loadServerInfo } from './api';
 import { auth, clearSession, loginRequired } from './auth';
 import Hanko from './components/Hanko.vue';
 import { t } from './i18n';
@@ -47,6 +47,7 @@ function go(path: string): void {
 const retry = (): void => void flushResults();
 onMounted(() => {
   retry();
+  void loadServerInfo();
   window.addEventListener('online', retry);
   document.addEventListener('visibilitychange', retry);
 });

@@ -3,6 +3,7 @@
  * login). A 401 on any call other than login means the session ended: the user is signed out and sent to the login screen.
  * Study results go through a persistent queue so nothing is lost when the server is asleep or the phone is offline.
  */
+import { reactive } from 'vue';
 import { auth, clearSession, setSession } from './auth';
 import { t } from './i18n';
 import type { CardDetail, Deck, KanjiInfo, LightCard, LookupResult, StudyResult } from './types';
@@ -67,8 +68,19 @@ export const api = {
   getSettings: () => request<{ settings: Record<string, unknown> | null; updatedAt: string | null }>('/api/settings'),
   putSettings: (settings: unknown) => request<{ updatedAt: string }>('/api/settings', { method: 'PUT', body: JSON.stringify({ settings }) }),
   /** Free servers sleep: ping /health first so the UI can say "waking up". */
-  health: () => request<{ ok: boolean }>('/health')
+  health: () => request<{ ok: boolean; saveVoice?: boolean }>('/health')
 };
+
+/* What the server can do, learned from /health: saveVoice = it keeps spoken words as files (a local run with SPEECH_SAVE_DIR).
+   False until the server has answered (or when it never does), so the "Save voice files" option stays hidden unless it is really there. */
+export const serverInfo = reactive({ saveVoice: false });
+export async function loadServerInfo(): Promise<void> {
+  try {
+    serverInfo.saveVoice = (await api.health()).saveVoice === true;
+  } catch {
+    /* server asleep or offline: the option stays hidden */
+  }
+}
 
 /* Where the server got a spoken word from (its x-voice-source header): a paid ElevenLabs call, its memory, or a file on its disk. */
 export type ServerVoiceSource = 'elevenlabs' | 'server-memory' | 'server-file' | 'server';

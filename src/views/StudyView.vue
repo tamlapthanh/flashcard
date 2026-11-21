@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { api, pendingResults, submitResult } from '../api';
+import { api, pendingResults, serverInfo, submitResult } from '../api';
 import { auth } from '../auth';
 import { t } from '../i18n';
 import Hanko from '../components/Hanko.vue';
@@ -54,13 +54,16 @@ const foldFan = (): void => {
   fanOpen.value = false;
   audioOpen.value = false;
 };
-/* The bottom-right button fans out three options: auto play, read aloud while auto playing, keep the voice files. */
+/* The bottom-right button fans out three options: auto play, read aloud while auto playing, keep the voice files
+   (the last one only when the server can save files: a local run with SPEECH_SAVE_DIR; elsewhere it is hidden). */
 const audioOpen = ref(false);
-const audioOptions = computed(() => [
+const audioOptions = computed(() =>
+  [
   { key: 'auto', icon: autoplay.value ? 'mdi-pause' : 'mdi-play', label: autoplay.value ? t('auto.pause') : t('auto.play'), on: autoplay.value, dx: 0, dy: -62, run: autoToggle },
   { key: 'sound', icon: settings.autoSpeak ? 'mdi-volume-high' : 'mdi-volume-off', label: t('set.autoSpeak'), on: settings.autoSpeak, dx: -44, dy: -44, run: () => (settings.autoSpeak = !settings.autoSpeak) },
   { key: 'save', icon: settings.autoSaveVoice ? 'mdi-content-save' : 'mdi-content-save-off-outline', label: t('set.autoSaveVoice'), on: settings.autoSaveVoice, dx: -62, dy: 0, run: () => (settings.autoSaveVoice = !settings.autoSaveVoice) }
-]);
+  ].filter((o) => o.key !== 'save' || serverInfo.saveVoice)
+);
 /* The button is green only while all three options are on; any option off turns it orange. */
 const audioAllOn = computed(() => audioOptions.value.every((o) => o.on));
 watch(fanOpen, (isOpen) => isOpen && (audioOpen.value = false));

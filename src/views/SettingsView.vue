@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive } from 'vue';
-import { pendingResults } from '../api';
+import { pendingResults, serverInfo } from '../api';
 import Flag from '../components/Flag.vue';
 import TopBar from '../components/TopBar.vue';
 import { t } from '../i18n';
@@ -340,10 +340,13 @@ const directionSummary = computed(() => (settings.direction === 'forward' ? t('d
       <v-list-item :title="t('set.autoSpeak')" :subtitle="t('set.autoSpeakSub')">
         <template #append><v-switch v-model="settings.autoSpeak" color="primary" hide-details density="compact" :aria-label="t('set.autoSpeak')" /></template>
       </v-list-item>
-      <v-divider />
-      <v-list-item :title="t('set.autoSaveVoice')" :subtitle="t('set.autoSaveVoiceSub')">
-        <template #append><v-switch v-model="settings.autoSaveVoice" color="primary" hide-details density="compact" :aria-label="t('set.autoSaveVoice')" data-testid="auto-save-voice" /></template>
-      </v-list-item>
+      <!-- only when the server keeps voice files (a local run with SPEECH_SAVE_DIR); on any other server there is nothing to switch -->
+      <template v-if="serverInfo.saveVoice">
+        <v-divider />
+        <v-list-item :title="t('set.autoSaveVoice')" :subtitle="t('set.autoSaveVoiceSub')">
+          <template #append><v-switch v-model="settings.autoSaveVoice" color="primary" hide-details density="compact" :aria-label="t('set.autoSaveVoice')" data-testid="auto-save-voice" /></template>
+        </v-list-item>
+      </template>
     </v-list>
     </v-expand-transition>
 
