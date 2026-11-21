@@ -423,10 +423,11 @@ const currentId = computed(() => props.session.current?.id ?? null);
   margin: 0 !important;
   width: 30px !important;
   height: 30px !important;
-  background: rgb(var(--v-theme-primary)) !important;
+  background: #2f80d1 !important; /* blue, so it does not look like the green gear next to it */
   color: #fff !important;
-  box-shadow: 0 3px 0 #3f8a1f !important; /* pressed-in 3D edge, like the gear */
-  transition: transform 0.12s ease, box-shadow 0.12s ease;
+  box-shadow: 0 3px 0 #1f5a99 !important; /* pressed-in 3D edge, like the gear */
+  border: 0;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
 }
 .tagbtn.v-btn.filtered {
   background: #ef8a17 !important; /* some tag is picked: orange, like the auto play button when not everything is on */
@@ -435,6 +436,19 @@ const currentId = computed(() => props.session.current?.id ?? null);
 .tagbtn.v-btn:active {
   box-shadow: 0 0 0 transparent !important;
   transform: translateY(3px);
+}
+@media (hover: hover) and (pointer: fine) {
+  /* like the gear: lighter and sinking a little under the mouse */
+  .tagbtn.v-btn:not(.filtered):hover {
+    background: #5b9fe3 !important;
+    box-shadow: 0 1px 0 #1f5a99 !important;
+    transform: translateY(2px);
+  }
+  .tagbtn.v-btn.filtered:hover {
+    background: #f5a54a !important;
+    box-shadow: 0 1px 0 #b8600f !important;
+    transform: translateY(2px);
+  }
 }
 .tcount {
   position: absolute;
@@ -488,10 +502,10 @@ const currentId = computed(() => props.session.current?.id ?? null);
   gap: 6px;
   height: 32px;
   padding: 0 12px;
-  border: 1.5px dashed var(--leaf); /* off: an empty dashed pill, like the card's options */
+  border: 1.5px dashed #2f80d1; /* off: an empty dashed pill, like the card's options */
   border-radius: 16px;
   background: var(--paper);
-  color: var(--leaf);
+  color: #2f80d1;
   font-family: var(--font-jp);
   font-size: 0.85rem;
   font-weight: 700;
@@ -511,11 +525,11 @@ const currentId = computed(() => props.session.current?.id ?? null);
   transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) calc(var(--i) * 55ms), opacity 0.36s ease calc(var(--i) * 55ms);
 }
 .tagopt.on {
-  background: rgb(var(--v-theme-primary)); /* lit = words with this tag stay */
+  background: #2f80d1; /* lit = words with this tag stay */
   border-style: solid;
   border-color: transparent;
   color: #fff;
-  box-shadow: 0 2px 0 #3f8a1f;
+  box-shadow: 0 2px 0 #1f5a99;
 }
 .tn {
   font-size: 0.7rem;
