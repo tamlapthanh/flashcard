@@ -1,5 +1,6 @@
 node_modules/
 dist/
+dist-github/
 .env
 .env.local
 *.local
