@@ -82,7 +82,7 @@ const graph = computed(() => {
   <div v-if="graph" class="tree">
     <!-- Only the line of leaf components; the graph (circles and arrows) is no longer shown. -->
     <div class="label tree-toggle">
-      <v-icon icon="mdi-graph-outline" size="14" />{{ t('kanji.components') }}<span class="jp leaves">{{ graph.leaves.join(' ') }}</span>
+      <v-icon icon="mdi-graph-outline" size="14" />{{ t('kanji.components') }}
     </div>
   </div>
 </template>
