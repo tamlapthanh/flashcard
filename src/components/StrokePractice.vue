@@ -2,8 +2,11 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { t, type TextKey } from '../i18n';
 import Hanko from './Hanko.vue';
+import { brushOutline, type InkPt } from '../lib/brushStroke';
 import { judgeStroke, parsePath, type Pt } from '../lib/strokeMatch';
+import { addSample, thin } from '../lib/strokeSamples';
 import { strokeStart } from '../lib/strokes';
+import { settings, STROKE_TOLERANCE } from '../settings';
 
 /*
  * Handwriting practice: the user writes the kanji stroke by stroke on the drawing area. Each stroke is checked as soon as the finger
@@ -12,7 +15,10 @@ import { strokeStart } from '../lib/strokes';
  * in green with its number, a dot where it begins and an arrow where it ends, so the two can be compared at a glance. With the faint
  * outline on that happens at once; writing from memory, from the second wrong try on a stroke. A short text names the reason.
  * Finishing is shown by a red seal on the kanji (合 = no wrong stroke, 済 = done) and by icons, not by a sentence.
- * The check is lib/strokeMatch.ts.
+ * It feels like writing with a brush: with a mouse the pointer is a brush (its tip is where the ink goes), and the stroke being written
+ * is thick where the hand is slow, thin where it is fast, and swells at the start (lib/brushStroke.ts). If the check refuses a stroke that
+ * was right, "my stroke was right" accepts it and keeps it on this device (lib/strokeSamples.ts) to tune the check with.
+ * The check is lib/strokeMatch.ts; how strict it is comes from Settings.
  */
 const props = defineProps<{ paths: string[] }>();
 /* `revealed`: the kanji may be shown now (the writing is finished, or the faint outline - the kanji itself - is on). */
@@ -44,8 +50,11 @@ const hint = ref(false); // the next stroke is shown
 const message = ref('');
 const lastReason = ref(''); // why the last stroke was refused
 const feedback = ref<'' | 'bad' | 'ok'>(''); // the frame flashes red (and shakes) or green for a moment
-const live = ref<Pt[]>([]); // the stroke being drawn
-const rejected = ref<Pt[]>([]); // the refused stroke, red for a moment
+const live = ref<InkPt[]>([]); // the stroke being drawn
+const rejected = ref<InkPt[]>([]); // the refused stroke, red for a moment
+const refused = ref<{ pts: InkPt[]; reason: string; step: number } | null>(null); // the last refused stroke, until the next one is started
+const brush = ref<Pt | null>(null); // where the brush is: a mouse (or a pen) is over the drawing
+const inking = ref(false); // the brush is down
 const finished = computed(() => step.value >= props.paths.length);
 const svg = ref<SVGSVGElement | null>(null);
 let drawing = false;
@@ -87,6 +96,8 @@ function reset(): void {
   message.value = '';
   live.value = [];
   rejected.value = [];
+  refused.value = null;
+  inking.value = false;
   drawing = false;
 }
 watch(() => props.paths, reset);
@@ -116,25 +127,36 @@ function toBox(e: PointerEvent): Pt {
   return { x: ((e.clientX - r.left) / r.width) * BOX, y: ((e.clientY - r.top) / r.height) * BOX };
 }
 
+/* The brush follows a mouse (or a pen) over the drawing; a finger has no pointer to show. */
+function showBrush(e: PointerEvent): void {
+  brush.value = e.pointerType === 'touch' ? null : toBox(e);
+}
+
 function down(e: PointerEvent): void {
   if (finished.value || e.button > 0) return;
   svg.value?.setPointerCapture(e.pointerId);
   clearTimeout(rejectTimer);
   rejected.value = [];
+  refused.value = null;
   drawing = true;
-  live.value = [toBox(e)];
+  inking.value = true;
+  showBrush(e);
+  live.value = [{ ...toBox(e), t: performance.now() }];
 }
 
 function move(e: PointerEvent): void {
+  showBrush(e);
   if (!drawing) return;
   const p = toBox(e);
   const last = live.value[live.value.length - 1]!;
-  if (Math.hypot(p.x - last.x, p.y - last.y) >= 0.8) live.value.push(p); // ignore tiny jitter
+  if (Math.hypot(p.x - last.x, p.y - last.y) >= 0.8) live.value.push({ ...p, t: performance.now() }); // ignore tiny jitter
 }
 
-function up(): void {
+function up(e: PointerEvent): void {
+  if (e.pointerType === 'touch') brush.value = null;
   if (!drawing) return;
   drawing = false;
+  inking.value = false;
   const pts = live.value;
   live.value = [];
   if (pts.length > 0) judge(pts.length === 1 ? [pts[0]!, { ...pts[0]! }] : pts); // a tap is a stroke of no length (a dot)
@@ -142,24 +164,34 @@ function up(): void {
 
 function cancel(): void {
   drawing = false;
+  inking.value = false;
+  brush.value = null;
   live.value = [];
 }
 
-function judge(pts: Pt[]): void {
-  const verdict = judgeStroke(pts, refs.value, step.value);
-  if (verdict.ok) {
-    step.value++;
-    tries.value = 0;
-    hint.value = false;
-    message.value = '';
-    flash('ok');
-    if (finished.value) buzz([30, 60, 30]); // the last stroke: a double buzz
-    return;
-  }
+function leave(): void {
+  if (!drawing) brush.value = null; // while the brush is down the pointer is captured: it can leave the box without lifting
+}
+
+/* The stroke was right: the next one is expected. */
+function accept(): void {
+  step.value++;
+  tries.value = 0;
+  hint.value = false;
+  message.value = '';
+  refused.value = null;
+  flash('ok');
+  if (finished.value) buzz([30, 60, 30]); // the last stroke: a double buzz
+}
+
+function judge(pts: InkPt[]): void {
+  const verdict = judgeStroke(pts, refs.value, step.value, STROKE_TOLERANCE[settings.strokeStrictness]);
+  if (verdict.ok) return accept();
   mistakes.value++;
   tries.value++;
   lastReason.value = verdict.reason;
   message.value = t(WHY[verdict.reason]);
+  refused.value = { pts, reason: verdict.reason, step: step.value };
   flash('bad');
   rejected.value = pts;
   clearTimeout(rejectTimer);
@@ -167,7 +199,24 @@ function judge(pts: Pt[]): void {
   if (guide.value || tries.value >= HINT_AFTER_FROM_MEMORY) hint.value = true;
 }
 
-const points = (pts: Pt[]): string => pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+/* "My stroke was right": the check was wrong. The stroke is accepted and kept (on this device only) with why it was refused. */
+function acceptRefused(): void {
+  const r = refused.value;
+  if (!r) return;
+  addSample({
+    at: new Date().toISOString(),
+    reason: r.reason,
+    strokeIndex: r.step,
+    strokes: props.paths.length,
+    reference: props.paths[r.step] ?? '',
+    strictness: settings.strokeStrictness,
+    points: thin(r.pts)
+  });
+  mistakes.value = Math.max(0, mistakes.value - 1); // it was not a mistake
+  clearTimeout(rejectTimer);
+  rejected.value = [];
+  accept();
+}
 function toggleGuide(): void {
   guide.value = !guide.value;
   if (guide.value) peeked.value = true;
@@ -191,12 +240,14 @@ const prompt = computed(() => (finished.value ? (mistakes.value === 0 ? t('pract
         ref="svg"
         :viewBox="`0 0 ${BOX} ${BOX}`"
         class="big"
-        :class="feedback"
+        :class="[feedback, { nocursor: brush }]"
         role="img"
         :aria-label="t('practice.label')"
         @pointerdown.prevent="down"
         @pointermove="move"
         @pointerup="up"
+        @pointerenter="showBrush"
+        @pointerleave="leave"
         @pointercancel="cancel"
         @touchstart.stop
         @touchend.stop
@@ -214,9 +265,16 @@ const prompt = computed(() => (finished.value ? (mistakes.value === 0 ? t('pract
           <text v-if="starts[step]" :x="starts[step]!.x - 3" :y="starts[step]!.y - 5" class="num">{{ step + 1 }}</text>
           <polygon v-if="arrow" points="-4,-3.2 3.4,0 -4,3.2" class="arrow" :transform="`translate(${arrow.x} ${arrow.y}) rotate(${arrow.angle})`" />
         </g>
-        <polyline v-if="rejected.length" :points="points(rejected)" class="stroke bad" />
+        <path v-if="rejected.length" :d="brushOutline(rejected)" class="ink bad" />
         <circle v-if="rejected.length" :cx="rejected[0]!.x" :cy="rejected[0]!.y" r="2.6" class="baddot" />
-        <polyline v-if="live.length" :points="points(live)" class="stroke live" />
+        <path v-if="live.length" :d="brushOutline(live)" class="ink" />
+        <!-- the brush (a mouse or a pen): its tip is the pointer; it is a little spread while it is down -->
+        <g v-if="brush" class="brush" :class="{ down: inking }" :transform="`translate(${brush.x} ${brush.y}) rotate(24)`" aria-hidden="true">
+          <path class="bristle" d="M0 0C-1.7-2.2-2.2-6-1.9-9.5L1.9-9.5C2.2-6 1.7-2.2 0 0Z" />
+          <rect class="binding" x="-2" y="-12.6" width="4" height="3.2" rx="0.6" />
+          <path class="handle" d="M-1.9-12.6L1.9-12.6L1.25-33L-1.25-33Z" />
+          <ellipse class="knob" cx="0" cy="-33" rx="1.4" ry="0.9" />
+        </g>
       </svg>
       <!-- finished: a red seal is pressed on the kanji (合 = no wrong stroke, 済 = done) -->
       <Hanko v-if="finished" :char="mistakes === 0 && !peeked ? '合' : '済'" :size="38" stamping class="seal" />
@@ -235,7 +293,11 @@ const prompt = computed(() => (finished.value ? (mistakes.value === 0 ? t('pract
       </template>
       <template v-else>{{ prompt }}</template>
     </div>
-    <div class="why" role="status" aria-live="polite">{{ message }}</div>
+    <div class="why" role="status" aria-live="polite">
+      <span>{{ message }}</span>
+      <!-- the check was wrong: accept the stroke (and keep it on this device to tune the check with) -->
+      <button v-if="refused" type="button" class="agree" @click="acceptRefused"><v-icon icon="mdi-check" size="14" /> {{ t('practice.agree') }}</button>
+    </div>
   </div>
 </template>
 
@@ -278,6 +340,9 @@ const prompt = computed(() => (finished.value ? (mistakes.value === 0 ? t('pract
   cursor: crosshair;
   transition: border-color 0.2s;
 }
+.big.nocursor {
+  cursor: none; /* the brush drawn in the picture is the pointer */
+}
 .big.bad {
   border-color: #d33;
   animation: shake 0.4s;
@@ -318,12 +383,44 @@ const prompt = computed(() => (finished.value ? (mistakes.value === 0 ? t('pract
 .stroke.ghost {
   stroke: rgba(var(--v-border-color), 0.35);
 }
-.stroke.live {
-  stroke: rgb(var(--v-theme-primary)); /* what is being drawn */
+.ink {
+  fill: rgb(var(--v-theme-on-surface)); /* what is being written: black ink */
+  stroke: rgb(var(--v-theme-on-surface));
+  stroke-width: 0.25;
+  stroke-linejoin: round;
 }
-.stroke.bad {
-  stroke: #d33; /* a refused stroke */
+.ink.bad {
+  fill: #d33; /* a refused stroke */
+  stroke: #d33;
   opacity: 0.75;
+}
+.brush {
+  pointer-events: none;
+}
+.brush path,
+.brush rect,
+.brush ellipse {
+  stroke: rgba(255, 255, 255, 0.75); /* a pale edge so the brush shows on the paper in both themes */
+  stroke-width: 0.45;
+  paint-order: stroke;
+}
+.bristle {
+  fill: #1b1410;
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  transition: transform 0.1s;
+}
+.brush.down .bristle {
+  transform: scaleX(1.35); /* pressed on the paper, the bristles spread */
+}
+.binding {
+  fill: #c9a24a;
+}
+.handle {
+  fill: #8b5a2b;
+}
+.knob {
+  fill: #5e3a1a;
 }
 .hintp {
   stroke: rgb(var(--v-theme-primary));
@@ -391,10 +488,29 @@ const prompt = computed(() => (finished.value ? (mistakes.value === 0 ? t('pract
   margin-top: 2px;
 }
 .why {
-  min-height: 2.4em; /* two lines are kept free, so the layout does not jump when a reason appears */
+  min-height: 3.8em; /* room for the reason and the button under it, so the layout does not jump when they appear */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
   text-align: center;
   font-size: 0.78rem;
   line-height: 1.2;
   color: #d33;
+}
+.agree {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 10px;
+  border: 1px dashed var(--leaf);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--leaf);
+  font: inherit;
+  cursor: pointer;
+}
+.agree:hover {
+  background: color-mix(in srgb, var(--leaf) 12%, var(--paper));
 }
 </style>

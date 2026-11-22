@@ -18,7 +18,13 @@ and flash red, stays red with a dot where it began, and the right stroke is draw
 end, plus a short reason (wrong direction, shape or place, too short / long, or a stroke that comes later). Writing from memory that happens
 from the second wrong try on a stroke; with the outline on, at once. Buttons: faint outline on/off (trace), show the next stroke, start
 again. Finishing is shown by a red seal on the kanji (合 = no wrong stroke and no peeking at the outline or the hint button, 済 = done) with
-a ✓ count and a ✗ count of wrong tries, not by a sentence. The leniency is the `tolerance` argument of `matchStroke` / `judgeStroke`
+a ✓ count and a ✗ count of wrong tries, not by a sentence.
+It is meant to feel like writing with a brush: with a mouse (or a pen) the pointer is a brush drawn in the picture, its tip where the ink
+goes, a little spread while it is down; the stroke being written is thick where the hand is slow, thin where it is fast, and swells at the
+start (`src/lib/brushStroke.ts`). When the check refuses a stroke that was right, "My stroke was right" accepts it and keeps it, with the
+reason it was refused, on this device only (`src/lib/strokeSamples.ts`, up to 300; Settings > Handwriting copies them out as JSON or clears
+them) to tune the check with. Settings > Handwriting also sets how strictly strokes are checked (Strict / Normal / Loose = tolerance
+0.8 / 1 / 1.4); that choice, like the tooltip switch, stays on the device and is not synced to the server. The leniency is the `tolerance` argument of `matchStroke` / `judgeStroke`
 (1 = default, higher forgives more).
 
 Step-by-step guide (local run, build, deploy) in Vietnamese: [`../HUONG-DAN.md`](../HUONG-DAN.md).

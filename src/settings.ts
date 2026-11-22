@@ -18,7 +18,11 @@ export interface Settings {
   autoBackSec: number; // auto play: seconds the answer side stays
   autoSpeak: boolean; // auto play: read the word aloud
   autoSaveVoice: boolean; // auto play: let the server keep the spoken words as files (only a local run with SPEECH_SAVE_DIR saves anything)
+  strokeStrictness: 'strict' | 'normal' | 'loose'; // handwriting practice: how strictly a stroke is checked (this device only, not synced)
 }
+
+/* The `tolerance` of the stroke check for each strictness (1 = the default; higher forgives more). */
+export const STROKE_TOLERANCE: Record<Settings['strokeStrictness'], number> = { strict: 0.8, normal: 1, loose: 1.4 };
 
 export const AUTO_MIN_SEC = 1;
 export const AUTO_MAX_SEC = 30;
@@ -28,11 +32,11 @@ const KEY = 'flashmobile.settings';
 
 function defaults(): Settings {
   const vietnamese = typeof navigator !== 'undefined' && navigator.language?.toLowerCase().startsWith('vi');
-  return { cardText: defaultCardStyles(), showReading: false, dark: false, language: vietnamese ? 'vi' : 'en', showMeaning: true, showHanViet: true, showEnglish: false, showTooltips: true, naturalVoice: true, direction: 'forward', autoFrontSec: 3, autoBackSec: 4, autoSpeak: true, autoSaveVoice: true };
+  return { cardText: defaultCardStyles(), showReading: false, dark: false, language: vietnamese ? 'vi' : 'en', showMeaning: true, showHanViet: true, showEnglish: false, showTooltips: true, naturalVoice: true, direction: 'forward', autoFrontSec: 3, autoBackSec: 4, autoSpeak: true, autoSaveVoice: true, strokeStrictness: 'normal' };
 }
 
 /* Any saved / received shape -> valid Settings (unknown keys dropped, bad values replaced by defaults). */
-export function normalizeSettings(input: unknown, tooltips = true): Settings {
+export function normalizeSettings(input: unknown, tooltips = true, strictness: Settings['strokeStrictness'] = 'normal'): Settings {
   const base = defaults();
   const raw = (input && typeof input === 'object' ? input : {}) as Partial<Settings> & { fontScale?: number };
   return {
@@ -49,7 +53,8 @@ export function normalizeSettings(input: unknown, tooltips = true): Settings {
     autoFrontSec: autoSec(raw.autoFrontSec, base.autoFrontSec),
     autoBackSec: autoSec(raw.autoBackSec, base.autoBackSec),
     autoSpeak: typeof raw.autoSpeak === 'boolean' ? raw.autoSpeak : base.autoSpeak,
-    autoSaveVoice: typeof raw.autoSaveVoice === 'boolean' ? raw.autoSaveVoice : base.autoSaveVoice
+    autoSaveVoice: typeof raw.autoSaveVoice === 'boolean' ? raw.autoSaveVoice : base.autoSaveVoice,
+    strokeStrictness: raw.strokeStrictness === 'strict' || raw.strokeStrictness === 'normal' || raw.strokeStrictness === 'loose' ? raw.strokeStrictness : strictness
   };
 }
 
@@ -75,13 +80,13 @@ watch(
   { deep: true }
 );
 
-/* What goes to the server: everything except the web-only tooltip switch (that one stays per device). */
-export function syncPayload(value: Settings): Omit<Settings, 'showTooltips'> {
-  const { showTooltips: _tooltips, ...rest } = JSON.parse(JSON.stringify(value)) as Settings;
+/* What goes to the server: everything except the two per-device settings (the web-only tooltip switch and the stroke strictness). */
+export function syncPayload(value: Settings): Omit<Settings, 'showTooltips' | 'strokeStrictness'> {
+  const { showTooltips: _tooltips, strokeStrictness: _strictness, ...rest } = JSON.parse(JSON.stringify(value)) as Settings;
   return rest;
 }
 
-/* Replace the settings with what the server holds (the local tooltip switch is kept). */
+/* Replace the settings with what the server holds (the local tooltip switch and stroke strictness are kept). */
 export function applyRemoteSettings(remote: unknown): void {
-  Object.assign(settings, normalizeSettings(remote, settings.showTooltips));
+  Object.assign(settings, normalizeSettings(remote, settings.showTooltips, settings.strokeStrictness));
 }

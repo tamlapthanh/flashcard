@@ -1,18 +1,30 @@
 <script setup lang="ts">
-import { computed, reactive } from 'vue';
+import { computed, reactive, ref } from 'vue';
 import { pendingResults, serverInfo } from '../api';
 import Flag from '../components/Flag.vue';
 import TopBar from '../components/TopBar.vue';
 import { t } from '../i18n';
 import CardTextEditor from '../components/CardTextEditor.vue';
+import { clearSamples, samplesJson, sampleStats } from '../lib/strokeSamples';
 import { AUTO_MAX_SEC, AUTO_MIN_SEC, settings } from '../settings';
 
 /* The three groups of settings fold away: tap a heading to show or hide it (all folded at first, each with a one-line summary). */
-const open = reactive({ size: false, direction: false, display: false, auto: false });
+const open = reactive({ size: false, direction: false, display: false, auto: false, write: false });
 
 /* Auto play times: whole seconds, within the limits of the settings. */
 function bump(key: 'autoFrontSec' | 'autoBackSec', delta: number): void {
   settings[key] = Math.min(AUTO_MAX_SEC, Math.max(AUTO_MIN_SEC, settings[key] + delta));
+}
+/* The strokes the user marked as right (kept on this device): copied out as JSON to tune the check with. */
+const copied = ref(false);
+async function copySamples(): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(samplesJson());
+    copied.value = true;
+    setTimeout(() => (copied.value = false), 2000);
+  } catch {
+    /* the browser did not allow the clipboard */
+  }
 }
 const directionSummary = computed(() => (settings.direction === 'forward' ? t('deck.dirForward') : t('deck.dirReverse')));
 </script>
@@ -210,6 +222,18 @@ const directionSummary = computed(() => (settings.direction === 'forward' ? t('d
   border-radius: 50%;
   background: var(--paper); /* the tick sits on the corner of the card, clear of the flag */
 }
+.wrapsub :deep(.v-list-item-subtitle) {
+  white-space: normal; /* the explanation may take two lines instead of being cut */
+  -webkit-line-clamp: unset;
+}
+.samplesrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.samplesrow .secs {
+  margin-right: auto;
+}
 </style>
 
 <template>
@@ -347,6 +371,31 @@ const directionSummary = computed(() => (settings.direction === 'forward' ? t('d
           <template #append><v-switch v-model="settings.autoSaveVoice" color="primary" hide-details density="compact" :aria-label="t('set.autoSaveVoice')" data-testid="auto-save-voice" /></template>
         </v-list-item>
       </template>
+    </v-list>
+    </v-expand-transition>
+
+    <button type="button" class="sechead" :data-tip="t('tip.section')" :aria-expanded="open.write" @click="open.write = !open.write">
+      <span class="glyph">書</span><span class="name">{{ t('set.write') }}</span><span class="sum" />
+      <v-icon :icon="open.write ? 'mdi-chevron-up' : 'mdi-chevron-down'" size="20" />
+    </button>
+    <v-expand-transition>
+    <v-list v-show="open.write" class="soft-card pa-0 mb-3" lines="two">
+      <!-- the choices sit on a row of their own under the text: beside it they squeezed the title to "How strictly st..." on a phone -->
+      <v-list-item :title="t('set.strictness')" :subtitle="t('set.strictnessSub')" class="wrapsub" />
+      <div class="px-4 pb-3">
+        <v-btn-toggle v-model="settings.strokeStrictness" mandatory density="comfortable" color="primary" variant="outlined" divided class="w-100" data-testid="stroke-strictness">
+          <v-btn value="strict" size="small" class="flex-grow-1">{{ t('set.strict') }}</v-btn>
+          <v-btn value="normal" size="small" class="flex-grow-1">{{ t('set.normal') }}</v-btn>
+          <v-btn value="loose" size="small" class="flex-grow-1">{{ t('set.loose') }}</v-btn>
+        </v-btn-toggle>
+      </div>
+      <v-divider />
+      <v-list-item :title="t('set.samples')" :subtitle="t('set.samplesSub')" class="wrapsub" />
+      <div class="samplesrow px-4 pb-3">
+        <span class="secs" data-testid="stroke-samples">{{ t('set.samplesN', { n: sampleStats.count }) }}</span>
+        <v-btn variant="tonal" size="small" :disabled="!sampleStats.count" @click="copySamples">{{ copied ? t('set.copied') : t('set.copy') }}</v-btn>
+        <v-btn variant="tonal" size="small" color="error" :disabled="!sampleStats.count" @click="clearSamples">{{ t('set.clear') }}</v-btn>
+      </div>
     </v-list>
     </v-expand-transition>
 

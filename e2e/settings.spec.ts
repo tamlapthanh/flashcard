@@ -85,6 +85,30 @@ test.describe('auto play: save voice files', () => {
   });
 });
 
+test.describe('handwriting: how strictly strokes are checked', () => {
+  test('a setting of this device: chosen in Settings, kept after a reload, and not sent to the server', async ({ page, request }) => {
+    await openSignedIn(page, request, 'bob');
+    await page.goto('/#/settings');
+    await page.locator('.sechead').filter({ hasText: 'Handwriting' }).click();
+    const toggle = page.getByTestId('stroke-strictness');
+    await expect(toggle.getByRole('button', { name: 'Normal' })).toHaveClass(/v-btn--active/); // the default
+    await toggle.getByRole('button', { name: 'Loose' }).click();
+    await expect(toggle.getByRole('button', { name: 'Loose' })).toHaveClass(/v-btn--active/);
+    expect((await stored(page)).strokeStrictness).toBe('loose');
+
+    // the change is pushed like any other, but without this key
+    await expect.poll(async () => (await apiSettings(request, 'bob')).updatedAt, { timeout: 10_000 }).not.toBeNull();
+    const onServer = (await apiSettings(request, 'bob')).settings ?? {};
+    expect('strokeStrictness' in onServer).toBe(false);
+
+    // after a reload (the settings are pulled from the server again) the choice is still there
+    await page.reload();
+    await page.locator('.sechead').filter({ hasText: 'Handwriting' }).click();
+    await expect(page.getByTestId('stroke-strictness').getByRole('button', { name: 'Loose' })).toHaveClass(/v-btn--active/);
+    expect((await stored(page)).strokeStrictness).toBe('loose');
+  });
+});
+
 test.describe('card text size and colour editor', () => {
   test.beforeEach(async ({ page, request }) => {
     await openSignedIn(page, request, 'bob');

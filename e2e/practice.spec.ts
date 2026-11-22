@@ -60,6 +60,7 @@ async function drawStroke(page: Page, d: string, backwards = false): Promise<voi
 }
 
 test.describe('kanji handwriting practice', () => {
+  test.describe.configure({ timeout: 60_000 }); // the first page load of a run (the dev server compiling) can take half a minute
   test('the pencil opens a screen of its own: the question is there, the kanji is not, and Back returns to the same kanji', async ({ page, request }) => {
     const { literal, paths } = await openPractice(page, request);
     const screen = page.locator('.kp');
@@ -174,5 +175,76 @@ test.describe('kanji handwriting practice', () => {
     await page.getByRole('button', { name: 'Start again' }).click();
     await expect(page.locator('.practice .count')).toHaveText(`Write stroke 1 of ${paths.length}`);
     await expect(page.locator('.practice svg path.hintp')).toHaveCount(0);
+  });
+
+  test('with a mouse the pointer is a brush: it follows the mouse over the drawing area, is gone when the mouse leaves, and the stroke is written like with a brush', async ({ page, request }) => {
+    await openPractice(page, request);
+    const board = page.locator('.practice svg.big');
+    const box = (await board.boundingBox())!;
+    const brush = page.locator('.practice .brush');
+    await page.mouse.move(2, 2); // the mouse is where the pencil button was, which is now under the drawing area: take it away first
+    await expect(brush).toHaveCount(0); // no brush while the mouse is not over the area
+
+    await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.3);
+    await expect(brush).toBeVisible();
+    await expect(board).toHaveClass(/nocursor/);
+    expect(await board.evaluate((el) => getComputedStyle(el).cursor)).toBe('none'); // the brush in the picture is the pointer
+    const before = await brush.getAttribute('transform');
+    await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.5);
+    await expect.poll(() => brush.getAttribute('transform')).not.toBe(before); // it follows the mouse
+
+    // writing: the brush is down, and the stroke is one closed shape with round ends (thick where slow, thin where fast), not a thin line
+    await page.mouse.down();
+    await expect(brush).toHaveClass(/down/);
+    for (let i = 1; i <= 12; i++) await page.mouse.move(box.x + box.width * (0.6 + i * 0.02), box.y + box.height * (0.5 + i * 0.02), { steps: 2 });
+    const ink = page.locator('.practice path.ink');
+    await expect(ink).toHaveCount(1);
+    const d = (await ink.getAttribute('d'))!;
+    expect(d.endsWith('Z')).toBe(true);
+    expect((d.match(/A/g) ?? []).length).toBe(2);
+    await page.mouse.up();
+    await expect(brush).not.toHaveClass(/down/);
+
+    await page.mouse.move(box.x - 20, box.y - 20); // out of the area
+    await expect(brush).toHaveCount(0);
+  });
+
+  test('"my stroke was right": a refused stroke can be accepted, it is kept on this device, and Settings shows it', async ({ page, request }) => {
+    const { paths } = await openPractice(page, request);
+    const agree = page.getByRole('button', { name: 'My stroke was right' });
+    await expect(agree).toHaveCount(0); // nothing refused yet
+    // a big circle in the middle is no stroke of any kanji
+    const box = (await page.locator('.practice svg.big').boundingBox())!;
+    const at = (a: number) => ({ x: box.x + box.width * (0.5 + 0.35 * Math.cos(a)), y: box.y + box.height * (0.5 + 0.35 * Math.sin(a)) });
+    await page.mouse.move(at(0).x, at(0).y);
+    await page.mouse.down();
+    for (let i = 1; i <= 24; i++) await page.mouse.move(at((i / 24) * 6.28).x, at((i / 24) * 6.28).y);
+    await page.mouse.up();
+    await expect(page.locator('.practice .why')).not.toHaveText('');
+    await expect(agree).toBeVisible();
+
+    await agree.click();
+    await expect(agree).toHaveCount(0);
+    if (paths.length > 1) await expect(page.locator('.practice .count')).toHaveText(`Write stroke 2 of ${paths.length}`);
+    else await expect(page.locator('.practice .hanko')).toBeVisible();
+    await expect(page.locator('.practice .why')).toHaveText('');
+    if (paths.length === 1) await expect(page.locator('.practice .count .mdi-close-circle')).toHaveCount(0); // it was not a mistake
+
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('flashmobile.strokeSamples') ?? '[]') as { reason: string; strokeIndex: number; strokes: number; reference: string; strictness: string; points: unknown[] }[]);
+    expect(saved).toHaveLength(1);
+    expect(saved[0]).toMatchObject({ strokeIndex: 0, strokes: paths.length, reference: paths[0], strictness: 'normal' });
+    expect(saved[0]!.reason).toMatch(/shape|long|position|short|direction|order/);
+    expect(saved[0]!.points.length).toBeGreaterThan(5);
+    expect(saved[0]!.points.length).toBeLessThanOrEqual(40);
+
+    // Settings in another tab of the same browser (same storage; the study screen stays as it is)
+    const settingsTab = await page.context().newPage();
+    await settingsTab.goto('/#/settings');
+    await settingsTab.locator('.sechead').filter({ hasText: 'Handwriting' }).click();
+    await expect(settingsTab.getByTestId('stroke-samples')).toHaveText('1 saved');
+    await settingsTab.getByRole('button', { name: 'Clear' }).click();
+    await expect(settingsTab.getByTestId('stroke-samples')).toHaveText('0 saved');
+    expect(await settingsTab.evaluate(() => localStorage.getItem('flashmobile.strokeSamples'))).toBe('[]');
+    await settingsTab.close();
   });
 });
