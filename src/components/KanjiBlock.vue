@@ -1,7 +1,32 @@
+async function fitHint(): Promise<void> {
+  if (!touchOnly) return;
+  const sheet = root.value?.closest<HTMLElement>('.sheet'); // the scrolling card of KanjiSheet
+  const overflows = () => !!sheet && sheet.scrollHeight > sheet.clientHeight + 1;
+  if (!hintTouched && parts.value.length) {
+    hintOpen.value = true;
+    await nextTick();
+    if (overflows()) hintOpen.value = false;
+  }
+  if (!noteTouched && mnemonic.value.length) {
+    noteOpen.value = true;
+    await nextTick();
+    if (overflows()) noteOpen.value = false;
+  }
+}
+let noteTouched = false;
+function toggleNote(): void {
+  noteTouched = true;
+  noteOpen.value = !noteOpen.value;
+}
+function toggleHint(): void {
+  hintTouched = true;
+  hintOpen.value = !hintOpen.value;
+}
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from 'vue';
 import { t } from '../i18n';
 import type { KanjiInfo } from '../types';
+import { compoundsOf, mnemonicOf } from '../lib/kanjiNotes';
 import KanjiTree from './KanjiTree.vue';
 import StrokePlayer from './StrokePlayer.vue';
 
@@ -19,6 +44,9 @@ const radical = computed(() => [props.kanji.Radical, props.kanji.RadicalHanViet]
 
 /* The parts of the kanji; without the server's explanations (older server) they still show as bare characters. */
 const parts = computed(() => props.kanji.Parts ?? props.kanji.Components.filter((c) => c !== props.kanji.Literal).map((c) => ({ Literal: c, HanViet: null, Meaning: null })));
+const compounds = computed(() => compoundsOf(props.kanji));
+const mnemonic = computed(() => mnemonicOf(props.kanji));
+const noteOpen = ref(!touchOnly); // the Mnemonic folds like the Memory hint
 const firstMeaning = computed(() => (props.kanji.MeaningsVi[0] ?? props.kanji.MeaningsEn[0] ?? '').trim());
 
 /* On a touch screen the hint opens by itself when the sheet still fits on the screen: open it, let the layout settle
@@ -80,6 +108,27 @@ onMounted(() => void fitHint());
           <span class="op">→</span>
           <span class="result">{{ firstMeaning }}</span>
         </template>
+      </div>
+    </div>
+
+    <!-- Compounds: one word per row, "word (reading) meaning". -->
+    <div v-if="compounds.length" class="hint compounds">
+      <div class="label">{{ t('kanji.compounds') }}</div>
+      <ul class="clist">
+        <li v-for="(c, i) in compounds" :key="i" class="text-body-2">
+          <span class="jp cw">{{ c.Word }}</span>
+          <span v-if="c.Reading" class="jp"> ({{ c.Reading }})</span>
+          <span v-if="c.Vi"> {{ c.Vi }}</span>
+        </li>
+      </ul>
+    </div>
+
+    <div v-if="mnemonic.length" class="hint">
+      <button type="button" class="label hint-toggle" :aria-expanded="noteOpen" @click="toggleNote">
+        <v-icon icon="mdi-lightbulb-on-outline" size="14" />{{ t('kanji.mnemonic') }}<v-icon :icon="noteOpen ? 'mdi-chevron-up' : 'mdi-chevron-down'" size="16" />
+      </button>
+      <div v-if="noteOpen" class="notes">
+        <p v-for="m in mnemonic" :key="m.lang" class="text-body-2" :class="{ jp: m.lang === 'Ja' }">{{ m.text }}</p>
       </div>
     </div>
 
@@ -157,6 +206,24 @@ onMounted(() => void fitHint());
   background: none;
   font-family: inherit;
   cursor: pointer;
+}
+.clist {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cw {
+  font-weight: 700;
+  color: var(--headword);
+}
+.notes {
+  margin-top: 6px;
+}
+.notes p {
+  margin: 0 0 6px;
 }
 .formula {
   display: grid;

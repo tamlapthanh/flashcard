@@ -36,6 +36,18 @@ export interface KanjiPart {
   Known?: boolean;
 }
 
+export interface KanjiCompound {
+  Word: string;
+  Reading: string | null;
+  Vi: string | null;
+}
+
+export interface KanjiMnemonic {
+  En: string | null;
+  Ja: string | null;
+  Vi: string | null;
+}
+
 export interface KanjiInfo {
   Literal: string;
   Onyomi: string[];
@@ -57,6 +69,9 @@ export interface KanjiInfo {
   Tree?: KanjiPart[];
   StrokePaths?: string[] | null;
   PartEdges?: string[] | null;
+  /** From LCT: compound words and a memory story; absent or null when the kanji has no notes. */
+  Compounds?: KanjiCompound[] | null;
+  Mnemonic?: KanjiMnemonic | null;
 }
 
 /* What the server sends for every card of a run: enough for the word list and the front of the card. */

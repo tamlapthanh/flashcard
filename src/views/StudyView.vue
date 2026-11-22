@@ -199,6 +199,12 @@ function tapCard(): void {
   else openDetail();
 }
 
+/* Tap the details side to turn back; the click that ends a mouse swipe (or a text selection) must not do it. */
+function closeDetail(): void {
+  if (swallowClick || hasSelection()) return;
+  detailOpen.value = false;
+}
+
 const detailEl = ref<HTMLElement | null>(null);
 const detailSwipe = swipeDown(() => (detailOpen.value = false), () => detailEl.value); // drag the sheet down to close it
 
@@ -644,7 +650,7 @@ onUnmounted(() => {
 
         </div>
         <!-- back of the card: the details (tap, or swipe down, to turn back) -->
-        <div class="face back-face" @click="detailOpen = false" @touchstart.passive="detailSwipe.onTouchstart" @touchend.passive="detailSwipe.onTouchend">
+        <div class="face back-face" @click="closeDetail"@touchstart.passive="detailSwipe.onTouchstart" @touchend.passive="detailSwipe.onTouchend">
         <div ref="detailEl" class="px-4 pt-3 pb-2 detail">
           <!-- the word and its meaning stay visible on the back (the meaning follows the Settings switch) -->
           <div class="back-head">

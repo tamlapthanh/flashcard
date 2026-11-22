@@ -74,14 +74,25 @@ async function cardsFor(params: { deck: string; tags: string[]; status: string[]
   }
 }
 
-/* Warms the on-device copy of the details of many cards (a deck studied once online can then be studied offline). Stops at the first failure. */
-export async function prefetchDetails(ids: string[], batch = 30): Promise<void> {
-  for (let i = 0; i < ids.length; i += batch) {
+/* Warms the on-device copy of the details of many cards (a deck studied once online can then be studied offline).
+   Gentle on purpose: the server allows about 240 calls a minute and the study screen needs its share, so cards already kept are skipped,
+   one batch goes out every `gapMs` (about 20 a minute), and it stops at the first failure (a 429 included). */
+export async function prefetchDetails(ids: string[], batch = 30, gapMs = 3000): Promise<void> {
+  const user = auth.user;
+  const missing: string[] = [];
+  for (let i = 0; i < ids.length; i += 50) {
+    const part = ids.slice(i, i + 50);
+    const have = await Promise.all(part.map((id) => readCached(user, 'detail:' + id)));
+    part.forEach((id, k) => have[k] === undefined && missing.push(id));
+  }
+  for (let i = 0; i < missing.length; i += batch) {
+    if (auth.user !== user || (typeof navigator !== 'undefined' && navigator.onLine === false)) return; // signed out or switched user, or gone offline
     try {
-      await api.cardDetails(ids.slice(i, i + batch));
+      await api.cardDetails(missing.slice(i, i + batch));
     } catch {
       return;
     }
+    await new Promise((resolve) => setTimeout(resolve, gapMs));
   }
 }
 
