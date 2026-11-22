@@ -22,7 +22,6 @@ const radical = computed(() => [props.kanji.Radical, props.kanji.RadicalHanViet]
 const parts = computed(() => props.kanji.Parts ?? props.kanji.Components.filter((c) => c !== props.kanji.Literal).map((c) => ({ Literal: c, HanViet: null, Meaning: null })));
 const compounds = computed(() => compoundsOf(props.kanji));
 const mnemonic = computed(() => mnemonicOf(props.kanji));
-const noteOpen = ref(!touchOnly); // the Mnemonic folds like the Memory hint
 const firstMeaning = computed(() => (props.kanji.MeaningsVi[0] ?? props.kanji.MeaningsEn[0] ?? '').trim());
 
 /* On a touch screen the hint opens by itself when the sheet still fits on the screen: open it, let the layout settle
@@ -30,24 +29,11 @@ const firstMeaning = computed(() => (props.kanji.MeaningsVi[0] ?? props.kanji.Me
 const root = ref<HTMLElement | null>(null);
 let hintTouched = false;
 async function fitHint(): Promise<void> {
-  if (!touchOnly) return;
+  if (!touchOnly || hintTouched || (parts.value.length === 0 && mnemonic.value.length === 0)) return;
+  hintOpen.value = true;
+  await nextTick();
   const sheet = root.value?.closest<HTMLElement>('.sheet'); // the scrolling card of KanjiSheet
-  const overflows = () => !!sheet && sheet.scrollHeight > sheet.clientHeight + 1;
-  if (!hintTouched && parts.value.length) {
-    hintOpen.value = true;
-    await nextTick();
-    if (overflows()) hintOpen.value = false;
-  }
-  if (!noteTouched && mnemonic.value.length) {
-    noteOpen.value = true;
-    await nextTick();
-    if (overflows()) noteOpen.value = false;
-  }
-}
-let noteTouched = false;
-function toggleNote(): void {
-  noteTouched = true;
-  noteOpen.value = !noteOpen.value;
+  if (sheet && sheet.scrollHeight > sheet.clientHeight + 1) hintOpen.value = false;
 }
 function toggleHint(): void {
   hintTouched = true;
@@ -82,11 +68,11 @@ onMounted(() => void fitHint());
 
     <!-- Memory hint: the kanji as the sum of its parts. Every part is a same-size tile holding only the character; its sound
          and meaning sit beside it, so the rows line up: whole | = / + | part | what it is. -->
-    <div v-if="parts.length" class="hint">
+    <div v-if="parts.length || mnemonic.length" class="hint">
       <button type="button" class="label hint-toggle" :aria-expanded="hintOpen" @click="toggleHint">
         <v-icon icon="mdi-lightbulb-on-outline" size="14" />{{ t('kanji.hint') }}<v-icon :icon="hintOpen ? 'mdi-chevron-up' : 'mdi-chevron-down'" size="16" />
       </button>
-      <div v-if="hintOpen" class="formula">
+      <div v-if="hintOpen && parts.length" class="formula">
         <span class="whole jp" :style="{ gridRow: `1 / span ${parts.length + (firstMeaning ? 1 : 0)}` }">{{ kanji.Literal }}</span>
         <template v-for="(p, i) in parts" :key="i">
           <span class="pg jp">{{ p.Literal }}</span>
@@ -97,6 +83,9 @@ onMounted(() => void fitHint());
           <span class="op">→</span>
           <span class="result">{{ firstMeaning }}</span>
         </template>
+      </div>
+      <div v-if="hintOpen && mnemonic.length" class="notes">
+        <p v-for="m in mnemonic" :key="m.lang" class="text-body-2" :class="{ jp: m.lang === 'Ja' }">{{ m.text }}</p>
       </div>
     </div>
 
@@ -110,15 +99,6 @@ onMounted(() => void fitHint());
           <span v-if="c.Vi"> {{ c.Vi }}</span>
         </li>
       </ul>
-    </div>
-
-    <div v-if="mnemonic.length" class="hint">
-      <button type="button" class="label hint-toggle" :aria-expanded="noteOpen" @click="toggleNote">
-        <v-icon icon="mdi-lightbulb-on-outline" size="14" />{{ t('kanji.mnemonic') }}<v-icon :icon="noteOpen ? 'mdi-chevron-up' : 'mdi-chevron-down'" size="16" />
-      </button>
-      <div v-if="noteOpen" class="notes">
-        <p v-for="m in mnemonic" :key="m.lang" class="text-body-2" :class="{ jp: m.lang === 'Ja' }">{{ m.text }}</p>
-      </div>
     </div>
 
     <KanjiTree v-if="kanji.PartEdges?.length" :literal="kanji.Literal" :edges="kanji.PartEdges" :names="kanji.Tree ?? []" :root-hv="kanji.HanViet" @open="(l: string) => emit('open', l)" />
