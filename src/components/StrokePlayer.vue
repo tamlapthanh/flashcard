@@ -218,6 +218,7 @@ onUnmounted(stop);
 }
 .strip-toggle {
   font-size: 0.8rem;
+  text-transform: none; /* only the first letter is a capital */
   display: flex;
   align-items: center;
   width: 100%;
@@ -237,6 +238,7 @@ onUnmounted(stop);
     flex-wrap: wrap;
     gap: 4px;
     margin-top: 6px;
+    margin-left: 18px;
   }
   .thumb {
     position: relative;

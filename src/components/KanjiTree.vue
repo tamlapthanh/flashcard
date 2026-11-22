@@ -108,6 +108,7 @@ const graph = computed(() => {
 }
 .tree-toggle {
   font-size: 0.8rem;
+  text-transform: none; /* only the first letter is a capital */
   display: flex;
   align-items: center;
   width: 100%;
@@ -127,9 +128,9 @@ const graph = computed(() => {
 }
 svg {
   display: block;
-  max-width: 100%;
+  max-width: calc(100% - 18px);
   height: auto;
-  margin: 6px 0 0; /* left-aligned under the title */
+  margin: 6px 0 0 18px; /* left-aligned, a little right of the title */
 }
 .part { stroke-width: 2.5; fill-opacity: 0.22; }
 /* one colour per level (the kanji itself is always the green one) */

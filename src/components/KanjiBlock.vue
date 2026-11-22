@@ -182,7 +182,8 @@ onMounted(() => void fitHint());
   padding: 6px 0;
 }
 .hint-toggle {
-  font-size: 0.8rem; /* the section titles (Stroke, Memory hint, Components) share this size */
+  font-size: 0.8rem;
+  text-transform: none; /* only the first letter is a capital */ /* the section titles (Stroke, Memory hint, Components) share this size */
   display: flex;
   align-items: center;
   width: 100%;
@@ -199,6 +200,7 @@ onMounted(() => void fitHint());
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr)); /* two columns: a kanji can have many compounds */
   gap: 4px 16px;
+  margin-left: 18px; /* the content of a section sits a little to the right of its title */
 }
 .clist li {
   min-width: 0;
@@ -210,6 +212,7 @@ onMounted(() => void fitHint());
 }
 .notes {
   margin-top: 6px;
+  margin-left: 18px; /* the content of a section sits a little to the right of its title */
 }
 .notes p {
   margin: 0 0 6px;
@@ -221,6 +224,7 @@ onMounted(() => void fitHint());
   row-gap: 6px;
   align-items: center;
   margin-top: 8px;
+  margin-left: 18px; /* the content of a section sits a little to the right of its title */
 }
 .whole {
   grid-column: 1;
