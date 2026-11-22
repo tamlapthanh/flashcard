@@ -157,8 +157,8 @@ test.describe('kanji of a word side by side', () => {
 test.describe('the same margins on every screen', () => {
   test('decks, settings and the "no study session" page start 12px from the left edge', async ({ page }) => {
     const left = async (selector: string): Promise<number> => (await page.locator(selector).first().boundingBox())!.x;
-    await expect(page.locator('button.deck').first()).toBeVisible();
-    expect(await left('button.deck')).toBeCloseTo(12, 0);
+    await expect(page.locator('.deck').first()).toBeVisible();
+    expect(await left('.deck')).toBeCloseTo(12, 0);
     await page.evaluate(() => (location.hash = '#/settings'));
     await expect(page.locator('.sechead').first()).toBeVisible();
     expect(await left('.sechead')).toBeCloseTo(12, 0);

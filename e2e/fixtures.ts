@@ -8,6 +8,7 @@ export interface DeckInfo {
   name: string;
   total: number;
   counts: { new: number; learning: number; learned: number; skipped: number };
+  tags: { tag: string; count: number }[];
 }
 
 /* The server limits /api/login to 10 per minute, so each user logs in once per run and the token is reused. */
@@ -41,7 +42,7 @@ export async function richestDeck(request: APIRequestContext, user: User): Promi
   return (await apiDecks(request, user)).sort((a, b) => open(b) - open(a))[0];
 }
 
-const escapeRegex = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+export const escapeRegex = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** Opens the app already signed in as `user` (the session is seeded into localStorage before the app loads). */
 export async function openSignedIn(page: Page, request: APIRequestContext, user: User): Promise<void> {
@@ -60,8 +61,8 @@ export function tileMark(name: string): string {
   return (Array.from(name.trim())[0] ?? '札').toUpperCase();
 }
 
-/** The deck card on the deck screen (the tile inside it is a button of its own, so it is found by text, not by an anchored name). */
-export const deckCard = (page: Page, deck: DeckInfo) => page.locator('button.deck').filter({ hasText: new RegExp(`${escapeRegex(deck.name)}\\s*\\d+ cards`) });
+/** The deck card on the deck screen (found by its text; a tap on it studies the deck, the tile and the tag button inside it have their own). */
+export const deckCard = (page: Page, deck: DeckInfo) => page.locator('.deck').filter({ hasText: new RegExp(`${escapeRegex(deck.name)}\\s*\\d+ cards`) });
 
 /** The user's saved settings on the server (what the Google Sheet holds in production). */
 export async function apiSettings(request: APIRequestContext, user: User): Promise<{ settings: Record<string, unknown> | null; updatedAt: string | null }> {
@@ -79,11 +80,13 @@ export async function apiPutSettings(request: APIRequestContext, user: User, set
 /** Back to "nothing saved": the next page load of this user starts from the defaults. */
 export const resetSettings = (request: APIRequestContext, user: User): Promise<number> => apiPutSettings(request, user, {});
 
-/** Deck screen -> pick the deck -> Start -> study screen with the first card showing. */
+/** Deck screen -> tap the deck (it is studied at once) -> study screen with the first card showing. */
 export async function startStudy(page: Page, deck: DeckInfo): Promise<void> {
   await deckCard(page, deck).click();
-  await page.getByRole('button', { name: /始める/ }).click();
   await expect(page.getByRole('button', { name: 'Learned' })).toBeVisible();
 }
+
+/** The tag button of a deck's card (it opens the sheet where the tags of that deck are chosen). */
+export const tagButton = (page: Page, deck: DeckInfo) => page.getByRole('button', { name: `Tags of ${deck.name}` });
 
 export { expect, test };

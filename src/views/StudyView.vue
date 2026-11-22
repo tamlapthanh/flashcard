@@ -433,7 +433,8 @@ async function loadInfoDeck(): Promise<void> {
     } catch {
       /* no remembered pick */
     }
-    infoDeck.value = decks.find((d) => d.id === (finishedDeckId || id)) ?? null;
+    // the deck studied last; none studied yet (or it is gone): the first deck, so this screen is not empty (a deck that was just finished is never replaced)
+    infoDeck.value = decks.find((d) => d.id === (finishedDeckId || id)) ?? (finishedDeckId ? null : (decks[0] ?? null));
   } catch {
     /* offline / server asleep: the plain empty state stays */
   } finally {

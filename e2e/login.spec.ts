@@ -15,7 +15,7 @@ test.describe('login', () => {
     await page.getByLabel('Username').fill('alice');
     await page.getByLabel('Password', { exact: true }).fill('pw1');
     await page.getByRole('button', { name: 'Sign in' }).click();
-    await expect(page.getByRole('button', { name: /始める/ })).toBeVisible();
+    await expect(page.locator('.deck').first()).toBeVisible(); // the deck screen
 
     await page.getByRole('button', { name: 'Open the menu' }).click();
     await expect(page.getByText(/alice/)).toBeVisible();

@@ -1,4 +1,4 @@
-import { apiDecks, expect, openSignedIn, test } from './fixtures';
+import { apiDecks, expect, openSignedIn, tagButton, test } from './fixtures';
 
 const escapeRegex = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -12,12 +12,19 @@ test.describe('decks', () => {
     }
   });
 
-  test('Start shows how many cards will load (default filter: new + learning)', async ({ page, request }) => {
-    const [first] = await apiDecks(request, 'alice');
+  test('there is no Start button on the deck screen: a deck is studied by tapping it', async ({ page, request }) => {
     await openSignedIn(page, request, 'alice');
-    const eligible = first!.counts.new + first!.counts.learning;
+    await expect(page.locator('.deck').first()).toBeVisible();
+    await expect(page.getByRole('button', { name: /始める/ })).toHaveCount(0);
+  });
+
+  test('the tag sheet has the Start button, which shows how many cards will load (default filter: new + learning)', async ({ page, request }) => {
+    const first = (await apiDecks(request, 'alice')).find((d) => d.tags.length > 0);
+    test.skip(!first, 'no deck with tags in the local data');
+    await openSignedIn(page, request, 'alice');
+    await tagButton(page, first!).click();
     const start = page.getByRole('button', { name: /始める/ });
-    await expect(start).toContainText(`${eligible} cards`);
+    await expect(start).toContainText(`${first!.counts.new + first!.counts.learning} cards`);
     await expect(start).toBeEnabled(); // always: with nothing to study it opens the "Deck finished" screen
   });
 

@@ -43,7 +43,7 @@ test.describe('study run kept across a reload', () => {
 test.describe('study screen without a run', () => {
   test('shows the deck picked last, with its progress, instead of an empty page', async ({ page, request }) => {
     await openSignedIn(page, request, 'bob');
-    await expect(page.getByRole('button', { name: /始める/ })).toBeVisible(); // deck screen loaded (the pick is saved)
+    await expect(page.locator('.deck').first()).toBeVisible(); // deck screen loaded
     await page.evaluate(() => (location.hash = '#/study'));
     const finished = page.getByText('Every word of this deck is learned.');
     const info = page.locator('.infodeck');
@@ -66,7 +66,7 @@ test.describe('study screen without a run', () => {
       await route.fulfill({ response: res, json: body });
     });
     await openSignedIn(page, request, 'bob');
-    await expect(page.getByRole('button', { name: /始める/ })).toBeVisible();
+    await expect(page.locator('.deck').first()).toBeVisible();
     await page.evaluate(() => (location.hash = '#/study'));
     await expect(page.getByText('Deck finished').first()).toBeVisible();
     await expect(page.getByRole('button', { name: 'Back to decks' })).toBeVisible();
@@ -151,7 +151,7 @@ test.describe('study card layout', () => {
 });
 
 test.describe('Start with nothing to study', () => {
-  test('the Start button stays enabled and opens the "Deck finished" screen', async ({ page, request }) => {
+  test('tapping a deck with nothing to study opens the "Deck finished" screen', async ({ page, request }) => {
     await page.route('**/api/decks', async (route) => {
       const res = await route.fetch();
       const body = (await res.json()) as { decks: { total: number; counts: Record<string, number> }[] };
@@ -160,10 +160,10 @@ test.describe('Start with nothing to study', () => {
     });
     await page.route('**/api/cards?*', (route) => route.fulfill({ json: { total: 0, cards: [] } }));
     await openSignedIn(page, request, 'bob');
-    const start = page.getByRole('button', { name: /始める/ });
-    await expect(start).toBeEnabled(); // not greyed out although there is nothing new or learning
-    await expect(start).toContainText('0 cards');
-    await start.click();
+    const deck = page.locator('.deck').first();
+    await expect(deck).toBeVisible();
+    await expect(deck.locator('.deckhit')).toBeEnabled(); // not greyed out although there is nothing new or learning
+    await deck.click();
     await expect(page).toHaveURL(/#\/study/);
     await expect(page.getByText('Deck finished').first()).toBeVisible();
     await expect(page.getByText(/^Finished \d+ cards$/)).toBeVisible();

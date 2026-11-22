@@ -3,10 +3,18 @@
 Phone-first flashcards (Vue 3 + Vuetify, installable PWA) that study the words of LCT. Data comes from
 `flashmobile-server`; this repo holds no dictionary data.
 
-Screens: login -> deck picker (dictionary, tags, status, direction, size) -> study (front, then tap for the meaning,
+Screens: login -> deck screen (tap a dictionary to study it at once; the tag button of a dictionary opens its tags; the status filter is on top) -> study (front, then tap for the meaning,
 tap again to turn the card over to the details: Sino-Viet, pitch, kanji blocks with stroke-order player, notes,
 related words; Again / Learned / Skip; swipe or arrows to change word; speech) -> summary; settings (font size,
 show reading / meaning / Hán Việt, natural voice, dark mode, language).
+
+Deck screen (`DeckView.vue`): a tap anywhere on a dictionary's card studies it at once, with the status filter on top (New + Learning by default) and
+the tags remembered for THAT dictionary. There is no Start button on the screen: the tags of a dictionary are chosen from its tag button (a sheet
+with the tags and its own 始める button), and each dictionary keeps its own tags (`flashmobile.deckPick.<user>` = `{ deckId (the one studied last),
+statuses, tagsByDeck }`; the older `{ deckId, tags, statuses }` is read too). The tags chosen for a dictionary show on its card on one line, as many as
+fit and the rest as "+N" (`TagChips.vue`, measured on a hidden copy of the chips); the tag button carries the number of tags chosen. The square tile of
+a card (with a small list mark in its corner) opens the word list of the whole dictionary. While a dictionary loads its card shows a spinner and
+no other card can be started.
 
 Kanji sheet: the stroke-order player has a pencil button for **handwriting practice**. It opens a screen of its own in place of the
 sheet's content (like a component opened from the graph, with a Back button; `KanjiPractice.vue`) that holds only the question (Sino-Viet
