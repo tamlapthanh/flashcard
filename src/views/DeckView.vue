@@ -357,7 +357,7 @@ onMounted(load);
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--forest);
+  background: rgb(var(--v-theme-primary)); /* the green of the buttons (the same as the play button) */
   color: #fff !important;
   font-size: 1.35rem;
   flex-shrink: 0;
@@ -378,9 +378,9 @@ onMounted(load);
   width: 17px;
   height: 17px;
   border-radius: 50%;
-  background: var(--paper);
-  color: var(--forest);
-  border: 1px solid var(--paper-edge);
+  background: #7fd14a; /* the green of the tile, paler (a little deeper than the hover green so the white lines still read) */
+  color: #fff; /* the lines of the list icon are white */
+  border: 1.5px solid var(--paper); /* a ring in the card colour sets it off from the tile */
   display: flex;
   align-items: center;
   justify-content: center;

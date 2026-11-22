@@ -15,7 +15,8 @@ export default defineConfig({
   fullyParallel: false, // one shared in-memory server: tests run one after another
   workers: 1,
   retries: 0,
-  timeout: 30_000,
+  timeout: 60_000, // Vite compiles on demand: the first test of a run (and any test that opens a screen for the first time) can take 30 s+
+  expect: { timeout: 10_000 },
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
     baseURL: `http://localhost:${WEB_PORT}`,

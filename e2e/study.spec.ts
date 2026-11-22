@@ -18,7 +18,7 @@ test.describe('study', () => {
   });
 
   test('space flips the card; ArrowRight / ArrowLeft browse without grading', async ({ page }) => {
-    // The counter is based on the cards left, so browsing does not change it: compare the word on the card instead.
+    // The counter is the position in the run ("1 / N"): browsing moves the position but never the total (nothing is graded).
     const word = page.locator('.wordbody');
     const counterBefore = (await counter(page).innerText()).trim();
     const headword = (await word.innerText()).split('\n')[0]!.trim(); // the card also shows the meaning once flipped: compare the word only
@@ -28,9 +28,10 @@ test.describe('study', () => {
     if (total > 1) {
       await page.keyboard.press('ArrowRight');
       await expect(word).not.toContainText(headword);
-      await expect(counter(page)).toHaveText(counterBefore); // browsing is not grading
+      await expect(counter(page)).toHaveText(new RegExp(`^\\s*2\\s*/\\s*${total}\\s*$`)); // one step on, same total
       await page.keyboard.press('ArrowLeft');
       await expect(word).toContainText(headword);
+      await expect(counter(page)).toHaveText(counterBefore); // and back
     }
   });
 

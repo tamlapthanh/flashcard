@@ -6,7 +6,9 @@ import { apiDeck, apiPutSettings, apiSettings, counter, expect, openSignedIn, re
 const play = (page: Page) => page.getByRole('button', { name: /^(Auto play|Pause auto play)$/ });
 /* Auto play lives in the fan of the speaker button: open it, then tap the option. */
 const tapPlay = async (page: Page) => {
-  await page.getByRole('button', { name: 'Auto play options' }).click();
+  const menu = page.getByRole('button', { name: 'Auto play options' });
+  // the fan can still be open from the last tap (choosing an option does not close it): a second tap on the button would close it
+  if ((await menu.getAttribute('aria-expanded')) !== 'true') await menu.click();
   await play(page).click();
 };
 const pause = (page: Page) => page.getByRole('button', { name: 'Pause auto play' });

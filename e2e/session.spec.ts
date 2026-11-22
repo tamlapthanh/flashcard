@@ -103,7 +103,7 @@ test.describe('study card layout', () => {
   });
 
   test('the counter sits at the bottom centre, between the eye button and the speaker', async ({ page }) => {
-    const eye = page.locator('.eye4');
+    const eye = page.locator('.eye4:not(.speak)'); // the speaker button is an .eye4 too (it has the same tiny marks)
     const speaker = page.locator('.speak');
     test.skip(!(await speaker.isVisible()), 'the speaker button only shows when the browser can speak');
     const [e, c, s] = await Promise.all([eye.boundingBox(), counter(page).boundingBox(), speaker.boundingBox()]);
@@ -125,7 +125,7 @@ test.describe('study card layout', () => {
     await expect(front).toBeHidden();
     expect(await flipper.evaluate((el) => getComputedStyle(el).transform)).toBe('none'); // no rotateY any more
     expect(await flipper.evaluate((el) => getComputedStyle(el).transformStyle)).not.toBe('preserve-3d');
-    await back.click({ position: { x: 4, y: 4 } }); // a tap on the back turns back
+    await back.click({ position: { x: 6, y: 150 } }); // a tap on the back turns back (the left padding: a straight edge, the top corner is rounded and the tap would go through it)
     await expect(flipper).not.toHaveClass(/back/);
     await expect(front).toBeVisible();
   });

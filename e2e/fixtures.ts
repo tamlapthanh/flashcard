@@ -83,7 +83,8 @@ export const resetSettings = (request: APIRequestContext, user: User): Promise<n
 /** Deck screen -> tap the deck (it is studied at once) -> study screen with the first card showing. */
 export async function startStudy(page: Page, deck: DeckInfo): Promise<void> {
   await deckCard(page, deck).click();
-  await expect(page.getByRole('button', { name: 'Learned' })).toBeVisible();
+  // a big deck (the 1455-card Kanji book) takes a few seconds to load: more than the default 5 s of expect
+  await expect(page.getByRole('button', { name: 'Learned' })).toBeVisible({ timeout: 20_000 });
 }
 
 /** The tag button of a deck's card (it opens the sheet where the tags of that deck are chosen). */

@@ -27,19 +27,19 @@ async function findCardWithKanji(page: Page, min: number): Promise<number> {
 }
 
 test.describe('mouse hover on the buttons', () => {
-  test('a main (green) button turns light green with brown text and sinks', async ({ page }) => {
+  test('a main (green) button turns light green and sinks (the top-bar buttons keep their white text)', async ({ page }) => {
     await startStudy(page, deck);
     const learned = page.getByRole('button', { name: 'Learned' });
     await learned.hover();
     await expect(learned).toHaveCSS('background-color', 'rgb(155, 227, 95)');
-    await expect(learned).toHaveCSS('color', 'rgb(78, 52, 46)');
+    await expect(learned).toHaveCSS('color', 'rgb(255, 255, 255)'); // .act buttons have a colour of their own (StudyView); only the plain green buttons (Start, ...) turn the text brown
     await page.mouse.move(5, 400);
     await expect(learned).not.toHaveCSS('background-color', 'rgb(155, 227, 95)');
   });
 
   test('the round buttons inside the card turn pale mint', async ({ page }) => {
     await startStudy(page, deck);
-    const eye = page.locator('.eye4');
+    const eye = page.locator('.eye4:not(.speak)'); // the speaker button is an .eye4 too
     await eye.hover();
     await expect(eye).toHaveCSS('background-color', 'rgb(212, 245, 194)');
   });
@@ -101,7 +101,7 @@ test.describe('kanji of a word side by side', () => {
     await startStudy(page, deck);
   });
 
-  test('every kanji is a column, with no chips, starting at the left edge', async ({ page }) => {
+  test('every kanji is a column, with no chips, the first one in the left half', async ({ page }) => {
     const n = await findCardWithKanji(page, 2);
     test.skip(n < 2, 'no card with two kanji in the first 40 cards of the local data');
     await page.locator('.hvp button.k').first().click();
@@ -114,7 +114,7 @@ test.describe('kanji of a word side by side', () => {
     const tracks = await multi.evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(' ').length);
     expect(tracks).toBe(cols);
     const [sheet, first] = await Promise.all([page.locator('.sheet').boundingBox(), multi.locator('.kanji').first().boundingBox()]);
-    expect(first!.x - sheet!.x).toBeLessThan(40); // left aligned, not centred
+    expect(first!.x).toBeLessThan(sheet!.x + sheet!.width / 2); // the first kanji is in the left half; each kanji is centred in its own column (max 520px), so it is not at the very edge
   });
 
   test('the last stroke of every kanji turns black after it is drawn', async ({ page }) => {
@@ -125,7 +125,8 @@ test.describe('kanji of a word side by side', () => {
     await expect.poll(() => page.locator('.kanji .stroke.current').count(), { timeout: 25_000 }).toBe(0);
   });
 
-  test('on a low window the kanji shrink instead of scrolling', async ({ page }) => {
+  test('on a low window the sheet stays inside the screen and scrolls (the kanji are not shrunk)', async ({ page }) => {
+    // The details of a kanji are long now (stroke strip, memory hint, component graph): the sheet scrolls instead of the kanji shrinking.
     const n = await findCardWithKanji(page, 2);
     test.skip(n < 2, 'no card with two kanji in the first 40 cards of the local data');
     await page.keyboard.press('Escape');
@@ -134,12 +135,11 @@ test.describe('kanji of a word side by side', () => {
     await page.locator('.hvp button.k').first().click();
     const sheet = page.locator('.sheet');
     await expect(page.locator('.multi')).toBeVisible();
-    await expect
-      .poll(() => sheet.evaluate((el) => el.scrollHeight - el.clientHeight), { timeout: 5000 })
-      .toBeLessThanOrEqual(1);
+    await expect.poll(() => sheet.evaluate((el) => el.scrollHeight - el.clientHeight), { timeout: 5000 }).toBeGreaterThan(1); // it scrolls
+    const box = await sheet.boundingBox();
+    expect(box!.height).toBeLessThanOrEqual(520 * 0.95 + 1); // never taller than 95% of the window
     const zoom = Number(await page.locator('.multi').evaluate((el) => getComputedStyle(el).zoom));
-    expect(zoom).toBeLessThanOrEqual(1);
-    expect(zoom).toBeGreaterThanOrEqual(0.4);
+    expect(zoom).toBe(1);
   });
 
   test('a narrow window (under 800px) goes back to one kanji at a time with chips', async ({ page }) => {
