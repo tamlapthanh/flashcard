@@ -4,7 +4,6 @@ import { t } from '../i18n';
 import type { KanjiPart } from '../types';
 
 const props = defineProps<{ literal: string; edges: string[]; names: KanjiPart[]; rootHv?: string | null }>();
-const shown = ref(true); // the graph can be folded away, like the memory hint
 const emit = defineEmits<{ open: [literal: string] }>();
 
 const R = 22; // circle radius
@@ -81,23 +80,10 @@ const graph = computed(() => {
 
 <template>
   <div v-if="graph" class="tree">
-    <button type="button" class="label tree-toggle" :aria-expanded="shown" @click="shown = !shown">
+    <!-- Only the line of leaf components; the graph (circles and arrows) is no longer shown. -->
+    <div class="label tree-toggle">
       <v-icon icon="mdi-graph-outline" size="14" />{{ t('kanji.components') }}<span class="jp leaves">{{ graph.leaves.join(' ') }}</span>
-      <v-icon :icon="shown ? 'mdi-chevron-up' : 'mdi-chevron-down'" size="16" />
-    </button>
-    <svg v-if="shown" :viewBox="`0 0 ${Math.max(graph.w, 140)} ${graph.h}`" :style="{ width: Math.max(graph.w, 140) + 'px' }" role="img" :aria-label="t('kanji.components')">
-      <defs>
-        <marker id="kt-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-          <path d="M0,0 L8,4 L0,8 z" class="arrow" />
-        </marker>
-      </defs>
-      <line v-for="(l, i) in graph.lines" :key="i" :x1="l.x1" :y1="l.y1" :x2="l.x2" :y2="l.y2" class="edge" marker-end="url(#kt-arrow)" />
-      <g v-for="n in graph.nodes" :key="n.ch" :class="{ link: n.link }" :role="n.link ? 'button' : undefined" :tabindex="n.link ? 0 : undefined" @click="n.link && emit('open', n.ch)" @keydown.enter="n.link && emit('open', n.ch)">
-        <circle :cx="n.x" :cy="n.y" :r="R" :class="n.root ? 'whole' : ['part', `lvl${n.row % 4}`, { odd: !drawable(n.ch) }]" />
-        <text :x="n.x" :y="n.y" class="ch jp" text-anchor="middle" dominant-baseline="central">{{ shownAs(n.ch) }}</text>
-        <text v-if="n.hv" :x="n.x" :y="n.y + R + 15" class="hv-label" text-anchor="middle" :text-decoration="n.link ? 'underline' : undefined">{{ n.hv }}</text>
-      </g>
-    </svg>
+    </div>
   </div>
 </template>
 
@@ -115,7 +101,7 @@ const graph = computed(() => {
   border: 0;
   background: none;
   font-family: inherit;
-  cursor: pointer;
+  cursor: default;
 }
 .leaves {
   font-weight: 700;
