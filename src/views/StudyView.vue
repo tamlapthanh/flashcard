@@ -19,7 +19,7 @@ import { cardTextVars } from '../cardText';
 import { vFitLine } from '../lib/fitLine';
 import { StudySession } from '../session';
 import { settings } from '../settings';
-import { activeSession, saveRun, setActiveSession } from '../store';
+import { activeSession, focusMode, saveRun, setActiveSession, setFocusMode } from '../store';
 import type { Card, Deck, KanjiInfo, StudyResult } from '../types';
 
 const router = useRouter();
@@ -112,6 +112,10 @@ function toggleNotes(): void {
   notesTouched = true;
   notesOpen.value = !notesOpen.value;
 }
+/* The details side stays open from word to word; a word with nothing to show there goes back to the front. */
+watch(() => card.value?.id, () => {
+  if (detailOpen.value && !hasDetail.value) detailOpen.value = false;
+});
 watch([() => card.value?.id, detailOpen], () => {
   notesOpen.value = false;
   notesTouched = false;
@@ -206,11 +210,12 @@ function browse(direction: 'next' | 'previous'): void {
   autoStop();
   if (stamping.value) return;
   slide.value = direction === 'next' ? 'slide-next' : 'slide-prev';
-  detailOpen.value = false;
   stopSpeaking();
   speaking.value = false;
+  const side = s.flipped; // the next word opens on the side that is showing now (front, answer or details)
   if (direction === 'next') s.next();
   else s.previous();
+  s.flipped = side;
 }
 
 function touchStart(e: TouchEvent): void {
@@ -262,10 +267,11 @@ function pickWord(id: string): void {
   listOpen.value = false;
   if (stamping.value || id === s.current?.id) return;
   slide.value = 'slide-next';
-  detailOpen.value = false;
   stopSpeaking();
   speaking.value = false;
+  const side = s.flipped;
   s.jumpTo(id);
+  s.flipped = side;
 }
 
 async function answer(result: StudyResult): Promise<void> {
@@ -277,8 +283,10 @@ async function answer(result: StudyResult): Promise<void> {
     stamping.value = false;
   }
   slide.value = 'slide-next';
+  const side = s.flipped;
   const answered = s.answer(result);
-  detailOpen.value = false;
+  if (!s.finished) s.flipped = side; // the next word keeps the side that was showing
+  else detailOpen.value = false;
   stopSpeaking();
   speaking.value = false;
   if (!answered) return;
@@ -528,7 +536,7 @@ onUnmounted(() => {
 
   <!-- Studying: three steps on one card (word -> meaning -> details sheet), never scrolls -->
   <template v-else-if="card">
-    <TopBar>
+    <TopBar :hidden="focusMode">
       <!-- grading buttons live in the header, right of the counter; always usable (you may know the word without flipping).
            On narrow screens only the icons show (the names stay as accessible labels). -->
       <div class="acts">
@@ -539,8 +547,10 @@ onUnmounted(() => {
       </div>
     </TopBar>
 
-    <div class="stage" :style="textVars" @touchstart.passive="touchStart" @touchend.passive="touchEnd" @mousedown="mouseDown" @mouseup="mouseUp">
+    <div class="stage" :class="{ focus: focusMode }" :style="textVars" @touchstart.passive="touchStart" @touchend.passive="touchEnd" @mousedown="mouseDown" @mouseup="mouseUp">
       <div class="paper-card card">
+        <!-- focus mode: hides the top bar so the card gets the whole screen; the same corner button brings the bar back -->
+        <button type="button" class="focusbtn" :aria-label="focusMode ? t('study.focusOff') : t('study.focusOn')" :data-tip="focusMode ? t('study.focusOff') : t('study.focusOn')" @click.stop="setFocusMode(!focusMode)"><v-icon :icon="focusMode ? 'mdi-fullscreen-exit' : 'mdi-fullscreen'" size="22" /></button>
         <!-- position in the run, bottom centre of the card; tap it for the word list -->
         <button type="button" class="counter" :aria-label="t('list.open')" @click.stop="listOpen = true">
           {{ s.position }} / {{ s.total }}
@@ -651,10 +661,11 @@ onUnmounted(() => {
                 @click.stop="speak"
               />
               <!-- the word with its reading under it (furigana over each kanji when the card has them), like the front -->
-              <div class="bwcol">
-                <RubyWord v-if="card.ruby" :cells="card.ruby" />
+              <!-- the word stays on ONE line whatever its size (v-fit-line zooms it out to the width of this column) -->
+              <div class="bwcol" :class="{ spk: canSpeakNow }">
+                <RubyWord v-if="card.ruby" v-fit-line :cells="card.ruby" />
                 <template v-else>
-                  <span class="jp bw">{{ card.headword }}</span>
+                  <span v-fit-line class="jp bw">{{ card.headword }}</span>
                   <span v-if="card.reading" class="rd br">
                     <PitchLine v-if="card.pitch" :morae="card.pitch.morae" />
                     <template v-else>{{ card.reading }}</template>
@@ -763,6 +774,10 @@ onUnmounted(() => {
   flex-direction: column;
   overflow: hidden; /* nothing ever sticks out of the screen while swiping */
 }
+.stage.focus {
+  height: 100dvh;
+  padding-top: 4px;
+}
 .card {
   position: relative;
   flex: 1;
@@ -840,6 +855,29 @@ onUnmounted(() => {
   color: var(--c-counter, var(--leaf));
   background: none;
   cursor: pointer;
+}
+.focusbtn {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  z-index: 3;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: none;
+  color: var(--c-counter, var(--leaf)); /* the same colour as the 1 / N counter */
+  opacity: 1;
+  cursor: pointer;
+}
+.focusbtn .v-icon {
+  -webkit-text-stroke: 0.4px currentColor; /* the icon font is thin: thicken the strokes */
+}
+.focusbtn:hover,
+.focusbtn:active {
+  filter: brightness(1.2);
 }
 .acts {
   display: flex;
@@ -1287,6 +1325,14 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  min-width: 0;
+  max-width: 100%; /* never wider than the line: a long word is zoomed out to fit, not wrapped */
+}
+.bwcol.spk {
+  max-width: calc(100% - 40px); /* room for the speaker button to its left */
+}
+.bw {
+  display: inline-block; /* zoom (v-fit-line) needs a box */
 }
 .bside {
   flex: 1 1 140px;

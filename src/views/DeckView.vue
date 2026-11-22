@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, shallowRef, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { api, ApiError } from '../api';
+import { api, ApiError, prefetchDetails } from '../api';
 import { auth } from '../auth';
 import { t } from '../i18n';
 import TagChips from '../components/TagChips.vue';
@@ -151,6 +151,16 @@ async function load(): Promise<void> {
   }
 }
 
+/* Quietly keeps this deck on the device (its whole list and the detail of its cards), so it can be studied without the server later. */
+async function keepForOffline(deckId: string, ids: string[]): Promise<void> {
+  try {
+    const all = await api.cards({ deck: deckId, tags: [], status: STATUS_ORDER });
+    await prefetchDetails(all.cards.length ? all.cards.map((c) => c.id) : ids);
+  } catch {
+    /* offline or asleep: nothing to keep */
+  }
+}
+
 /* Studies a deck now: its cards of the status filter and of the tags remembered for it. */
 async function startDeck(d: Deck): Promise<void> {
   if (startingId.value) return;
@@ -169,6 +179,7 @@ async function startDeck(d: Deck): Promise<void> {
     clearDetails();
     await ensureDetails(cards.slice(0, 7).map((c) => c.id)); // the first cards are complete when the study screen opens
     setActiveSession(new StudySession(cards, { reverse: settings.direction === 'reverse', showReading: settings.showReading, deckName: d.name, tags }));
+    void keepForOffline(d.id, cards.map((c) => c.id));
     await router.push('/study');
   } catch {
     error.value = t('err.load');

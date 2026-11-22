@@ -24,7 +24,7 @@ export default defineConfig({
         theme_color: '#5db82f',
         icons: [{ src: 'icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }]
       },
-      // Cache the app shell only; card data always comes from the server (the server may be asleep, see README).
+      // The service worker caches the app shell only; card data is kept by the app itself (src/lib/apiCache.ts, Cache Storage).
       workbox: {
         navigateFallback: 'index.html',
         globPatterns: ['**/*.{js,css,html,svg,woff2}'],

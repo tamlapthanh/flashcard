@@ -139,7 +139,10 @@ test.describe('study card layout', () => {
     await expect(word).toBeVisible();
     if (await side.count()) {
       const [w, s] = await Promise.all([word.boundingBox(), side.boundingBox()]);
-      expect(s!.x).toBeGreaterThanOrEqual(w!.x + w!.width - 1); // the right side really is to the right of the word
+      // the right side is to the right of the word; a long word keeps its one line and takes the whole width, so then the side sits right under it
+      const right = s!.x >= w!.x + w!.width - 1;
+      const below = s!.y >= w!.y + w!.height - 1;
+      expect(right || below).toBe(true);
     }
     // the Sino-Vietnamese reading is always UPPER CASE
     const hanviet = side.locator('.bhv');

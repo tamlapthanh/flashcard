@@ -41,5 +41,33 @@ export function setActiveSession(run: StudySession | null): void {
   saveRun();
 }
 
+/* Focus mode of the study screen: the top bar is hidden so the card gets the whole screen (on a phone the browser goes full screen too).
+   Remembered on this device only. */
+const FOCUS_KEY = 'flashmobile.focus';
+function readFocus(): boolean {
+  try {
+    return localStorage.getItem(FOCUS_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+export const focusMode = ref(readFocus());
+export function setFocusMode(on: boolean): void {
+  focusMode.value = on;
+  try {
+    localStorage.setItem(FOCUS_KEY, on ? '1' : '0');
+  } catch {
+    /* not remembered */
+  }
+  // Browser full screen only on touch devices (it needs a tap, which this is; a desktop keeps its window). Not available everywhere (iOS Safari): ignored.
+  try {
+    if (!window.matchMedia('(pointer: coarse)').matches) return;
+    if (on) void document.documentElement.requestFullscreen?.().catch(() => undefined);
+    else if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
+  } catch {
+    /* no full screen */
+  }
+}
+
 /* The navigation menu (opened by the ☰ button of every top bar, drawn in App.vue). */
 export const menuOpen = ref(false);
