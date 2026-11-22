@@ -196,9 +196,13 @@ onMounted(() => void fitHint());
   list-style: none;
   margin: 6px 0 0;
   padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)); /* two columns: a kanji can have many compounds */
+  gap: 4px 16px;
+}
+.clist li {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .cw {
   font-weight: 700;
