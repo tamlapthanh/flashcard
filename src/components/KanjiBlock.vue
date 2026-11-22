@@ -22,6 +22,7 @@ const radical = computed(() => [props.kanji.Radical, props.kanji.RadicalHanViet]
 const parts = computed(() => props.kanji.Parts ?? props.kanji.Components.filter((c) => c !== props.kanji.Literal).map((c) => ({ Literal: c, HanViet: null, Meaning: null })));
 const compounds = computed(() => compoundsOf(props.kanji));
 const mnemonic = computed(() => mnemonicOf(props.kanji));
+const compOpen = ref(!touchOnly); // Compounds fold like the Memory hint
 const firstMeaning = computed(() => (props.kanji.MeaningsVi[0] ?? props.kanji.MeaningsEn[0] ?? '').trim());
 
 /* On a touch screen the hint opens by itself when the sheet still fits on the screen: open it, let the layout settle
@@ -29,11 +30,24 @@ const firstMeaning = computed(() => (props.kanji.MeaningsVi[0] ?? props.kanji.Me
 const root = ref<HTMLElement | null>(null);
 let hintTouched = false;
 async function fitHint(): Promise<void> {
-  if (!touchOnly || hintTouched || (parts.value.length === 0 && mnemonic.value.length === 0)) return;
-  hintOpen.value = true;
-  await nextTick();
+  if (!touchOnly) return;
   const sheet = root.value?.closest<HTMLElement>('.sheet'); // the scrolling card of KanjiSheet
-  if (sheet && sheet.scrollHeight > sheet.clientHeight + 1) hintOpen.value = false;
+  const overflows = () => !!sheet && sheet.scrollHeight > sheet.clientHeight + 1;
+  if (!hintTouched && (parts.value.length || mnemonic.value.length)) {
+    hintOpen.value = true;
+    await nextTick();
+    if (overflows()) hintOpen.value = false;
+  }
+  if (!compTouched && compounds.value.length) {
+    compOpen.value = true;
+    await nextTick();
+    if (overflows()) compOpen.value = false;
+  }
+}
+let compTouched = false;
+function toggleComp(): void {
+  compTouched = true;
+  compOpen.value = !compOpen.value;
 }
 function toggleHint(): void {
   hintTouched = true;
@@ -91,8 +105,10 @@ onMounted(() => void fitHint());
 
     <!-- Compounds: one word per row, "word (reading) meaning". -->
     <div v-if="compounds.length" class="hint compounds">
-      <div class="label">{{ t('kanji.compounds') }}</div>
-      <ul class="clist">
+      <button type="button" class="label hint-toggle" :aria-expanded="compOpen" @click="toggleComp">
+        <v-icon icon="mdi-format-list-bulleted" size="14" />{{ t('kanji.compounds') }}<v-icon :icon="compOpen ? 'mdi-chevron-up' : 'mdi-chevron-down'" size="16" />
+      </button>
+      <ul v-if="compOpen" class="clist">
         <li v-for="(c, i) in compounds" :key="i" class="text-body-2">
           <span class="jp cw">{{ c.Word }}</span>
           <span v-if="c.Reading" class="jp"> ({{ c.Reading }})</span>
