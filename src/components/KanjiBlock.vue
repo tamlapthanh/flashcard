@@ -1,27 +1,3 @@
-async function fitHint(): Promise<void> {
-  if (!touchOnly) return;
-  const sheet = root.value?.closest<HTMLElement>('.sheet'); // the scrolling card of KanjiSheet
-  const overflows = () => !!sheet && sheet.scrollHeight > sheet.clientHeight + 1;
-  if (!hintTouched && parts.value.length) {
-    hintOpen.value = true;
-    await nextTick();
-    if (overflows()) hintOpen.value = false;
-  }
-  if (!noteTouched && mnemonic.value.length) {
-    noteOpen.value = true;
-    await nextTick();
-    if (overflows()) noteOpen.value = false;
-  }
-}
-let noteTouched = false;
-function toggleNote(): void {
-  noteTouched = true;
-  noteOpen.value = !noteOpen.value;
-}
-function toggleHint(): void {
-  hintTouched = true;
-  hintOpen.value = !hintOpen.value;
-}
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from 'vue';
 import { t } from '../i18n';
@@ -54,11 +30,24 @@ const firstMeaning = computed(() => (props.kanji.MeaningsVi[0] ?? props.kanji.Me
 const root = ref<HTMLElement | null>(null);
 let hintTouched = false;
 async function fitHint(): Promise<void> {
-  if (!touchOnly || hintTouched || parts.value.length === 0) return;
-  hintOpen.value = true;
-  await nextTick();
+  if (!touchOnly) return;
   const sheet = root.value?.closest<HTMLElement>('.sheet'); // the scrolling card of KanjiSheet
-  if (sheet && sheet.scrollHeight > sheet.clientHeight + 1) hintOpen.value = false;
+  const overflows = () => !!sheet && sheet.scrollHeight > sheet.clientHeight + 1;
+  if (!hintTouched && parts.value.length) {
+    hintOpen.value = true;
+    await nextTick();
+    if (overflows()) hintOpen.value = false;
+  }
+  if (!noteTouched && mnemonic.value.length) {
+    noteOpen.value = true;
+    await nextTick();
+    if (overflows()) noteOpen.value = false;
+  }
+}
+let noteTouched = false;
+function toggleNote(): void {
+  noteTouched = true;
+  noteOpen.value = !noteOpen.value;
 }
 function toggleHint(): void {
   hintTouched = true;
