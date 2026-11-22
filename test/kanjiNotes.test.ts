@@ -8,10 +8,10 @@ describe('kanjiNotes', () => {
     const c = { Word: '七日', Reading: 'なのか', Vi: 'bảy ngày' };
     expect(compoundsOf({ Compounds: [c, { Word: ' ', Reading: null, Vi: null }] })).toEqual([c]);
   });
-  it('mnemonic: Vi, En, Ja order, skipping missing languages', () => {
+  it('mnemonic: Ja, En, Vi order, skipping missing languages', () => {
     expect(mnemonicOf({})).toEqual([]);
     expect(mnemonicOf({ Mnemonic: { En: null, Ja: null, Vi: null } })).toEqual([]);
-    expect(mnemonicOf({ Mnemonic: { En: 'e', Ja: 'j', Vi: 'v' } }).map((x) => x.lang)).toEqual(['Vi', 'En', 'Ja']);
+    expect(mnemonicOf({ Mnemonic: { En: 'e', Ja: 'j', Vi: 'v' } }).map((x) => x.lang)).toEqual(['Ja', 'En', 'Vi']);
     expect(mnemonicOf({ Mnemonic: { En: 'e', Ja: null, Vi: null } })).toEqual([{ lang: 'En', text: 'e' }]);
   });
 });
