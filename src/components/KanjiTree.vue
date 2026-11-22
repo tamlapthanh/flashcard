@@ -129,7 +129,7 @@ svg {
   display: block;
   max-width: 100%;
   height: auto;
-  margin: 6px auto 0;
+  margin: 6px 0 0; /* left-aligned under the title */
 }
 .part { stroke-width: 2.5; fill-opacity: 0.22; }
 /* one colour per level (the kanji itself is always the green one) */
