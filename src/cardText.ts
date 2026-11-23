@@ -7,7 +7,7 @@ import type { InjectionKey } from 'vue';
 
 export interface CardTextDef {
   key: string;
-  group: 'front' | 'back' | 'kanji' | 'other';
+  group: 'front' | 'back' | 'kanji' | 'test' | 'other';
   en: string;
   vi: string;
   size: number; // px (the old rem value x 16)
@@ -74,6 +74,15 @@ export const CARD_TEXTS: CardTextDef[] = [
   { key: 'kMnemonic', group: 'kanji', en: 'Memory hint: mnemonic lines', vi: 'Gợi ý cách nhớ: câu mẹo', size: 14, light: TEXT_L, dark: TEXT_D },
   { key: 'kCompWord', group: 'kanji', en: 'Compounds: the word', vi: 'Từ ghép: từ', size: 14, light: HEAD_L, dark: HEAD_D },
   { key: 'kCompText', group: 'kanji', en: 'Compounds: reading and meaning', vi: 'Từ ghép: cách đọc và nghĩa', size: 14, light: TEXT_L, dark: TEXT_D },
+
+  { key: 'tAsk', group: 'test', en: 'Test: the instruction line', vi: 'Test: dòng hướng dẫn', size: 12, light: '#757575', dark: '#b0b0b0' },
+  { key: 'tWord', group: 'test', en: 'Test: the word asked', vi: 'Test: từ được hỏi', size: 35.2, light: HEAD_L, dark: HEAD_D },
+  { key: 'tReading', group: 'test', en: 'Test: reading under the word', vi: 'Test: cách đọc dưới từ', size: 16.8, light: FOREST_L, dark: FOREST_D },
+  { key: 'tAnswer', group: 'test', en: 'Test: answers (meanings)', vi: 'Test: đáp án (nghĩa)', size: 17.6, light: TEXT_L, dark: TEXT_D },
+  { key: 'tAnswerJp', group: 'test', en: 'Test: answers (Japanese words)', vi: 'Test: đáp án (từ tiếng Nhật)', size: 23.2, light: TEXT_L, dark: TEXT_D },
+  { key: 'tFbWord', group: 'test', en: 'Test: the word, after answering', vi: 'Test: từ, sau khi trả lời', size: 24, light: HEAD_L, dark: HEAD_D },
+  { key: 'tFbReading', group: 'test', en: 'Test: its reading, after answering', vi: 'Test: cách đọc, sau khi trả lời', size: 16, light: FOREST_L, dark: FOREST_D },
+  { key: 'tFbMeaning', group: 'test', en: 'Test: its meaning, after answering', vi: 'Test: nghĩa, sau khi trả lời', size: 16, light: TEXT_L, dark: TEXT_D },
 
   { key: 'counter', group: 'other', en: 'Counter (1 / N)', vi: 'Bộ đếm (1 / N)', size: 10.88, light: LEAF_L, dark: LEAF_D }
 ];

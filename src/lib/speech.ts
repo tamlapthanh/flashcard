@@ -113,6 +113,45 @@ async function cachedSpeech(text: string, deck: string, save = true): Promise<{ 
   return { blob: served.blob, source: served.source };
 }
 
+/* The sound device sleeps when nothing played for a while (and a Bluetooth one takes a moment to wake): the start of the first word is then
+   swallowed. After a pause a quarter second of silence is played first, so the device is awake when the word begins. */
+const IDLE_MS = 4000;
+const WAKE_MS = 250;
+let lastSoundAt = 0;
+let silenceUrl = '';
+function silence(): string {
+  if (silenceUrl) return silenceUrl;
+  const samples = 8000 * (WAKE_MS / 1000); // 8 kHz, 16 bit, mono
+  const bytes = new Uint8Array(44 + samples * 2);
+  const view = new DataView(bytes.buffer);
+  const text = (at: number, s: string): void => [...s].forEach((c, i) => view.setUint8(at + i, c.charCodeAt(0)));
+  text(0, 'RIFF');
+  view.setUint32(4, 36 + samples * 2, true);
+  text(8, 'WAVEfmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, 8000, true);
+  view.setUint32(28, 16000, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  text(36, 'data');
+  view.setUint32(40, samples * 2, true);
+  silenceUrl = URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' }));
+  return silenceUrl;
+}
+function wakeOutput(): Promise<void> {
+  if (Date.now() - lastSoundAt < IDLE_MS) return Promise.resolve();
+  return new Promise((resolve) => {
+    const quiet = new Audio(silence());
+    const done = (): void => resolve();
+    quiet.onended = done;
+    quiet.onerror = done;
+    setTimeout(done, WAKE_MS + 300); // never wait longer than this
+    quiet.play().catch(done);
+  });
+}
+
 function speakWithDevice(text: string, onEnd?: () => void): void {
   if (!('speechSynthesis' in window)) {
     onEnd?.();
@@ -120,6 +159,14 @@ function speakWithDevice(text: string, onEnd?: () => void): void {
   }
   announce('device');
   window.speechSynthesis.cancel();
+  const id = current;
+  // Speaking in the same instant as cancel() makes some browsers (Chrome) swallow the start of the word: wait a moment.
+  setTimeout(() => {
+    if (id === current) speakNow(text, onEnd);
+  }, 80);
+}
+
+function speakNow(text: string, onEnd?: () => void): void {
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = 'ja-JP';
   const voice = window.speechSynthesis.getVoices().find((v) => v.lang.toLowerCase().startsWith('ja'));
@@ -147,15 +194,24 @@ export function speakJapanese(text: string, onEnd?: () => void, deck = '', save 
       if (id !== current) return; // stopped or replaced while the voice was loading
       announce(source, origin); // known as soon as the file is in hand (a failing player below then says "device" instead)
       audioUrl = URL.createObjectURL(blob);
-      audio = new Audio(audioUrl);
-      audio.onended = () => onEnd?.();
-      audio.onerror = () => {
+      const player = new Audio(audioUrl);
+      audio = player;
+      player.preload = 'auto';
+      player.onended = () => {
+        lastSoundAt = Date.now();
+        onEnd?.();
+      };
+      player.onerror = () => {
         release();
         if (id === current) speakWithDevice(text, onEnd);
       };
-      audio.play().catch(() => {
-        release();
-        if (id === current) speakWithDevice(text, onEnd);
+      void wakeOutput().then(() => {
+        if (id !== current || audio !== player) return; // stopped or replaced while the device woke up
+        lastSoundAt = Date.now();
+        player.play().catch(() => {
+          release();
+          if (id === current) speakWithDevice(text, onEnd);
+        });
       });
     },
     () => {

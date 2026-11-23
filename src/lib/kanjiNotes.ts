@@ -14,3 +14,9 @@ export function mnemonicOf(k: Pick<KanjiInfo, 'Mnemonic'>): { lang: 'Ja' | 'En' 
     return text ? [{ lang, text }] : [];
   });
 }
+
+/* The Memory hint (the parts, or the mnemonic) and the Compounds both exist: only then do they share a row. Not every kanji has compounds. */
+export function hintBesideCompounds(k: Pick<KanjiInfo, 'Compounds' | 'Mnemonic' | 'Parts' | 'Components' | 'Literal'>): boolean {
+  const parts = k.Parts?.length ?? k.Components.filter((c) => c !== k.Literal).length;
+  return compoundsOf(k).length > 0 && (parts > 0 || mnemonicOf(k).length > 0);
+}

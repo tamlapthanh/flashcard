@@ -2,6 +2,8 @@
 import { ref, shallowRef } from 'vue';
 import { auth } from './auth';
 import { StudySession, type RunSnapshot } from './session';
+import type { QuizMode } from './lib/quiz';
+import type { StudyStatus } from './types';
 
 /*
  * The study run built on the deck screen and read by the study screen. It is also written to this device (per user), so a
@@ -35,6 +37,32 @@ export function saveRun(): void {
     }
   }, 300);
 }
+
+/* The deck screen only says which deck to study; the study screen loads its cards behind a loading screen (views/StudyLoadView.vue). */
+export interface PendingStart {
+  deckId: string;
+  deckName: string;
+  tags: string[];
+  statuses: StudyStatus[];
+  /** Study only these words (the ones missed in a test), whatever their status. */
+  wordIds?: string[];
+}
+export const pendingStart = shallowRef<PendingStart | null>(null);
+
+/* Same for a test: the deck screen (or the list of past tests) only says what to test, the test screen loads the cards and builds the questions.
+   `wordIds` limits the test to those words (testing again the words missed); the wrong answers still come from the whole deck. */
+export interface PendingTest {
+  deckId: string;
+  deckName: string;
+  tags: string[];
+  statuses: StudyStatus[]; // empty: every word of the deck
+  count: number;
+  kinds?: QuizMode; // default: both kinds
+  /** Continue this unfinished test (the rest of the fields only say which deck it is). */
+  resumeId?: string;
+  wordIds?: string[];
+}
+export const pendingTest = shallowRef<PendingTest | null>(null);
 
 export function setActiveSession(run: StudySession | null): void {
   activeSession.value = run;

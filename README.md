@@ -74,6 +74,7 @@ Then on the server set `CORS_ORIGIN=https://<user>.github.io` and on Android Chr
 
 ## Behaviour worth knowing
 
+- Test (`views/TestView.vue`, `lib/quiz.ts`): the test button of a deck opens a sheet (number of questions, question type, optional status filter) and starts a multiple-choice test of that deck (tags remembered for the deck). Two kinds: a word is shown and its meaning is picked, or a word is heard and the Japanese word is picked (a single kanji is only asked by meaning); a question can be skipped, and the test ended early (what is left stays "not done", not wrong). The wrong answers are other words of the deck that look alike, drawn at random for each new test. The whole test (questions and options) is saved to the server (D1) when it is made, each answer as it is given, and it is marked done at the end, so it can be left and continued from any device: menu > Kiểm tra (`views/TestHistoryView.vue`) lists unfinished tests (Continue) and finished ones, with the score by kind. The list is read from the server, not cached. Steps that could not be sent wait in a per-user queue in localStorage (`flashmobile.testQueue.<user>`) and are resent in order.
 - A free Render server sleeps: the first load shows "waking the server" for ~30-60 s.
 - Every result is queued in the phone's storage and sent in order; if the server is unreachable it is retried when
   the app is opened again or the phone is back online. The server ignores a repeat of the same result.

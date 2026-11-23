@@ -26,7 +26,7 @@ async function openPractice(page: Page, request: APIRequestContext): Promise<Ope
   test.skip(!found, 'no card with kanji in the first 20 cards of the local data');
   await rows.first().locator('button.k').click();
   await expect(page.locator('.kanji')).toBeVisible();
-  const literal = ((await page.locator('.kanji .glyph').first().textContent()) ?? '').trim();
+  const literal = ((await page.locator('.kanji').first().getAttribute('data-literal')) ?? '').trim();
   const paths = await page.locator('.kanji .canvas svg.big path.ghost').evaluateAll((els) => els.map((e) => e.getAttribute('d') ?? ''));
   await page.getByRole('button', { name: 'Practice writing' }).click();
   await expect(page.locator('.kp')).toBeVisible();
@@ -65,7 +65,7 @@ test.describe('kanji handwriting practice', () => {
     const { literal, paths } = await openPractice(page, request);
     const screen = page.locator('.kp');
     await expect(screen).not.toContainText(literal); // the answer is not on screen
-    await expect(screen.locator('.glyph')).toHaveText('?');
+    await expect(screen).toHaveAttribute('data-revealed', 'false');
     // the parts (Memory hint) are a help the user asks for: folded at first
     const toggle = screen.getByRole('button', { name: 'Memory hint' });
     if (await toggle.count()) {
@@ -83,7 +83,7 @@ test.describe('kanji handwriting practice', () => {
 
     await page.getByRole('button', { name: 'Back' }).click();
     await expect(page.locator('.kp')).toHaveCount(0);
-    await expect(page.locator('.kanji .glyph').first()).toHaveText(literal);
+    await expect(page.locator('.kanji').first()).toHaveAttribute('data-literal', literal);
     await expect(page.getByRole('button', { name: 'Practice writing' })).toBeVisible();
   });
 
@@ -110,7 +110,7 @@ test.describe('kanji handwriting practice', () => {
     await expect(page.locator('.practice .count .mdi-check-circle')).toBeVisible();
     await expect(page.locator('.practice .count .mdi-close-circle')).toHaveCount(0);
     await expect(page.locator('.practice .sr')).toHaveText('Done, no wrong stroke!');
-    await expect(page.locator('.kp .glyph')).toHaveText(literal); // revealed
+    await expect(page.locator('.kp')).toHaveAttribute('data-revealed', 'true'); // revealed
     await expect(page.locator('.practice svg path.stroke:not(.ghost)')).toHaveCount(paths.length); // every stroke drawn clean
   });
 
@@ -118,13 +118,13 @@ test.describe('kanji handwriting practice', () => {
     const { literal, paths } = await openPractice(page, request);
     await page.getByRole('button', { name: 'Show or hide the faint outline' }).click();
     await expect(page.locator('.practice svg path.stroke.ghost')).toHaveCount(paths.length);
-    await expect(page.locator('.kp .glyph')).toHaveText(literal);
+    await expect(page.locator('.kp')).toHaveAttribute('data-revealed', 'true');
     for (const d of paths) await drawStroke(page, d);
     await expect(page.locator('.practice .hanko')).toHaveText('済');
     // outline off again, and starting again: back to writing from memory, the kanji hidden
     await page.getByRole('button', { name: 'Start again' }).click();
     await expect(page.locator('.practice svg path.stroke.ghost')).toHaveCount(0);
-    await expect(page.locator('.kp .glyph')).toHaveText('?');
+    await expect(page.locator('.kp')).toHaveAttribute('data-revealed', 'false');
   });
 
   test('a stroke drawn backwards: refused with the reason; the right stroke is shown from the second wrong try; then the right way is accepted', async ({ page, request }) => {

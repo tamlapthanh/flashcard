@@ -32,8 +32,8 @@ test.describe('details: Sino-Vietnamese kanji rows', () => {
   });
 });
 
-/* On a phone (touch) the Notes and the Memory hint are folded, but open by themselves when the screen has room for them. */
-test.describe('auto-open of Notes and Memory hint when there is room', () => {
+/* On a phone (touch) the Notes are folded but open by themselves when the screen has room; the Memory hint of the kanji sheet is always folded at first. */
+test.describe('auto-open of Notes when there is room, Memory hint folded at first', () => {
   const TALL = { width: 412, height: 1600 };
   const SHORT = { width: 412, height: 420 };
 
@@ -60,14 +60,14 @@ test.describe('auto-open of Notes and Memory hint when there is room', () => {
     await expect(toggle).toHaveAttribute('aria-expanded', 'true'); // the user's tap is respected
   });
 
-  test('the Memory hint opens by itself on a tall screen and stays folded on a short one', async ({ page, request }) => {
+  test('the Memory hint is folded at first, even on a tall screen, and a tap opens it', async ({ page, request }) => {
     const deck = await richestDeck(request, 'alice');
     test.skip(!deck || deck.counts.new + deck.counts.learning === 0, 'no new/learning cards in the local data');
     await page.setViewportSize(TALL);
     await openSignedIn(page, request, 'alice');
     await startStudy(page, deck!);
 
-    const hintToggle = page.locator('.hint-toggle');
+    const hintToggle = page.locator('.hint-toggle').first();
     let found = false;
     for (let i = 0; i < 25 && !found; i++) {
       await page.keyboard.press('ArrowUp');
@@ -81,14 +81,9 @@ test.describe('auto-open of Notes and Memory hint when there is room', () => {
     }
     test.skip(!found, 'no kanji with a memory hint in the first 25 cards of the local data');
 
+    await expect(hintToggle).toHaveAttribute('aria-expanded', 'false'); // folded: Memory hint, Compounds and Components wait for a tap
+    await hintToggle.click();
     await expect(hintToggle).toHaveAttribute('aria-expanded', 'true');
-
-    await page.keyboard.press('Escape'); // close the sheet, shrink the screen, open it again
-    await expect(page.locator('.kanji')).toHaveCount(0);
-    await page.setViewportSize(SHORT);
-    await page.keyboard.press('ArrowUp');
-    await page.locator('.hvp').first().locator('button.k').click();
-    await expect(page.locator('.hint-toggle')).toHaveAttribute('aria-expanded', 'false');
   });
 });
 

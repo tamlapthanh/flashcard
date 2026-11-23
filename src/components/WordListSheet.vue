@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { t } from '../i18n';
 import { swipeDown } from '../lib/swipeDown';
+import { tagStyle } from '../lib/tagColor';
 import PitchLine from './PitchLine.vue';
 import type { StudySession } from '../session';
 
@@ -320,9 +321,9 @@ const currentId = computed(() => props.session.current?.id ?? null);
               v-for="(tg, idx) in tagChoices"
               :key="tg.tag"
               type="button"
-              class="tagopt"
+              class="tagopt tagtint"
               :class="{ on: selectedTags.includes(tg.tag) }"
-              :style="{ '--i': idx }"
+              :style="{ '--i': idx, ...tagStyle(tg.tag) }"
               :aria-pressed="selectedTags.includes(tg.tag)"
               @click.stop="toggleTag(tg.tag)"
             >{{ tg.tag }}<span class="tn">{{ tg.count }}</span></button>
@@ -513,10 +514,10 @@ const currentId = computed(() => props.session.current?.id ?? null);
   gap: 6px;
   height: 32px;
   padding: 0 12px;
-  border: 1.5px dashed #2f80d1; /* off: an empty dashed pill, like the card's options */
+  border: 1.5px dashed var(--tfg); /* off: an empty dashed pill, like the card's options (each tag in its own colour) */
   border-radius: 16px;
-  background: var(--paper);
-  color: #2f80d1;
+  background: var(--tbg);
+  color: var(--tfg);
   font-family: var(--font-jp);
   font-size: 0.85rem;
   font-weight: 700;
@@ -536,11 +537,11 @@ const currentId = computed(() => props.session.current?.id ?? null);
   transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) calc(var(--i) * 55ms), opacity 0.36s ease calc(var(--i) * 55ms);
 }
 .tagopt.on {
-  background: #2f80d1; /* lit = words with this tag stay */
+  background: var(--ton); /* lit = words with this tag stay */
   border-style: solid;
-  border-color: transparent;
-  color: #fff;
-  box-shadow: 0 2px 0 #1f5a99;
+  border-color: var(--tfg);
+  color: var(--tonfg);
+  box-shadow: 0 2px 0 var(--tfg);
 }
 .tn {
   font-size: 0.7rem;

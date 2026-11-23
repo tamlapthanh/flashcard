@@ -275,6 +275,28 @@ body {
   letter-spacing: 0;
 }
 
+/* Every scrollbar looks the same: as slim as it can be (3px), a rounded thumb and no track. Chrome / Edge / Safari use the ::-webkit-scrollbar rules
+   (setting scrollbar-width there would switch them off and give back a wider bar); Firefox has no such rules, so it gets `thin`.
+   The few scrollers that hide their bar on purpose (page, word list, chip rows) say `none` themselves and win over this. */
+*::-webkit-scrollbar {
+  width: 3px;
+  height: 3px;
+}
+*::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--leaf) 55%, transparent);
+  border-radius: 2px;
+}
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--leaf) 55%, transparent) transparent;
+  }
+}
+
 /* Page scrollbar hidden (the page still scrolls with wheel / touch / keys), so it never eats width or looks heavy. */
 html {
   scrollbar-width: none;
@@ -289,4 +311,38 @@ html.v-overlay-scroll-blocked {
 }
 html.v-overlay-scroll-blocked::-webkit-scrollbar {
   display: none;
+}
+
+/* A status chip (New / Learning / Learned / Suspended): its own colour in --stc (see lib/status.ts); the icon always has it, the whole chip when it is ticked. */
+.stchip .v-chip__prepend .v-icon {
+  color: var(--stc);
+}
+.stchip.v-chip--selected {
+  color: var(--stc) !important;
+}
+.stchip.stshown {
+  color: var(--stc);
+}
+
+/* A tag in its own soft colour (hue --th from lib/tagColor.ts): --tbg / --tfg = off, --ton / --tonfg = ticked. Pastel on purpose: never heavy. */
+.tagtint {
+  --tbg: hsl(var(--th) 62% 91%);
+  --tfg: hsl(var(--th) 42% 30%);
+  --ton: hsl(var(--th) 55% 76%);
+  --tonfg: hsl(var(--th) 60% 18%);
+}
+.v-theme--dark .tagtint {
+  --tbg: hsl(var(--th) 28% 28%);
+  --tfg: hsl(var(--th) 55% 82%);
+  --ton: hsl(var(--th) 38% 40%);
+  --tonfg: hsl(var(--th) 70% 94%);
+}
+.v-chip.tagtint {
+  background: var(--tbg) !important;
+  color: var(--tfg) !important;
+}
+.v-chip.tagtint.v-chip--selected {
+  background: var(--ton) !important;
+  color: var(--tonfg) !important;
+  box-shadow: inset 0 0 0 1.5px var(--tfg);
 }

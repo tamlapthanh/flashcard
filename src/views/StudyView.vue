@@ -9,15 +9,18 @@ import KanjiSheet from '../components/KanjiSheet.vue';
 import PitchLine from '../components/PitchLine.vue';
 import RelatedDialog from '../components/RelatedDialog.vue';
 import RubyWord from '../components/RubyWord.vue';
+import TestSheet from '../components/TestSheet.vue';
 import TopBar from '../components/TopBar.vue';
 import WordListSheet from '../components/WordListSheet.vue';
 import { detailOf, ensureDetails } from '../lib/cardDetail';
 import { parseNote, type RelatedWord } from '../lib/note';
 import ReadingText from '../components/ReadingText.vue';
 import { swipeDown } from '../lib/swipeDown';
-import { canSpeak, prefetchSpeech, speakJapanese, stopSpeaking, voiceSource, type VoiceOrigin, type VoiceSource } from '../lib/speech';
+import { canSpeak, prefetchSpeech, speakJapanese, stopSpeaking } from '../lib/speech';
+import { useVoiceBadge } from '../lib/voiceBadge';
 import { cardTextVars } from '../cardText';
 import { vFitLine } from '../lib/fitLine';
+import { STATUS_ICON, STATUS_ORDER, statusStyle } from '../lib/status';
 import { StudySession } from '../session';
 import { settings } from '../settings';
 import { activeSession, focusMode, saveRun, setActiveSession, setFocusMode } from '../store';
@@ -34,6 +37,27 @@ const runMark = (): string => `${s.queue.length}:${s.queue[0]?.id}:${s.learned}:
 const s = reactive(activeSession.value ?? new StudySession([], { reverse: false, showReading: false })) as StudySession;
 watch(runMark, saveRun);
 
+/* The Test button: the same sheet as the Test button of a deck, for the deck and tags being studied. The study run stays saved and can be resumed.
+   The sheet needs the deck (its word counts by status), fetched when the button is pressed. Needs 4 words for the wrong answers. */
+const canTest = computed(() => s.cards.length >= 4 && !!s.cards[0]?.deckId);
+const testOpen = ref(false);
+const testDeck = ref<Deck | null>(null);
+async function openTest(): Promise<void> {
+  const deckId = s.cards[0]?.deckId;
+  if (!deckId) return;
+  stopSpeaking();
+  try {
+    testDeck.value = (await api.decks()).find((d) => d.id === deckId) ?? null;
+  } catch {
+    testDeck.value = null;
+  }
+  if (!testDeck.value) {
+    // offline or the deck is gone: a sheet with just the name, every word of the deck
+    testDeck.value = { id: deckId, name: s.deckName, total: s.cards.length, counts: { new: 0, learning: 0, learned: 0, skipped: 0 }, tags: [] };
+  }
+  testOpen.value = true;
+}
+
 const pending = ref(pendingResults());
 const related = ref<RelatedWord | null>(null);
 const kanjiSel = ref<string | null>(null);
@@ -47,9 +71,9 @@ const speaking = ref(false);
 const fanOpen = ref(false);
 const fanOptions = computed(() => [
   { key: 'reading', glyph: 'あ', label: t('show.reading'), on: s.showReading, dx: 0, dy: -62, toggle: () => (settings.showReading = s.showReading = !s.showReading) },
-  { key: 'meaning', glyph: 'V', full: 'Vi', label: t('show.meaning'), on: settings.showMeaning, dx: 31, dy: -54, toggle: () => (settings.showMeaning = !settings.showMeaning) },
-  { key: 'english', glyph: 'E', full: 'En', label: t('show.english'), on: settings.showEnglish, dx: 54, dy: -31, toggle: () => (settings.showEnglish = !settings.showEnglish) },
-  { key: 'hanviet', glyph: '漢', label: t('show.hanviet'), on: settings.showHanViet, dx: 62, dy: 0, toggle: () => (settings.showHanViet = !settings.showHanViet) }
+  { key: 'hanviet', glyph: '漢', label: t('show.hanviet'), on: settings.showHanViet, dx: 31, dy: -54, toggle: () => (settings.showHanViet = !settings.showHanViet) },
+  { key: 'meaning', glyph: 'V', full: 'Vi', label: t('show.meaning'), on: settings.showMeaning, dx: 54, dy: -31, toggle: () => (settings.showMeaning = !settings.showMeaning) },
+  { key: 'english', glyph: 'E', full: 'En', label: t('show.english'), on: settings.showEnglish, dx: 62, dy: 0, toggle: () => (settings.showEnglish = !settings.showEnglish) }
 ]);
 const foldFan = (): void => {
   fanOpen.value = false;
@@ -91,7 +115,8 @@ function prefetch(): void {
 watch(() => s.current?.id, prefetch, { immediate: true });
 /* The reading is NEVER shown on its own (not even after the flip): only the kanji, until the eye button is tapped. */
 const readingVisible = computed(() => s.showReading);
-const useRuby = computed(() => !s.reverse && !!card.value?.ruby && readingVisible.value);
+/* The word is drawn with its ruby cells when the reading is on, or when only the Han-Viet row is on (hiding the reading hides just the furigana). */
+const useRuby = computed(() => !s.reverse && !!card.value?.ruby && (readingVisible.value || (hanvietOn.value && hasHanViet.value)));
 const noteLines = computed(() => parseNote(card.value?.note));
 const plainNotes = computed(() => noteLines.value.filter((l) => !l.related));
 const relatedLines = computed(() => noteLines.value.filter((l) => !!l.related));
@@ -127,6 +152,12 @@ watch([() => plainNotes.value.length, scale], () => void fitNotes()); // the Det
 /* Sino-Vietnamese sounds paired with their Han characters (香 HƯƠNG), one per row in the Details. */
 const hanvietOn = computed(() => settings.showHanViet && !!card.value?.hanviet);
 const hasHanViet = computed(() => (card.value?.kanji ?? []).some((k) => !!k.HanViet));
+/* kanji -> its Han-Viet sound, for the Han-Viet row under the word */
+const hvByKanji = computed<Record<string, string>>(() => {
+  const m: Record<string, string> = {};
+  for (const k of card.value?.kanji ?? []) if (k.HanViet) m[k.Literal] = k.HanViet;
+  return m;
+});
 /* What a kanji means, shown to the right of its Sino-Vietnamese sound: Vietnamese first, English when there is none. */
 function kanjiMeaning(k: KanjiInfo): string {
   const list = k.MeaningsVi.length ? k.MeaningsVi : k.MeaningsEn;
@@ -150,15 +181,7 @@ const answerShown = computed(() => s.flipped || (!s.reverse && (settings.showMea
 const canSpeakNow = computed(() => canSpeak() && !!card.value && card.value.lang === 'ja' && (!s.reverse || s.flipped));
 
 /* Where the word that is being spoken came from (browser cache, a saved file, the server's memory or disk, a paid ElevenLabs call, the device): the read-aloud button takes a colour for it while it plays (the text is its tooltip). */
-const voiceBadge = ref<{ source: VoiceSource; origin?: VoiceOrigin } | null>(null);
-const voiceBadgeText = computed(() => {
-  const b = voiceBadge.value;
-  return b ? t(`voice.${b.source}`) + (b.origin ? ` · ${t(`voice.${b.origin}`)}` : '') : ''; // "Browser cache · Saved file": it was fetched ahead from a saved file
-});
-watch(voiceSource, (heard) => {
-  if (heard) voiceBadge.value = { source: heard.source, origin: heard.origin };
-});
-watch(speaking, (isSpeaking) => !isSpeaking && (voiceBadge.value = null)); // the word is finished: the button turns back to its usual colour
+const { badge: voiceBadge, text: voiceBadgeText, note: voiceNote } = useVoiceBadge(speaking); // also a short note with the name of the source (lib/voiceBadge.ts)
 
 function speak(): void {
   const c = card.value;
@@ -498,9 +521,9 @@ onUnmounted(() => {
         <div class="text-h6 mt-4">{{ t('study.finishedCount', { n: infoDeck.total }) }}</div>
         <div class="text-body-2 text-medium-emphasis">{{ infoDeck.name }}</div>
         <v-row class="mt-4" dense>
-          <v-col cols="4"><div class="stat shu"><v-icon icon="mdi-check-circle-outline" /><div class="n">{{ infoDeck.counts.learned }}</div>{{ t('btn.learned') }}</div></v-col>
-          <v-col cols="4"><div class="stat"><v-icon icon="mdi-help-circle-outline" /><div class="n">{{ infoDeck.counts.learning }}</div>{{ t('status.learning') }}</div></v-col>
-          <v-col cols="4"><div class="stat"><v-icon icon="mdi-skip-next-outline" /><div class="n">{{ infoDeck.counts.skipped }}</div>{{ t('study.skippedStat') }}</div></v-col>
+          <v-col cols="4"><div class="stat" :style="statusStyle('learned')"><v-icon :icon="STATUS_ICON.learned" /><div class="n">{{ infoDeck.counts.learned }}</div>{{ t('btn.learned') }}</div></v-col>
+          <v-col cols="4"><div class="stat" :style="statusStyle('learning')"><v-icon :icon="STATUS_ICON.learning" /><div class="n">{{ infoDeck.counts.learning }}</div>{{ t('status.learning') }}</div></v-col>
+          <v-col cols="4"><div class="stat" :style="statusStyle('skipped')"><v-icon :icon="STATUS_ICON.skipped" /><div class="n">{{ infoDeck.counts.skipped }}</div>{{ t('study.skippedStat') }}</div></v-col>
         </v-row>
         <div class="text-caption text-medium-emphasis mt-3"><v-icon icon="mdi-cloud-check-outline" size="14" /> {{ t('study.saved') }}</div>
       </div>
@@ -520,9 +543,9 @@ onUnmounted(() => {
         <div class="text-caption text-medium-emphasis">{{ t('study.infoLearned', { a: infoDeck.counts.learned, b: infoDeck.total }) }}</div>
         <v-progress-linear :model-value="infoLearnedPercent" height="6" rounded color="primary" bg-color="surface-variant" class="mt-3" />
         <div class="d-flex justify-space-between mt-3 text-center">
-          <div v-for="k in (['new', 'learning', 'learned', 'skipped'] as const)" :key="k">
+          <div v-for="k in STATUS_ORDER" :key="k" :style="statusStyle(k)" class="stcount">
             <div class="text-h6">{{ infoDeck.counts[k] }}</div>
-            <div class="text-caption">{{ t(`status.${k}`) }}</div>
+            <div class="text-caption"><v-icon :icon="STATUS_ICON[k]" size="14" /> {{ t(`status.${k}`) }}</div>
           </div>
         </div>
         <div v-if="infoAllLearned" class="text-body-2 mt-3"><v-icon icon="mdi-check-circle" color="primary" size="18" class="mr-1" />{{ t('study.infoAllDone') }}</div>
@@ -540,9 +563,9 @@ onUnmounted(() => {
         <Hanko char="完" :size="84" stamping />
         <div class="text-h6 mt-4">{{ t('study.finishedCount', { n: s.total }) }}</div>
         <v-row class="mt-4" dense>
-          <v-col cols="4"><div class="stat shu"><v-icon icon="mdi-check-circle-outline" /><div class="n">{{ s.learned }}</div>{{ t('btn.learned') }}</div></v-col>
+          <v-col cols="4"><div class="stat" :style="statusStyle('learned')"><v-icon :icon="STATUS_ICON.learned" /><div class="n">{{ s.learned }}</div>{{ t('btn.learned') }}</div></v-col>
           <v-col cols="4"><div class="stat"><v-icon icon="mdi-help-circle-outline" /><div class="n">{{ s.again }}</div>{{ t('btn.again') }}</div></v-col>
-          <v-col cols="4"><div class="stat"><v-icon icon="mdi-skip-next-outline" /><div class="n">{{ s.skipped }}</div>{{ t('study.skippedStat') }}</div></v-col>
+          <v-col cols="4"><div class="stat" :style="statusStyle('skipped')"><v-icon :icon="STATUS_ICON.skipped" /><div class="n">{{ s.skipped }}</div>{{ t('study.skippedStat') }}</div></v-col>
         </v-row>
         <div v-if="pending > 0" class="text-caption text-warning mt-3">
           <v-icon icon="mdi-cloud-upload-outline" size="14" /> {{ t('study.unsent', { n: pending }) }}
@@ -562,14 +585,16 @@ onUnmounted(() => {
       <!-- grading buttons live in the header, right of the counter; always usable (you may know the word without flipping).
            On narrow screens only the icons show (the names stay as accessible labels). -->
       <div class="acts">
+        <v-btn v-if="canTest" class="act act-test" prepend-icon="mdi-school-outline" variant="flat" color="primary" :aria-label="t('study.testShort')" :data-tip="t('tip.test')" @click="openTest"><span class="lbl">{{ t('study.testShort') }}</span></v-btn>
         <v-btn class="act act-again" prepend-icon="mdi-help-circle-outline" variant="flat" color="primary" :disabled="stamping" :aria-label="t('btn.again')" :data-tip="t('tip.again')" @click="answer('again')"><span class="lbl">{{ t('btn.again') }}</span></v-btn>
         <v-btn class="act act-learned" prepend-icon="mdi-check" variant="flat" color="primary" :disabled="stamping" :aria-label="t('btn.learned')" :data-tip="t('tip.learned')" @click="answer('learned')"><span class="lbl">{{ t('btn.learned') }}</span></v-btn>
         <v-btn class="act act-skip" prepend-icon="mdi-skip-next-outline" variant="flat" color="primary" :disabled="stamping" :aria-label="t('btn.skip')" :data-tip="t('tip.skip')" @click="answer('skip')"><span class="lbl">{{ t('btn.skip') }}</span></v-btn>
         <v-btn class="act act-list" prepend-icon="mdi-book-open-page-variant-outline" variant="flat" color="primary" :aria-label="t('list.open')" @click="listOpen = true"><span class="lbl">{{ t('list.short') }}</span></v-btn>
       </div>
     </TopBar>
+    <TestSheet v-model="testOpen" :deck="testDeck" :tags="[...s.tags]" />
 
-    <div class="stage" :class="{ focus: focusMode }" :style="textVars" @touchstart.passive="touchStart" @touchend.passive="touchEnd" @mousedown="mouseDown" @mouseup="mouseUp">
+    <div class="stage":class="{ focus: focusMode }" :style="textVars" @touchstart.passive="touchStart" @touchend.passive="touchEnd" @mousedown="mouseDown" @mouseup="mouseUp">
       <div class="paper-card card">
         <!-- focus mode: hides the top bar so the card gets the whole screen; the same corner button brings the bar back -->
         <button type="button" class="focusbtn" :aria-label="focusMode ? t('study.focusOff') : t('study.focusOn')" :data-tip="focusMode ? t('study.focusOff') : t('study.focusOn')" @click.stop="setFocusMode(!focusMode)"><v-icon :icon="focusMode ? 'mdi-fullscreen-exit' : 'mdi-fullscreen'" size="22" /></button>
@@ -588,9 +613,9 @@ onUnmounted(() => {
           <div :key="card.id" class="wordbody">
           <!-- step 1 / 2: the word (normal) or the meaning (reverse) -->
           <template v-if="!s.reverse">
-            <RubyWord v-if="useRuby && card.ruby" v-fit-line :cells="card.ruby" />
+            <RubyWord v-if="useRuby && card.ruby" v-fit-line.always :cells="card.ruby" :no-reading="!readingVisible" :hv="hanvietOn && hasHanViet ? hvByKanji : undefined" />
             <template v-else>
-              <div v-fit-line class="word jp">{{ card.headword }}</div>
+              <div v-fit-line.always class="word jp">{{ card.headword }}</div>
               <div v-if="readingVisible && card.reading" class="reading rd">
                 <PitchLine v-if="card.pitch" :morae="card.pitch.morae" />
                 <template v-else><ReadingText :reading="card.reading" /></template>
@@ -600,7 +625,7 @@ onUnmounted(() => {
             <template v-if="settings.showMeaning || hanvietOn || englishOn">
               <div class="sep" />
               <!-- Sino-Vietnamese right above the Vietnamese meaning; each can be switched off in Settings -->
-              <div v-if="hanvietOn" v-fit-line class="hv hanviet top">{{ card.hanviet!.toUpperCase() }}</div>
+              <div v-if="hanvietOn && !(useRuby && card.ruby && hasHanViet)" v-fit-line class="hv hanviet top">{{ card.hanviet!.toUpperCase() }}</div>
               <div v-if="settings.showMeaning" v-fit-line class="meaning">{{ card.meaning }}</div>
               <div v-if="englishOn" v-fit-line class="english">{{ card.english }}</div>
             </template>
@@ -612,12 +637,13 @@ onUnmounted(() => {
             <div v-if="englishOn" v-fit-line class="english">{{ card.english }}</div>
             <template v-if="s.flipped">
               <div class="sep" />
-              <div v-fit-line class="word jp small">{{ card.headword }}</div>
+              <div v-fit-line.always class="word jp small">{{ card.headword }}</div>
               <div v-if="card.reading && s.showReading" class="reading rd"><ReadingText :reading="card.reading" /></div>
             </template>
           </template>
           <!-- read aloud: right under the last line of the card, in the middle (a tap on it must not flip the card) -->
           <v-btn v-if="canSpeakNow" class="tool3d speakc" :class="speaking && voiceBadge ? 'src-' + voiceBadge.source : ''" :data-voice="speaking && voiceBadge ? voiceBadgeText : undefined" :title="speaking && voiceBadge ? voiceBadgeText : undefined" variant="text" color="primary" :icon="speaking ? 'mdi-stop' : 'mdi-volume-high'" :aria-label="speaking ? t('study.stop') : t('study.read')" :data-tip="t('study.read')" @click.stop="speak" />
+          <div v-if="canSpeakNow" class="voicenote-wrap" aria-live="polite"><span v-if="voiceNote" class="voicenote">{{ voiceNote }}</span></div>
           </div>
           </Transition>
 
@@ -685,24 +711,32 @@ onUnmounted(() => {
               <!-- the word with its reading under it (furigana over each kanji when the card has them), like the front -->
               <!-- the word stays on ONE line whatever its size (v-fit-line zooms it out to the width of this column) -->
               <div class="bwcol" :class="{ spk: canSpeakNow }">
-                <RubyWord v-if="card.ruby" v-fit-line :cells="card.ruby" />
+                <RubyWord v-if="card.ruby" v-fit-line.always :cells="card.ruby" :hv="hanvietOn && hasHanViet ? hvByKanji : undefined" />
                 <template v-else>
-                  <span v-fit-line class="jp bw">{{ card.headword }}</span>
+                  <span v-fit-line.always class="jp bw">{{ card.headword }}</span>
                   <span v-if="card.reading" class="rd br">
                     <PitchLine v-if="card.pitch" :morae="card.pitch.morae" />
                     <template v-else><ReadingText :reading="card.reading" /></template>
                   </span>
                 </template>
               </div>
-              <!-- Sino-Vietnamese over the Vietnamese meaning, in the place the reading used to be -->
-              <div class="bside">
-                <div v-if="card.hanviet" class="hv hanviet bhv">{{ card.hanviet.toUpperCase() }}</div>
-                <div class="bm">{{ card.meaning }}</div>
+              <!-- Sino-Vietnamese beside the word, only when the word has no ruby cells to carry it under each kanji; the Vietnamese meaning is its own item below -->
+              <div v-if="card.hanviet && !(card.ruby && hanvietOn && hasHanViet)" class="bside">
+                <div class="hv hanviet bhv">{{ card.hanviet.toUpperCase() }}</div>
               </div>
             </div>
           </div>
 
           <!-- the Details always show everything the card has; the Settings switches only affect the front -->
+          <div v-if="card.meaning" class="item">
+            <v-icon icon="mdi-translate" color="success" />
+            <div><div class="label">{{ t('detail.vietnamese') }}</div><span class="bm">{{ card.meaning }}</span></div>
+          </div>
+          <div v-if="card.english" class="item">
+            <v-icon icon="mdi-alphabetical-variant" color="info" />
+            <div><div class="label">English</div><i class="den">{{ card.english.replace(/\n/g, '; ') }}</i></div>
+          </div>
+
           <div v-if="card.kanji.length || card.pos" class="pair">
             <div v-if="card.kanji.length" class="item">
               <v-icon icon="mdi-ideogram-cjk" color="teal" />
@@ -720,11 +754,6 @@ onUnmounted(() => {
               <v-icon icon="mdi-tag-outline" color="warning" />
               <div><div class="label">{{ t('detail.pos') }}</div><span class="posv">{{ card.pos }}</span></div>
             </div>
-          </div>
-
-          <div v-if="card.english" class="item">
-            <v-icon icon="mdi-alphabetical-variant" color="info" />
-            <div><div class="label">English</div><i class="den">{{ card.english.replace(/\n/g, '; ') }}</i></div>
           </div>
 
           <div v-if="card.example" class="item">
@@ -941,6 +970,7 @@ onUnmounted(() => {
 .act-again { --bc: #ef8a17; --bd: #b8600f; --bh: #f7a94d; }
 .act-learned { --bc: #5db82f; --bd: #3f8a1f; --bh: #9be35f; }
 .act-skip { --bc: #2f80d1; --bd: #1f5a99; --bh: #5aa0e6; }
+.act-test { --bc: #1e88e5; --bd: #1565a8; --bh: #4aa3f0; } /* same blue as the Test button of the deck list */
 .act-list { --bc: #8e4ec6; --bd: #6a3499; --bh: #aa75d8; }
 .act.v-btn.bg-primary:not(.v-btn--disabled) {
   background-color: var(--bc) !important;
@@ -1032,6 +1062,26 @@ onUnmounted(() => {
 }
 .tools > * {
   pointer-events: auto;
+}
+/* the name of the voice source: shown for a moment under the read-aloud button, then gone (it takes no room: the wrapper has no height) */
+.voicenote-wrap {
+  position: relative;
+  height: 0;
+  text-align: center;
+  pointer-events: none;
+}
+.voicenote {
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: 0.65rem;
+  padding: 1px 8px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.62);
+  color: #fff;
+  z-index: 3;
 }
 .eye4.v-btn {
   padding: 0 !important;
@@ -1159,7 +1209,7 @@ onUnmounted(() => {
   --oc: #8e4ec6;
   --od: #6a3499;
 }
-/* the read-aloud button under the card: the phone size of the other card buttons, a little larger with a mouse */
+/* the read-aloud button under the card: the same size as the speaker on the back of the card (34 x 28), on a phone and with a mouse */
 .speakc.v-btn {
   display: flex;
   margin: 10px auto 0;
@@ -1173,13 +1223,6 @@ onUnmounted(() => {
   font-size: 16px; /* icons inside the fanned-out options: phone */
 }
 @media (hover: hover) and (pointer: fine) {
-  .speakc.v-btn {
-    width: 52px !important;
-    height: 43px !important;
-  }
-  .speakc.v-btn .v-icon {
-    font-size: 25px;
-  }
   .fanopt .v-icon {
     font-size: 24px; /* web: the options are larger too (they sit in 40px circles) */
   }
@@ -1253,10 +1296,8 @@ onUnmounted(() => {
   margin-top: 2px;
 }
 .sep {
-  width: 34px;
-  height: 1px;
-  background: var(--gold);
-  margin: 16px 0;
+  height: 1px; /* no visible line any more; it only keeps the gap between the word and the meaning */
+  margin: 16px 0 10px; /* 6px less below: the meaning sits a little higher */
 }
 .meaning {
   font-size: var(--s-meaning);
@@ -1334,8 +1375,8 @@ onUnmounted(() => {
   margin-inline: auto;
 }
 .back-head {
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--paper-edge);
+  padding-bottom: 0;
+  margin-bottom: -5px; /* the line under the head is gone: pull everything under it up (the 12px gap between sections becomes 7px: the word column has empty space of its own) */
 }
 .bline {
   display: flex;
@@ -1426,7 +1467,6 @@ onUnmounted(() => {
   opacity: 0.8;
 }
 .bm {
-  margin-top: 2px;
   font-size: var(--s-backMeaning);
   font-style: var(--i-backMeaning);
   color: var(--c-backMeaning, inherit);
@@ -1517,10 +1557,11 @@ onUnmounted(() => {
 .stat {
   border-radius: 8px;
   padding: 10px 0;
-  background: rgb(var(--v-theme-surface-variant));
+  color: var(--stc);
+  background: color-mix(in srgb, var(--stc) 14%, transparent); /* each status has its own colour (lib/status.ts) */
 }
-.stat.shu {
-  background: color-mix(in srgb, var(--shu) 14%, transparent);
+.stcount {
+  color: var(--stc);
 }
 .stat .n {
   font-size: 1.6rem;

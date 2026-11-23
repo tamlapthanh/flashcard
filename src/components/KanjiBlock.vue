@@ -1,72 +1,70 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from 'vue';
+import { computed, ref } from 'vue';
 import { t } from '../i18n';
 import type { KanjiInfo } from '../types';
-import { compoundsOf, mnemonicOf } from '../lib/kanjiNotes';
+import { compoundsOf, hintBesideCompounds, mnemonicOf } from '../lib/kanjiNotes';
 import KanjiTree from './KanjiTree.vue';
 import StrokePlayer from './StrokePlayer.vue';
 
-const props = defineProps<{ kanji: KanjiInfo }>();
+/* sideBySide: Compounds may sit to the right of the Memory hint, when the block is wide enough (only a lone kanji on a wide sheet asks for it). */
+const props = defineProps<{ kanji: KanjiInfo; sideBySide?: boolean }>();
 const emit = defineEmits<{ open: [literal: string]; practice: [kanji: KanjiInfo] }>();
 
-/* On a touch screen (phone, tablet) the Memory hint stays folded until tapped; with a mouse there is room, so it always shows. */
-const touchOnly = typeof window !== 'undefined' && !window.matchMedia('(hover: hover) and (pointer: fine)').matches;
-const hintOpen = ref(!touchOnly); // with a mouse it starts open; both can be folded with the toggle
+/* Memory hint, Compounds (and Components, in KanjiTree) start folded, on the web and on a phone alike: the user opens what they want. */
+const hintOpen = ref(false);
 
 const meaning = computed(() => (props.kanji.MeaningsVi.length ? props.kanji.MeaningsVi : props.kanji.MeaningsEn).slice(0, 3).join('; '));
+/* English meanings are added after the Vietnamese ones (when there are no Vietnamese ones, `meaning` already is the English). */
+const english = computed(() => (props.kanji.MeaningsVi.length ? props.kanji.MeaningsEn.slice(0, 3).join('; ') : ''));
 const jlpt = computed(() => (props.kanji.Jlpt ? `N${props.kanji.Jlpt}` : null)); // LCT stores the OLD 1-4 scale
 const hasStrokes = computed(() => (props.kanji.StrokePaths?.length ?? 0) > 0);
+/* strokes and JLPT level: behind an info icon (a tooltip with the mouse, a tap on the icon on a touch screen) */
+const infoText = computed(() => [props.kanji.Strokes ? t('kanji.strokes', { n: props.kanji.Strokes }) : '', jlpt.value ?? ''].filter(Boolean).join(' · '));
+const infoOpen = ref(false);
+const infoUp = computed(() => !!infoText.value && !english.value && !!(props.kanji.HanViet || meaning.value)); // no English line: the icon sits on line 1
 const radical = computed(() => [props.kanji.Radical, props.kanji.RadicalHanViet].filter(Boolean).join(' '));
 
 /* The parts of the kanji; without the server's explanations (older server) they still show as bare characters. */
 const parts = computed(() => props.kanji.Parts ?? props.kanji.Components.filter((c) => c !== props.kanji.Literal).map((c) => ({ Literal: c, HanViet: null, Meaning: null })));
 const compounds = computed(() => compoundsOf(props.kanji));
 const mnemonic = computed(() => mnemonicOf(props.kanji));
-const compOpen = ref(!touchOnly); // Compounds fold like the Memory hint
+const compOpen = ref(false); // Compounds fold like the Memory hint
 const firstMeaning = computed(() => (props.kanji.MeaningsVi[0] ?? props.kanji.MeaningsEn[0] ?? '').trim());
 
-/* On a touch screen the hint opens by itself when the sheet still fits on the screen: open it, let the layout settle
-   (before anything is painted) and fold it again if the sheet now has to scroll. A tap on the toggle wins. */
-const root = ref<HTMLElement | null>(null);
-let hintTouched = false;
-async function fitHint(): Promise<void> {
-  if (!touchOnly) return;
-  const sheet = root.value?.closest<HTMLElement>('.sheet'); // the scrolling card of KanjiSheet
-  const overflows = () => !!sheet && sheet.scrollHeight > sheet.clientHeight + 1;
-  if (!hintTouched && (parts.value.length || mnemonic.value.length)) {
-    hintOpen.value = true;
-    await nextTick();
-    if (overflows()) hintOpen.value = false;
-  }
-  if (!compTouched && compounds.value.length) {
-    compOpen.value = true;
-    await nextTick();
-    if (overflows()) compOpen.value = false;
-  }
-}
-let compTouched = false;
 function toggleComp(): void {
-  compTouched = true;
   compOpen.value = !compOpen.value;
 }
 function toggleHint(): void {
-  hintTouched = true;
   hintOpen.value = !hintOpen.value;
 }
-onMounted(() => void fitHint());
 </script>
 
 <!-- One kanji on one screen: header, then the stroke order on the left and the few facts that matter on the right. -->
 <template>
-  <div ref="root" class="kanji">
+  <div class="kanji" :data-literal="kanji.Literal">
+    <!-- line 1: Sino-Vietnamese sound and Vietnamese meaning; line 2: the English meaning and the info icon (strokes, JLPT). The kanji itself is in the tab above. -->
     <div class="top">
-      <div class="glyph jp">{{ kanji.Literal }}</div>
       <div class="info">
-        <div v-if="kanji.HanViet" class="hv khv">{{ kanji.HanViet.toUpperCase() }}</div>
-        <div v-if="meaning" class="kmean">{{ meaning }}</div>
-        <div class="meta">
-          <span v-if="kanji.Strokes">{{ t('kanji.strokes', { n: kanji.Strokes }) }}</span>
-          <span v-if="jlpt">{{ jlpt }}</span>
+        <div v-if="kanji.HanViet || meaning" class="kline kline1">
+          <span v-if="kanji.HanViet" class="hv khv">{{ kanji.HanViet.toUpperCase() }}</span>
+          <span v-if="meaning" class="kmean">{{ meaning }}</span>
+          <!-- no English meaning: the info icon moves up to the end of this line -->
+          <template v-if="infoUp">
+            <button type="button" class="infobtn" :aria-label="infoText" :aria-expanded="infoOpen" :data-tip="infoText" @click="infoOpen = !infoOpen">
+              <v-icon icon="mdi-information-outline" size="18" />
+            </button>
+            <span v-if="infoOpen" class="meta">{{ infoText }}</span>
+          </template>
+        </div>
+        <div v-if="english || (infoText && !infoUp)" class="kline kline2">
+          <span v-if="english" class="kmean ken">{{ english }}</span>
+          <!-- strokes and JLPT level: a tooltip with the mouse, a tap on the icon on a touch screen -->
+          <template v-if="infoText">
+            <button type="button" class="infobtn" :aria-label="infoText" :aria-expanded="infoOpen" :data-tip="infoText" @click="infoOpen = !infoOpen">
+              <v-icon icon="mdi-information-outline" size="18" />
+            </button>
+            <span v-if="infoOpen" class="meta">{{ infoText }}</span>
+          </template>
         </div>
       </div>
     </div>
@@ -74,12 +72,20 @@ onMounted(() => void fitHint());
     <div class="body" :class="{ single: !hasStrokes }">
       <StrokePlayer v-if="hasStrokes" :literal="kanji.Literal" :paths="kanji.StrokePaths!" @practice="emit('practice', kanji)" />
       <div class="side">
-        <div v-if="kanji.Onyomi.length"><div class="label flabel">On</div><span class="rd kread">{{ kanji.Onyomi.join('、') }}</span></div>
-        <div v-if="kanji.Kunyomi.length"><div class="label flabel">Kun</div><span class="rd kread">{{ kanji.Kunyomi.join('、') }}</span></div>
+        <!-- "On value" / "Kun value": the values start in the same column -->
+        <div v-if="kanji.Onyomi.length || kanji.Kunyomi.length" class="reads">
+          <template v-if="kanji.Onyomi.length">
+            <span class="label flabel">On</span><span class="rd kread">{{ kanji.Onyomi.join('、') }}</span>
+          </template>
+          <template v-if="kanji.Kunyomi.length">
+            <span class="label flabel">Kun</span><span class="rd kread">{{ kanji.Kunyomi.join('、') }}</span>
+          </template>
+        </div>
         <div v-if="radical"><div class="label flabel nocaps">{{ t('kanji.radical') }}</div><span class="jp krad">{{ radical }}</span></div>
       </div>
     </div>
 
+    <div class="pair" :class="{ sbs: sideBySide && hintBesideCompounds(kanji) }">
     <!-- Memory hint: the kanji as the sum of its parts. Every part is a same-size tile holding only the character; its sound
          and meaning sit beside it, so the rows line up: whole | = / + | part | what it is. -->
     <div v-if="parts.length || mnemonic.length" class="hint">
@@ -117,47 +123,80 @@ onMounted(() => void fitHint());
       </ul>
     </div>
 
+    </div>
+
     <KanjiTree v-if="kanji.PartEdges?.length" :literal="kanji.Literal" :edges="kanji.PartEdges" :names="kanji.Tree ?? []" :root-hv="kanji.HanViet" @open="(l: string) => emit('open', l)" />
   </div>
 </template>
 
 <style scoped>
+/* The block is its own container: whether two columns fit depends on ITS width, not the window's. */
+.kanji {
+  container-type: inline-size;
+}
+/* Wide enough (and a lone kanji): Memory hint on the left, Compounds on the right, side by side at the same height. Otherwise they stack. */
+@container (min-width: 640px) {
+  .pair.sbs {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: 28px;
+    align-items: start;
+  }
+  .pair.sbs .clist {
+    grid-template-columns: minmax(0, 1fr); /* half the width: one compound per row */
+  }
+}
 .top {
   display: flex;
   gap: 12px;
   align-items: center;
 }
-.glyph {
-  font-size: var(--s-kGlyph, 41.6px);
-  font-style: var(--i-kGlyph, normal);
-  line-height: 1;
-  min-width: 52px;
-  text-align: center;
-  color: var(--c-kGlyph, var(--headword)); /* the same red as the word on the card */
-}
 .info {
   flex: 1;
   min-width: 0;
 }
+/* Sino-Vietnamese, Vietnamese and English run on in one line (and wrap when the sheet is narrow) */
+.kline {
+  line-height: 1.4;
+}
 .khv {
   font-size: var(--s-kHanviet, 14px);
   font-style: var(--i-kHanviet, normal);
-  line-height: 1.4;
   font-weight: 500;
   color: var(--c-kHanviet, var(--hv));
 }
 .kmean {
   font-size: var(--s-kMeaning, 14px);
   font-style: var(--i-kMeaning, normal);
-  line-height: 1.4;
   color: var(--c-kMeaning, inherit);
+}
+.kline1 {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+}
+.kline2 {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+}
+.ken {
+  opacity: 0.75;
+}
+.infobtn {
+  display: inline-flex;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--leaf);
+  cursor: pointer;
 }
 .meta {
   font-size: var(--s-kMeta, 12px);
   font-style: var(--i-kMeta, normal);
   color: var(--c-kMeta, inherit);
-  display: flex;
-  gap: 10px;
   opacity: 0.7;
 }
 .body {
@@ -202,13 +241,23 @@ onMounted(() => void fitHint());
 .nocaps {
   text-transform: none; /* "Radical", not "RADICAL" */
 }
+.reads {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr); /* label | value: the values of On and Kun line up */
+  column-gap: 8px;
+  align-items: baseline;
+  row-gap: 5px;
+}
 .kread {
+  display: block;
   font-size: var(--s-kReading, 14px);
   font-style: var(--i-kReading, normal);
   line-height: 1.4;
   color: var(--c-kReading, var(--rd));
 }
 .krad {
+  display: block;
+  margin-left: 18px;
   font-size: var(--s-kRadical, 16px);
   font-style: var(--i-kRadical, normal);
   color: var(--c-kRadical, var(--jp));

@@ -19,6 +19,7 @@ export interface Settings {
   autoSpeak: boolean; // auto play: read the word aloud
   autoSaveVoice: boolean; // auto play: let the server keep the spoken words as files (only a local run with SPEECH_SAVE_DIR saves anything)
   strokeStrictness: 'strict' | 'normal' | 'loose'; // handwriting practice: how strictly a stroke is checked (this device only, not synced)
+  testInstantCheck: boolean; // test: true = each answer is marked right or wrong at once, false = nothing is shown until the test is finished (kept per user, synced)
 }
 
 /* The `tolerance` of the stroke check for each strictness (1 = the default; higher forgives more). */
@@ -32,7 +33,7 @@ const KEY = 'flashmobile.settings';
 
 function defaults(): Settings {
   const vietnamese = typeof navigator !== 'undefined' && navigator.language?.toLowerCase().startsWith('vi');
-  return { cardText: defaultCardStyles(), showReading: false, dark: false, language: vietnamese ? 'vi' : 'en', showMeaning: true, showHanViet: true, showEnglish: false, showTooltips: true, naturalVoice: true, direction: 'forward', autoFrontSec: 3, autoBackSec: 4, autoSpeak: true, autoSaveVoice: true, strokeStrictness: 'normal' };
+  return { cardText: defaultCardStyles(), showReading: false, dark: false, language: vietnamese ? 'vi' : 'en', showMeaning: true, showHanViet: true, showEnglish: false, showTooltips: true, naturalVoice: true, direction: 'forward', autoFrontSec: 3, autoBackSec: 4, autoSpeak: true, autoSaveVoice: true, strokeStrictness: 'normal', testInstantCheck: true };
 }
 
 /* Any saved / received shape -> valid Settings (unknown keys dropped, bad values replaced by defaults). */
@@ -54,7 +55,8 @@ export function normalizeSettings(input: unknown, tooltips = true, strictness: S
     autoBackSec: autoSec(raw.autoBackSec, base.autoBackSec),
     autoSpeak: typeof raw.autoSpeak === 'boolean' ? raw.autoSpeak : base.autoSpeak,
     autoSaveVoice: typeof raw.autoSaveVoice === 'boolean' ? raw.autoSaveVoice : base.autoSaveVoice,
-    strokeStrictness: raw.strokeStrictness === 'strict' || raw.strokeStrictness === 'normal' || raw.strokeStrictness === 'loose' ? raw.strokeStrictness : strictness
+    strokeStrictness: raw.strokeStrictness === 'strict' || raw.strokeStrictness === 'normal' || raw.strokeStrictness === 'loose' ? raw.strokeStrictness : strictness,
+    testInstantCheck: typeof raw.testInstantCheck === 'boolean' ? raw.testInstantCheck : base.testInstantCheck
   };
 }
 

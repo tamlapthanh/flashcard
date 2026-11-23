@@ -6,6 +6,7 @@ import { cardTextVars } from '../cardText';
 import { settings } from '../settings';
 import { t } from '../i18n';
 import type { KanjiInfo } from '../types';
+import { hintBesideCompounds } from '../lib/kanjiNotes';
 import KanjiBlock from './KanjiBlock.vue';
 import KanjiPractice from './KanjiPractice.vue';
 
@@ -24,6 +25,8 @@ const onResize = (): void => void (winW.value = window.innerWidth);
 onMounted(() => window.addEventListener('resize', onResize));
 onUnmounted(() => window.removeEventListener('resize', onResize));
 /* Only with a mouse AND a window wide enough for two columns; a phone (or a very narrow window) keeps one kanji at a time. */
+/* A lone kanji with a mouse has room to spread: the sheet is wider and Compounds can sit beside the Memory hint. A word with several kanji keeps the old layout. */
+const alone = computed(() => mouse && props.kanji.length === 1);
 const multi = computed(() => mouse && winW.value >= 800 && props.kanji.length > 1);
 const cols = computed(() => {
   const fit = Math.max(1, Math.min(4, Math.floor(winW.value / 400)));
@@ -78,7 +81,7 @@ watch(open, (isOpen) => isOpen && opened.value++, { immediate: true });
           <KanjiPractice :key="practicing.Literal" :kanji="practicing" @back="practicing = null" />
         </div>
         <div v-else-if="drilled" class="stage">
-          <v-btn variant="tonal" color="primary" size="large" prepend-icon="mdi-arrow-left" class="back mb-2" @click="back">
+          <v-btn variant="tonal" color="primary" size="small" prepend-icon="mdi-arrow-left" class="back mb-2" @click="back">
             <span class="jp back-ch">{{ trail.length > 1 ? trail[trail.length - 2]?.Literal : (selected ?? '') }}</span>
           </v-btn>
           <KanjiBlock :key="drilled.Literal" :kanji="drilled" @open="openPart" @practice="startPractice" />
@@ -86,11 +89,11 @@ watch(open, (isOpen) => isOpen && opened.value++, { immediate: true });
         <div v-else-if="multi" ref="multiRef" :key="opened" class="multi" :style="{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, maxWidth: `${cols * 700}px`, margin: '0 auto' }">
           <KanjiBlock v-for="(k, i) in kanji" :key="k.Literal" :kanji="k" class="cell" :class="{ divided: i % cols !== 0, rowdiv: i >= cols }" @open="openPart" @practice="startPractice" />
         </div>
-        <div v-else class="stage">
+        <div v-else class="stage" :class="{ wide: alone && !!shown && hintBesideCompounds(shown) }">
         <v-chip-group v-if="kanji.length > 1" :model-value="selected" mandatory color="primary" class="mb-1" @update:model-value="(v: string | null) => v && emit('select', v)">
           <v-chip v-for="k in kanji" :key="k.Literal" :value="k.Literal"><span class="jp">{{ k.Literal }}</span></v-chip>
         </v-chip-group>
-        <KanjiBlock v-if="shown" :key="`${shown.Literal}-${opened}`" :kanji="shown" @open="openPart" @practice="startPractice" />
+        <KanjiBlock v-if="shown" :key="`${shown.Literal}-${opened}`" :kanji="shown" :side-by-side="alone" @open="openPart" @practice="startPractice" />
         </div>
       </div>
     </v-card>
@@ -102,18 +105,6 @@ watch(open, (isOpen) => isOpen && opened.value++, { immediate: true });
   background: var(--paper);
   max-height: 95dvh; /* never taller than the screen: it scrolls instead (KanjiBlock measures this to decide whether the hint fits) */
   overflow-y: auto;
-  scrollbar-width: thin; /* a slim scrollbar, as small as the browser allows */
-  scrollbar-color: var(--paper-edge) transparent;
-}
-.sheet::-webkit-scrollbar {
-  width: 4px;
-}
-.sheet::-webkit-scrollbar-thumb {
-  background: var(--paper-edge);
-  border-radius: 2px;
-}
-.sheet::-webkit-scrollbar-track {
-  background: transparent;
 }
 .multi {
   display: grid;
@@ -131,6 +122,9 @@ watch(open, (isOpen) => isOpen && opened.value++, { immediate: true });
   padding-left: 16px;
   border-left: 1px solid var(--paper-edge);
 }
+.stage.wide {
+  max-width: 780px;
+}
 .stage {
   max-width: 520px;
   margin: 0 auto; /* one kanji sits in the middle of the sheet, whether it is the card's own or a component opened from the graph */
@@ -139,7 +133,10 @@ watch(open, (isOpen) => isOpen && opened.value++, { immediate: true });
   font-weight: 700;
 }
 .back-ch {
-  font-size: 1.25rem;
+  font-size: 1rem;
+}
+.back :deep(.v-icon) {
+  font-size: 16px; /* a small way-back button: small arrow, small kanji */
 }
 .grip {
   width: 34px;

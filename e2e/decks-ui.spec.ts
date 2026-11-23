@@ -18,15 +18,15 @@ test.describe('deck screen', () => {
     const deck = await richestDeck(request, 'alice');
     test.skip(!deck || deck.counts.new + deck.counts.learning === 0, 'no new/learning cards in the local data');
     await openSignedIn(page, request, 'alice');
-    await expect(page.getByRole('button', { name: /始める/ })).toHaveCount(0); // nothing to start from: the tap is the start
+    await expect(page.getByRole('button', { name: /^Start\s·\s\d+ cards/ })).toHaveCount(0); // nothing to start from: the tap is the start
     await startStudy(page, deck!);
     await expect(page).toHaveURL(/#\/study/);
     expect((await readPick(page))?.deckId).toBe(deck!.id);
   });
 
-  test('a deck being loaded shows a spinner and cannot be started twice', async ({ page, request }) => {
+  test('tapping a deck opens the study screen at once, with a loading screen until the cards arrive', async ({ page, request }) => {
     const decks = await apiDecks(request, 'alice');
-    test.skip(decks.length < 2, 'needs two decks');
+    test.skip(decks.length < 1, 'needs a deck');
     await openSignedIn(page, request, 'alice');
     let release: () => void = () => undefined;
     const held = new Promise<void>((resolve) => (release = resolve));
@@ -35,11 +35,22 @@ test.describe('deck screen', () => {
       await route.continue();
     });
     await deckCard(page, decks[0]!).click();
-    await expect(deckCard(page, decks[0]!)).toHaveClass(/\bbusy\b/);
-    await expect(deckCard(page, decks[0]!).locator('.play .v-progress-circular')).toBeVisible();
-    await expect(deckCard(page, decks[1]!).locator('.deckhit')).toBeDisabled();
+    await expect(page).toHaveURL(/#\/study/); // already on the study screen ...
+    await expect(page.locator('.loadscreen')).toBeVisible(); // ... showing the loading screen
+    await expect(page.locator('.loadscreen .v-progress-circular')).toBeVisible();
     release();
-    await expect(page).toHaveURL(/#\/(study|study\?.*)/);
+    await expect(page.locator('.loadscreen')).toHaveCount(0); // the cards arrived: the study screen takes over
+  });
+
+  test('when the cards cannot be loaded the study screen offers Retry and a way back to the decks', async ({ page, request }) => {
+    const decks = await apiDecks(request, 'alice');
+    test.skip(decks.length < 1, 'needs a deck');
+    await openSignedIn(page, request, 'alice');
+    await page.route('**/api/cards?*', (route) => route.abort());
+    await deckCard(page, decks[0]!).click();
+    await expect(page.locator('.loadscreen').getByRole('button', { name: /Retry/ })).toBeVisible();
+    await page.locator('.loadscreen').getByRole('button', { name: /Back to decks/ }).click();
+    await expect(page).toHaveURL(/#\/$/);
   });
 
   test('the remembered status filter comes back', async ({ page, request }) => {
@@ -74,7 +85,7 @@ test.describe('tags of a deck', () => {
     await openSignedIn(page, request, 'alice');
 
     await tagButton(page, a!).click(); // deck A: look at its tags, choose none
-    await expect(page.getByRole('button', { name: /始める/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^Start\s·\s\d+ cards/ })).toBeVisible();
     await page.keyboard.press('Escape');
 
     await tagButton(page, b!).click(); // deck B: choose a tag
@@ -109,7 +120,7 @@ test.describe('tags of a deck', () => {
       return u.pathname === '/api/cards' && (u.searchParams.get('tags') ?? '').split(',').includes(tag);
     };
     const asked = page.waitForRequest(carriesTag);
-    await page.getByRole('button', { name: /始める/ }).click();
+    await page.getByRole('button', { name: /^Start\s·\s\d+ cards/ }).click();
     await asked; // the sheet's button studied the deck with the tag chosen
     await expect(page).toHaveURL(/#\/study/);
 
@@ -131,25 +142,20 @@ test.describe('tags of a deck', () => {
     await expect.poll(async () => (await readPick(page))?.tagsByDeck).toEqual({ [deck!.id]: [tag] }); // written back in the new form
   });
 
-  test('chosen tags are on one line of the card: as many as fit, the rest as "+N"', async ({ page, request }) => {
+  test('chosen tags are all shown and wrap: the card is taller with more tags', async ({ page, request }) => {
     const deck = (await withTags(request)).sort((x, y) => y.tags.length - x.tags.length)[0];
     test.skip(!deck || deck.tags.length < 4, 'needs a deck with four tags');
     const all = deck!.tags.map((t) => t.tag);
     await page.addInitScript(([id, tags]) => localStorage.setItem('flashmobile.deckPick.alice', JSON.stringify({ deckId: id, statuses: ['new', 'learning'], tagsByDeck: { [id as string]: tags } })), [deck!.id, all]);
     await openSignedIn(page, request, 'alice');
     const row = deckCard(page, deck!).locator('.tc');
-    const chips = row.locator('> .tcchip');
     await expect(row).toBeVisible();
-    const shownNarrow = await chips.count();
-    expect((await row.boundingBox())!.height).toBeLessThanOrEqual(22); // one line, never two
+    await expect(row.locator('> .tcchip')).toHaveCount(all.length); // none is folded into "+N"
     const rowBox = (await row.boundingBox())!;
-    const lastBox = (await chips.last().boundingBox())!;
-    expect(lastBox.x + lastBox.width).toBeLessThanOrEqual(rowBox.x + rowBox.width + 1); // the last chip ends inside the row: nothing is cut off
-    if (shownNarrow - 1 < all.length) await expect(row.locator('.tcmore')).toHaveText(`+${all.length - (shownNarrow - 1)}`);
-
-    await page.setViewportSize({ width: 1500, height: 900 }); // more room: at least as many chips fit
-    await expect.poll(async () => chips.count()).toBeGreaterThanOrEqual(shownNarrow);
-    expect((await row.boundingBox())!.height).toBeLessThanOrEqual(22);
+    for (const chip of await row.locator('> .tcchip').all()) {
+      const b = (await chip.boundingBox())!;
+      expect(b.x + b.width).toBeLessThanOrEqual(rowBox.x + rowBox.width + 1); // nothing sticks out of the row
+    }
   });
 });
 

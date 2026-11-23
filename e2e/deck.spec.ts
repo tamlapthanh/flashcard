@@ -15,7 +15,7 @@ test.describe('decks', () => {
   test('there is no Start button on the deck screen: a deck is studied by tapping it', async ({ page, request }) => {
     await openSignedIn(page, request, 'alice');
     await expect(page.locator('.deck').first()).toBeVisible();
-    await expect(page.getByRole('button', { name: /始める/ })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /^Start\s·\s\d+ cards/ })).toHaveCount(0);
   });
 
   test('the tag sheet has the Start button, which shows how many cards will load (default filter: new + learning)', async ({ page, request }) => {
@@ -23,7 +23,7 @@ test.describe('decks', () => {
     test.skip(!first, 'no deck with tags in the local data');
     await openSignedIn(page, request, 'alice');
     await tagButton(page, first!).click();
-    const start = page.getByRole('button', { name: /始める/ });
+    const start = page.getByRole('button', { name: /^Start\s·\s\d+ cards/ });
     await expect(start).toContainText(`${first!.counts.new + first!.counts.learning} cards`);
     await expect(start).toBeEnabled(); // always: with nothing to study it opens the "Deck finished" screen
   });

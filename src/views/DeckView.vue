@@ -1,17 +1,19 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, shallowRef, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { api, ApiError, prefetchDetails } from '../api';
+import { api, ApiError } from '../api';
 import { auth } from '../auth';
 import { t } from '../i18n';
 import TagChips from '../components/TagChips.vue';
+import TestSheet from '../components/TestSheet.vue';
 import TopBar from '../components/TopBar.vue';
 import WordListSheet from '../components/WordListSheet.vue';
-import { clearDetails, ensureDetails } from '../lib/cardDetail';
-import { tileMark } from '../lib/deckMark';
+import { tileColor, tileMark } from '../lib/deckMark';
+import { STATUS_ICON, STATUS_ORDER, statusStyle } from '../lib/status';
+import { tagStyle } from '../lib/tagColor';
 import { StudySession } from '../session';
 import { settings } from '../settings';
-import { setActiveSession } from '../store';
+import { pendingStart } from '../store';
 import type { Deck, StudyStatus } from '../types';
 
 /*
@@ -24,7 +26,6 @@ const decks = ref<Deck[]>([]);
 const loading = ref(true);
 const waking = ref(false);
 const error = ref('');
-const startingId = ref<string | null>(null); // the deck being loaded (its card shows a spinner; nothing else can be started meanwhile)
 const filterOpen = ref(false);
 
 const statuses = ref<StudyStatus[]>(['new', 'learning']);
@@ -38,13 +39,6 @@ const shownDecks = computed(() => {
 });
 
 const statusLabel = (s: StudyStatus): string => t(`status.${s}`);
-const STATUS_ORDER: StudyStatus[] = ['new', 'learning', 'learned', 'skipped'];
-const STATUS_ICON: Record<StudyStatus, string> = {
-  new: 'mdi-star-four-points-outline',
-  learning: 'mdi-progress-clock',
-  learned: 'mdi-check-circle-outline',
-  skipped: 'mdi-pause-circle-outline'
-};
 
 const tagsOf = (d: Deck): string[] => tagsByDeck.value[d.id] ?? [];
 
@@ -157,43 +151,22 @@ async function load(): Promise<void> {
   }
 }
 
-/* Quietly keeps this deck on the device (its whole list and the detail of its cards), so it can be studied without the server later. */
-async function keepForOffline(deckId: string, ids: string[]): Promise<void> {
-  try {
-    const all = await api.cards({ deck: deckId, tags: [], status: STATUS_ORDER });
-    await prefetchDetails(all.cards.length ? all.cards.map((c) => c.id) : ids);
-  } catch {
-    /* offline or asleep: nothing to keep */
-  }
+/* Studies a deck now: only says which one (with the status filter and the tags remembered for it) and opens the study screen at once;
+   the cards are loaded there, behind a loading screen. */
+function startDeck(d: Deck): void {
+  lastDeckId.value = d.id;
+  pendingStart.value = { deckId: d.id, deckName: d.name, tags: [...tagsOf(d)], statuses: [...statuses.value] };
+  void router.push('/study');
 }
 
-/* Studies a deck now: its cards of the status filter and of the tags remembered for it. */
-async function startDeck(d: Deck): Promise<void> {
-  if (startingId.value) return;
-  startingId.value = d.id;
-  error.value = '';
-  const tags = [...tagsOf(d)];
-  try {
-    const { cards } = await api.cards({ deck: d.id, tags, status: statuses.value });
-    lastDeckId.value = d.id;
-    if (cards.length === 0) {
-      // nothing left to study (an empty deck, or every word already learned): the "Deck finished" screen, from the deck's saved progress
-      setActiveSession(null);
-      await router.push({ path: '/study', query: { finished: d.id } });
-      return;
-    }
-    clearDetails();
-    await ensureDetails(cards.slice(0, 7).map((c) => c.id)); // the first cards are complete when the study screen opens
-    setActiveSession(new StudySession(cards, { reverse: settings.direction === 'reverse', showReading: settings.showReading, deckName: d.name, tags }));
-    void keepForOffline(d.id, cards.map((c) => c.id));
-    await router.push('/study');
-  } catch {
-    error.value = t('err.load');
-  } finally {
-    startingId.value = null;
-  }
+/* The test sheet of one deck (TestSheet): the tags are the ones remembered for the deck. */
+const testOpen = ref(false);
+const testDeckId = ref<string | null>(null);
+const testDeck = computed(() => decks.value.find((d) => d.id === testDeckId.value) ?? null);
+function openTest(d: Deck): void {
+  testDeckId.value = d.id;
+  testOpen.value = true;
 }
-
 /* The Start button of the tag sheet. */
 function startFromSheet(): void {
   const d = tagDeck.value;
@@ -217,36 +190,43 @@ onMounted(load);
     <v-progress-linear v-if="loading" indeterminate class="mb-3" color="primary" />
 
     <template v-if="decks.length">
-      <button type="button" class="paper-card filter" :data-tip="t('tip.filter')" @click="filterOpen = true">
+      <button type="button" class="paper-card filter" :aria-label="filterSummary[0]" :data-tip="t('tip.filter')" @click="filterOpen = true">
         <v-icon icon="mdi-filter-variant" class="mr-3" color="primary" />
         <div class="d-flex flex-wrap ga-1 flex-grow-1">
-          <v-chip v-for="(p, i) in filterSummary" :key="i" size="small" variant="tonal">{{ p }}</v-chip>
+          <!-- one chip per chosen status, in its own colour (lib/status.ts) -->
+          <v-chip v-for="s in statuses" :key="s" size="small" variant="tonal" class="stchip stshown" :style="statusStyle(s)" :prepend-icon="STATUS_ICON[s]">{{ statusLabel(s) }}</v-chip>
+          <v-chip v-if="!statuses.length" size="small" variant="tonal">{{ t('filter.allStatus') }}</v-chip>
         </div>
         <v-icon icon="mdi-chevron-right" />
       </button>
 
       <!-- a deck card: tapping anywhere on it studies the deck (the invisible button covers the card); the tile and the tag button sit above it -->
       <div class="decks">
-        <div v-for="d in shownDecks" :key="d.id" class="paper-card deck" :class="{ busy: startingId === d.id }">
-          <button type="button" class="deckhit" :disabled="!!startingId" :aria-label="`${d.name}. ${t('deck.count', { total: d.total, fresh: d.counts.new })}`" :data-tip="t('tip.deck')" @click="startDeck(d)" />
+        <div v-for="d in shownDecks" :key="d.id" class="paper-card deck">
+          <button type="button" class="deckhit" :aria-label="`${d.name}. ${t('deck.count', { total: d.total, fresh: d.counts.new })}`" :data-tip="t('tip.deck')" @click="startDeck(d)" />
           <div class="d-flex align-center ga-3">
-            <div class="deck-tile jp" :class="{ two: tileMark(d.name).length > 1, busy: listLoadingId === d.id }" role="button" tabindex="0" :aria-label="t('list.open')" :data-tip="t('list.open')" @click.stop="openList(d)" @keydown.enter.self.prevent="openList(d)" @keydown.space.self.prevent="openList(d)">
+            <div class="deck-tile jp" :style="{ background: tileColor(d.name) }" :class="{ two: tileMark(d.name).length > 1, busy: listLoadingId === d.id }" role="button" tabindex="0" :aria-label="t('list.open')" :data-tip="t('list.open')" @click.stop="openList(d)" @keydown.enter.self.prevent="openList(d)" @keydown.space.self.prevent="openList(d)">
               {{ tileMark(d.name) }}<span class="tilelist" aria-hidden="true"><v-icon icon="mdi-format-list-bulleted" size="11" /></span>
             </div>
             <div class="flex-grow-1 text-start deckinfo">
               <div class="text-subtitle-1 font-weight-medium">{{ d.name }}<v-icon v-if="d.isDefault" icon="mdi-star" size="14" color="warning" class="ml-1 defstar" :title="t('deck.default')" :aria-label="t('deck.default')" /></div>
               <div class="text-caption text-medium-emphasis">{{ t('deck.count', { total: d.total, fresh: d.counts.new }) }}</div>
               <!-- the tags chosen for this deck (the next tap studies exactly these): as many as fit on one line, the rest as "+N" -->
-              <TagChips v-if="tagsOf(d).length" :tags="tagsOf(d)" class="mt-1" />
+              <TagChips v-if="tagsOf(d).length" :tags="tagsOf(d)" class="mt-1 tagrow" />
             </div>
-            <button v-if="d.tags.length" type="button" class="tagbtn" :class="{ on: tagsOf(d).length }" :aria-label="t('deck.tagsOf', { name: d.name })" :data-tip="t('tip.tags')" @click.stop="openTags(d)">
+            <!-- tags, test and play: in a row; on a phone they sit at the bottom right of the card -->
+            <div class="deckbtns">
+            <button v-if="d.tags.length" type="button" class="tagbtn tagc" :class="{ on: tagsOf(d).length }" :aria-label="t('deck.tagsOf', { name: d.name })" :data-tip="t('tip.tags')" @click.stop="openTags(d)">
               <v-icon icon="mdi-tag-outline" size="18" />
               <span v-if="tagsOf(d).length" class="tagn">{{ tagsOf(d).length }}</span>
             </button>
+            <button v-if="d.total >= 4" type="button" class="tagbtn testc" :aria-label="t('tip.test')" :data-tip="t('tip.test')" @click.stop="openTest(d)">
+              <v-icon icon="mdi-school-outline" size="18" />
+            </button>
             <span class="play" aria-hidden="true">
-              <v-progress-circular v-if="startingId === d.id" indeterminate size="18" width="2" color="white" />
-              <v-icon v-else icon="mdi-play" size="20" />
+              <v-icon icon="mdi-play" size="20" />
             </span>
+            </div>
           </div>
           <v-progress-linear :model-value="learnedPercent(d)" height="4" rounded color="primary" bg-color="surface-variant" class="mt-3" />
         </div>
@@ -258,25 +238,28 @@ onMounted(load);
   <WordListSheet v-if="listSession" :open="listOpen" :session="listSession" @close="listOpen = false" @pick="listOpen = false" />
 
   <!-- the tags of one deck: several can be chosen (each deck keeps its own); the button studies the deck with them -->
-  <v-bottom-sheet v-model="tagOpen">
-    <v-card class="sheet" rounded="t-xl">
+  <v-bottom-sheet v-model="tagOpen" content-class="tagsheet-content">
+    <v-card class="sheet tagsheet" rounded="t-xl">
       <div class="grip" />
-      <div class="pa-4 pt-1">
+      <div class="pa-4 pt-1 tagbody">
         <div class="tagshead">
           <div class="label"><v-icon icon="mdi-tag-multiple-outline" size="14" />{{ t('filter.tags') }} · {{ tagDeck?.name }}</div>
           <v-btn v-if="sheetTags.length" size="x-small" variant="tonal" color="primary" :data-tip="t('tip.clearTags')" @click="sheetTags = []">{{ t('filter.clear', { n: sheetTags.length }) }}</v-btn>
         </div>
         <div class="tagscroll">
           <v-chip-group v-model="sheetTags" multiple filter column color="primary">
-            <v-chip v-for="tg in tagDeck?.tags ?? []" :key="tg.tag" :value="tg.tag" size="small" variant="tonal">{{ tg.tag }} ({{ tg.count }})</v-chip>
+            <v-chip v-for="tg in tagDeck?.tags ?? []" :key="tg.tag" :value="tg.tag" size="small" variant="tonal" class="tagtint" :style="tagStyle(tg.tag)">{{ tg.tag }} ({{ tg.count }})</v-chip>
           </v-chip-group>
         </div>
-        <v-btn block color="primary" size="large" class="mt-3" prepend-icon="mdi-play" :loading="!!startingId" :data-tip="t('tip.start')" @click="startFromSheet">
-          <span class="jp-start">始める</span>&nbsp;· {{ t('deck.start', { n: tagDeck ? countFor(tagDeck, sheetTags) : 0 }) }}
+        <v-btn block color="primary" size="large" class="mt-3" prepend-icon="mdi-play" :data-tip="t('tip.start')" @click="startFromSheet">
+          {{ t('deck.startBtn') }}&nbsp;· {{ t('deck.start', { n: tagDeck ? countFor(tagDeck, sheetTags) : 0 }) }}
         </v-btn>
       </div>
     </v-card>
   </v-bottom-sheet>
+
+  <!-- the test of one deck: number of questions and, if wanted, only the words of some statuses -->
+  <TestSheet v-model="testOpen" :deck="testDeck" :tags="testDeck ? tagsOf(testDeck) : []" />
 
   <!-- filter sheet: status, for every deck (tags are chosen per deck, from its tag button; there is no limit on the number of cards) -->
   <v-bottom-sheet v-model="filterOpen">
@@ -285,7 +268,7 @@ onMounted(load);
       <div class="pa-4 pt-1">
         <div class="label"><v-icon icon="mdi-progress-check" size="14" />{{ t('filter.status') }}</div>
         <v-chip-group v-model="statuses" multiple filter color="primary" class="mb-2">
-          <v-chip v-for="s in STATUS_ORDER" :key="s" :value="s" size="small" :prepend-icon="STATUS_ICON[s]">{{ statusLabel(s) }} ({{ decks.reduce((n, d) => n + d.counts[s], 0) }})</v-chip>
+          <v-chip v-for="s in STATUS_ORDER" :key="s" :value="s" size="small" class="stchip" :style="statusStyle(s)" :prepend-icon="STATUS_ICON[s]">{{ statusLabel(s) }} ({{ decks.reduce((n, d) => n + d.counts[s], 0) }})</v-chip>
         </v-chip-group>
 
         <v-btn block color="primary" class="mt-3" prepend-icon="mdi-check" :data-tip="t('tip.done')" @click="filterOpen = false">{{ t('filter.done') }}</v-btn>
@@ -323,12 +306,35 @@ onMounted(load);
 .tagscroll :deep(.v-chip-group) {
   padding-top: 0; /* Vuetify adds 4px above the chips */
 }
+/* On a phone the tag sheet grows with its tags, up to 95% of the screen (Vuetify stops a bottom sheet at 70%); beyond that the tags scroll inside it. */
+@media (max-width: 600px) {
+  :global(.tagsheet-content) {
+    max-height: 95dvh !important;
+  }
+  .tagsheet {
+    display: flex;
+    flex-direction: column;
+    max-height: 95dvh;
+  }
+  .tagbody {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 1 1 auto;
+  }
+  .tagbody .tagscroll {
+    max-height: none;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+}
 .deck {
   position: relative;
   display: block;
   width: 100%;
   padding: 12px 14px;
   border: 2px solid transparent;
+  border-radius: 18px; /* a little less round than the other paper cards (24px) */
   text-align: start;
   color: inherit;
   transition: border-color 0.15s, transform 0.1s, opacity 0.15s;
@@ -402,6 +408,33 @@ onMounted(load);
   align-items: center;
   justify-content: center;
 }
+.deckbtns {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px; /* the same space as between the tile and the info */
+}
+/* On a phone the three buttons stay in a row but sit at the right of line 2 (the count line), so they add no height;
+   line 3 (the tags) then has the whole width of the card. */
+@media (max-width: 600px) {
+  .deckbtns {
+    position: absolute;
+    right: 14px;
+    top: 30px; /* line 2, under the name (clear of the tags on line 3) */
+    z-index: 2; /* above the invisible button that covers the card */
+    gap: 8px;
+  }
+  .deckbtns .tagbtn,
+  .deckbtns .play {
+    width: 27px;
+    height: 27px;
+  }
+  .deckbtns :deep(.v-icon) {
+    font-size: 15px !important;
+    width: 15px;
+    height: 15px;
+  }
+}
 .tagbtn {
   flex: 0 0 auto;
   width: 34px;
@@ -419,6 +452,20 @@ onMounted(load);
 }
 .tagbtn.on {
   border-color: #ef8a17; /* tags are chosen for this deck */
+}
+/* each round button has its own colour: tags orange, test blue (the play button stays green) */
+.tagbtn.tagc {
+  --bc: #ef8a17;
+}
+.tagbtn.testc {
+  --bc: #1e88e5;
+}
+.tagbtn.tagc,
+.tagbtn.testc {
+  color: var(--bc);
+  border-color: color-mix(in srgb, var(--bc) 55%, var(--paper-edge));
+  background: color-mix(in srgb, var(--bc) 10%, var(--paper));
+  box-shadow: 0 2px 0 color-mix(in srgb, var(--bc) 45%, transparent);
 }
 .tagn {
   position: absolute;
@@ -441,6 +488,10 @@ onMounted(load);
   box-shadow: 0 0 0 transparent;
 }
 @media (hover: hover) and (pointer: fine) {
+  .tagbtn.tagc:hover,
+  .tagbtn.testc:hover {
+    background: color-mix(in srgb, var(--bc) 22%, var(--paper));
+  }
   .tagbtn:hover {
     background: #d4f5c2; /* pale mint under the mouse, like the round buttons of the card */
     transform: translateY(1px);
@@ -460,16 +511,13 @@ onMounted(load);
   box-shadow: 0 2px 0 #3f8a1f;
 }
 .filter {
+  border-radius: 18px; /* the same as the deck cards */
   display: flex;
   align-items: center;
   width: 100%;
   padding: 12px 14px;
   text-align: start;
   color: inherit;
-}
-.jp-start {
-  font-family: var(--font-jp);
-  font-weight: 700;
 }
 .sheet {
   background: var(--paper);

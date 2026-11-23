@@ -4,7 +4,7 @@ import { t } from '../i18n';
 import type { KanjiPart } from '../types';
 
 const props = defineProps<{ literal: string; edges: string[]; names: KanjiPart[]; rootHv?: string | null }>();
-const shown = ref(true); // the graph can be folded away, like the memory hint
+const shown = ref(false); // the graph can be folded away, like the memory hint
 const emit = defineEmits<{ open: [literal: string] }>();
 
 const R = 22; // circle radius

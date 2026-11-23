@@ -130,26 +130,23 @@ test.describe('study card layout', () => {
     await expect(front).toBeVisible();
   });
 
-  test('the details header: reading under the kanji, Sino-Vietnamese and meaning on its right', async ({ page }) => {
+  test('the details header: the word with its Sino-Vietnamese, then Vietnamese as its own item like English', async ({ page }) => {
     await page.keyboard.press('ArrowUp');
     const head = page.locator('.back-head .bline');
     await expect(head).toBeVisible();
-    const word = head.locator('.bwcol');
-    const side = head.locator('.bside');
-    await expect(word).toBeVisible();
-    if (await side.count()) {
-      const [w, s] = await Promise.all([word.boundingBox(), side.boundingBox()]);
-      // the right side is to the right of the word; a long word keeps its one line and takes the whole width, so then the side sits right under it
-      const right = s!.x >= w!.x + w!.width - 1;
-      const below = s!.y >= w!.y + w!.height - 1;
-      expect(right || below).toBe(true);
+    await expect(head.locator('.bwcol')).toBeVisible();
+    // the Sino-Vietnamese reading (under each kanji, or beside a word without furigana) is always UPPER CASE
+    for (const loc of [head.locator('.bhv'), head.locator('.hvr')]) {
+      for (let i = 0; i < (await loc.count()); i++) {
+        const text = (await loc.nth(i).innerText()).trim();
+        expect(text).toBe(text.toUpperCase());
+      }
     }
-    // the Sino-Vietnamese reading is always UPPER CASE
-    const hanviet = side.locator('.bhv');
-    if (await hanviet.count()) {
-      const text = (await hanviet.innerText()).trim();
-      expect(text).toBe(text.toUpperCase());
-    }
+    // the Vietnamese meaning is a labelled item (icon + "Vietnamese"), not part of the header; no line under the header
+    const vi = page.locator('.detail .item').filter({ has: page.locator('.label', { hasText: /^Vietnamese$/ }) });
+    await expect(vi).toHaveCount(1);
+    await expect(vi.locator('.bm')).not.toBeEmpty();
+    await expect(page.locator('.back-head')).toHaveCSS('border-bottom-width', '0px');
   });
 });
 

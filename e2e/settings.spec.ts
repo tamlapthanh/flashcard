@@ -73,13 +73,20 @@ test.describe('auto play: save voice files', () => {
 
   test('the switch is on by default, is saved with the other settings, and can be turned off', async ({ page, request }) => {
     await healthSaysSaveVoice(page, true);
+    // the app pulls the saved settings once after sign-in and they replace the local ones: click only after that, or the pull can switch it back on
+    const pulled = page.waitForResponse((r) => r.url().includes('/api/settings') && r.request().method() === 'GET');
     await openSignedIn(page, request, 'bob');
+    await pulled;
+    await page.waitForTimeout(300); // the pulled settings are applied right after the response
     await page.goto('/#/settings');
     await page.locator('.sechead').filter({ hasText: 'Auto play' }).click();
     const sw = page.getByRole('checkbox', { name: 'Save voice files' });
     await expect(sw).toBeChecked();
-    await sw.click({ force: true });
-    await expect(sw).not.toBeChecked();
+    // a click that lands while the section is still opening can be lost: click again until the switch really is off
+    await expect(async () => {
+      if (await sw.isChecked()) await sw.click({ force: true });
+      await expect(sw).not.toBeChecked({ timeout: 1000 });
+    }).toPass({ timeout: 15_000 });
     expect((await stored(page)).autoSaveVoice).toBe(false);
     await expect.poll(async () => (await apiSettings(request, 'bob')).settings?.autoSaveVoice, { timeout: 10_000 }).toBe(false);
   });
@@ -196,12 +203,28 @@ test.describe('card text size and colour editor', () => {
     await expect(kanji).toHaveCSS('font-style', 'normal');
   });
 
-  test('the sample has what the study screen has: menu, Auto play, the eye marks, and labelled details on the back', async ({ page }) => {
+  test('the sample has what the study screen has: menu, Auto play, the eye marks, and labelled details on the back (Vietnamese is its own item, Sino-Vietnamese goes under each kanji)', async ({ page }) => {
     await expect(page.locator('.ced .top .gbtn')).toHaveCount(5); // menu + again / learned / skip / list
     await expect(page.locator('.ced .abtn')).toBeVisible();
-    await expect(page.locator('.ced .tools .mk')).toHaveText(['あ', 'V', 'E', '漢']);
+    await expect(page.locator('.ced .tools .mk')).toHaveText(['あ', '漢', 'V', 'E']);
     await page.locator('.ced .chips .chip').first().click(); // Front -> Back
-    await expect(page.locator('.ced .detail .lbl')).toHaveCount(7); // Sino-Viet, part of speech, English, example, pitch, notes, related
+    await expect(page.locator('.ced .detail .lbl')).toHaveCount(8); // Sino-Viet, part of speech, Vietnamese, English, example, pitch, notes, related
+    await expect(page.locator('.ced .detail .lbl').filter({ hasText: 'Vietnamese' })).toHaveCount(1);
+    await page.locator('.ced .chips .chip', { hasText: 'Furigana' }).click(); // furigana on: the Sino-Vietnamese sits under the kanji
+    await expect(page.locator('.ced .detail .back-head .hvr').first()).toHaveText('HƯƠNG');
+    await expect(page.locator('.ced .detail .back-head .bside')).toHaveCount(0);
+  });
+
+  test('the Kanji sheet sample has the real sheet: no big kanji, the stroke player, On / Kun with values in one column, the info icon', async ({ page }) => {
+    await page.locator('.ced .chips .chip', { hasText: 'Kanji sheet' }).click();
+    await expect(page.locator('.ced .ksheet .kplayer')).toBeVisible();
+    await expect(page.locator('.ced .ksheet .kglyph')).toHaveCount(0);
+    await expect(page.locator('.ced .ksheet .kinfoico .mdi-information-outline')).toBeVisible();
+    const [on, kun] = await Promise.all([
+      page.locator('.ced .kreads .ed').nth(1).boundingBox(),
+      page.locator('.ced .kreads .ed').nth(3).boundingBox()
+    ]);
+    expect(Math.abs(on!.x - kun!.x)).toBeLessThanOrEqual(1); // the two values start in the same column
   });
 
   test('the colour picker sets the colour of the text and of the saved setting', async ({ page }) => {
@@ -241,5 +264,28 @@ test.describe('card text size and colour editor', () => {
     expect((await stored(page)).cardText.word).toEqual({ size: 90, color: '#123456', italic: false });
     // the study screen reads the same settings into its custom properties (checked in session.spec.ts)
     await expect.poll(async () => ((await apiSettings(request, 'bob')).settings?.cardText as any)?.word?.size, { timeout: 10_000 }).toBe(90);
+  });
+});
+
+test.describe('test: marking right away or at the end', () => {
+  const sw = (page: import('@playwright/test').Page) => page.locator('.v-list-item').filter({ hasText: 'Mark test answers right away' }).locator('input[type=checkbox]');
+
+  test('a setting of the user: on by default, switched off in Settings, saved on the server, kept after a reload', async ({ page, request }) => {
+    await openSignedIn(page, request, 'bob');
+    await page.goto('/#/settings');
+    await page.locator('.sechead').filter({ hasText: 'View' }).click();
+    await expect(sw(page)).toBeChecked(); // the default: marked at once
+    // a settings pull that is still on its way would put the old value back: switch off again until it holds
+    await expect(async () => {
+      await sw(page).setChecked(false, { force: true });
+      await expect(sw(page)).not.toBeChecked({ timeout: 1000 });
+    }).toPass({ timeout: 10_000 });
+    expect((await stored(page)).testInstantCheck).toBe(false);
+
+    await expect.poll(async () => (await apiSettings(request, 'bob')).settings?.testInstantCheck, { timeout: 10_000 }).toBe(false);
+
+    await page.reload();
+    await page.locator('.sechead').filter({ hasText: 'View' }).click();
+    await expect(sw(page)).not.toBeChecked();
   });
 });

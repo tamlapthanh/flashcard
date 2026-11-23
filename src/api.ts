@@ -7,7 +7,7 @@ import { reactive } from 'vue';
 import { auth, clearSession, setSession } from './auth';
 import { t } from './i18n';
 import { isOfflineFailure, readCached, withCache, writeCached } from './lib/apiCache';
-import type { CardDetail, Deck, KanjiInfo, LightCard, LookupResult, StudyResult } from './types';
+import type { CardDetail, Deck, KanjiInfo, LightCard, LookupResult, StudyResult, TestAnswerDetail, TestCreateBody, TestSessionInfo } from './types';
 
 const BASE = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 const KEY = import.meta.env.VITE_API_KEY ?? '';
@@ -30,7 +30,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     res = await fetch(BASE + path, {
       ...init,
-      headers: { 'content-type': 'application/json', ...authHeaders(), ...init?.headers }
+      // content-type only with a body: the server answers 400 to a DELETE (or any call) that says "JSON" and sends nothing
+      headers: { ...(init?.body ? { 'content-type': 'application/json' } : {}), ...authHeaders(), ...init?.headers }
     });
   } catch {
     throw new ApiError(t('api.conn'), 0);
@@ -130,6 +131,18 @@ export const api = {
   /** The user's saved app settings (null when none yet). */
   getSettings: () => request<{ settings: Record<string, unknown> | null; updatedAt: string | null }>('/api/settings'),
   putSettings: (settings: unknown) => request<{ updatedAt: string }>('/api/settings', { method: 'PUT', body: JSON.stringify({ settings }) }),
+  /** The user's tests, newest first (`status` limits them to the open or the done ones). Never cached: they live in the database and are read from there. */
+  tests: (before?: string, status?: 'open' | 'done') => {
+    const q = new URLSearchParams();
+    if (before) q.set('before', before);
+    if (status) q.set('status', status);
+    return request<{ sessions: TestSessionInfo[] }>('/api/tests' + (q.size ? `?${q}` : '')).then((r) => r.sessions);
+  },
+  /** The words of a deck whose latest answer in a finished test was right: a new test leaves them out. */
+  correctTestWords: (deckId: string) => request<{ wordIds: string[] }>(`/api/tests/correct?deck=${encodeURIComponent(deckId)}`).then((r) => r.wordIds),
+  /** Every question of one test, answered or not. */
+  testAnswers: (sessionId: string) => request<{ answers: TestAnswerDetail[] }>(`/api/tests/${encodeURIComponent(sessionId)}`).then((r) => r.answers),
+  deleteTest: (sessionId: string) => request<{ ok: boolean }>(`/api/tests/${encodeURIComponent(sessionId)}`, { method: 'DELETE' }),
   /** Free servers sleep: ping /health first so the UI can say "waking up". */
   health: () => request<{ ok: boolean; saveVoice?: boolean }>('/health')
 };
@@ -223,5 +236,77 @@ export async function flushResults(): Promise<boolean> {
     }
   } finally {
     flushing = false;
+  }
+}
+
+/* ---- tests ----
+   A test is saved on the server (D1) whole when it is made, each answer as it is given, and it is marked done at the end, so an unfinished test can
+   be continued from any device. The database is the only place tests are kept: this queue only holds what could not be sent yet (server asleep, no
+   signal), in order, and drops each step as soon as it is sent. One queue per user. */
+
+export type TestOp =
+  | { op: 'create'; body: TestCreateBody }
+  | { op: 'answer'; sessionId: string; n: number; pickedId: string | null; at: string }
+  | { op: 'finish'; sessionId: string; at: string };
+
+const TEST_QUEUE_KEY = (): string => `flashmobile.testQueue.${auth.user ?? ''}`;
+let flushingTests = false;
+
+function readTestQueue(): TestOp[] {
+  try {
+    const list = JSON.parse(localStorage.getItem(TEST_QUEUE_KEY()) ?? '[]') as unknown;
+    return Array.isArray(list) ? (list as TestOp[]).filter((o) => o && typeof o === 'object' && 'op' in o) : []; // an older shape of the queue is dropped
+  } catch {
+    return [];
+  }
+}
+
+function writeTestQueue(queue: TestOp[]): void {
+  try {
+    if (queue.length === 0) localStorage.removeItem(TEST_QUEUE_KEY());
+    else localStorage.setItem(TEST_QUEUE_KEY(), JSON.stringify(queue));
+  } catch {
+    /* storage unavailable: the steps still go out while the page stays open */
+  }
+}
+
+export function pendingTests(): number {
+  return readTestQueue().length;
+}
+
+const sendTestOp = (o: TestOp): Promise<unknown> => {
+  const id = (sessionId: string): string => encodeURIComponent(sessionId);
+  if (o.op === 'create') return request('/api/tests', { method: 'POST', body: JSON.stringify(o.body) });
+  if (o.op === 'answer') return request(`/api/tests/${id(o.sessionId)}/answers/${o.n}`, { method: 'PUT', body: JSON.stringify({ pickedId: o.pickedId, at: o.at }) });
+  return request(`/api/tests/${id(o.sessionId)}/finish`, { method: 'POST', body: JSON.stringify({ at: o.at }) });
+};
+
+/* Queue a step of a test and try to send everything now. Resolves true when nothing is left waiting. */
+export function queueTestOp(o: TestOp): Promise<boolean> {
+  writeTestQueue([...readTestQueue(), o]);
+  return flushTests();
+}
+
+export async function flushTests(): Promise<boolean> {
+  if (flushingTests) return false; // the running loop reads the queue again after each step, so a step added meanwhile is sent too
+  flushingTests = true;
+  try {
+    for (;;) {
+      const [next] = readTestQueue();
+      if (!next) return true;
+      try {
+        await sendTestOp(next);
+      } catch (e) {
+        // A step the server will never accept (a word or deck that no longer exists) would block the queue forever: drop it. Anything else: keep and retry later.
+        if (e instanceof ApiError && (e.status === 400 || e.status === 404)) {
+          writeTestQueue(readTestQueue().slice(1));
+          continue;
+        }
+        return false;
+      }
+      writeTestQueue(readTestQueue().slice(1));
+    }
+  } finally {
+    flushingTests = false;
   }
 }

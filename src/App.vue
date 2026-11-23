@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useTheme } from 'vuetify';
-import { flushResults, loadServerInfo } from './api';
+import { flushResults, flushTests, loadServerInfo } from './api';
 import { auth, clearSession, loginRequired } from './auth';
 import Hanko from './components/Hanko.vue';
 import { t } from './i18n';
@@ -22,6 +22,7 @@ const router = useRouter();
 const items = computed(() => [
   { path: '/', title: t('nav.decks'), glyph: '札', color: 'success' },
   { path: '/study', title: t('nav.study'), glyph: '学', color: 'info' },
+  { path: '/tests', title: t('nav.tests'), glyph: '試', color: 'error' },
   { path: '/settings', title: t('nav.settings'), glyph: '設', color: 'warning' }
 ]);
 const current = computed(() => items.value.find((i) => (i.path === '/' ? route.path === '/' : route.path.startsWith(i.path)))?.path ?? '/');
@@ -44,7 +45,10 @@ function go(path: string): void {
 }
 
 // Results that could not be sent (server asleep, no signal) are retried whenever the app comes back.
-const retry = (): void => void flushResults();
+const retry = (): void => {
+  void flushResults();
+  void flushTests();
+};
 onMounted(() => {
   retry();
   void loadServerInfo();

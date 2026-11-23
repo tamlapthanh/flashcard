@@ -2,6 +2,7 @@
  "version": 1,
  "decks": {
   "700 Kanji book": {
+   "さんかする": "700 Kanji book/さんかする.mp3",
    "しゅっせき": "700 Kanji book/しゅっせき.mp3",
    "れんしゅうする": "700 Kanji book/れんしゅうする.mp3"
   },
@@ -11,13 +12,18 @@
   "JLPT N3": {
    "いのち": "JLPT N3/いのち.mp3",
    "おうだん": "JLPT N3/おうだん.mp3",
+   "かがく": "JLPT N3/かがく.mp3",
    "きおん": "JLPT N3/きおん.mp3",
+   "くむ": "JLPT N3/くむ.mp3",
    "さく": "JLPT N3/さく.mp3",
    "じゅうたい": "JLPT N3/じゅうたい.mp3",
+   "じゅぎょう": "JLPT N3/じゅぎょう.mp3",
    "せいふく": "JLPT N3/せいふく.mp3",
    "つうきん": "JLPT N3/つうきん.mp3",
    "ながす": "JLPT N3/ながす.mp3",
-   "ふくざつ": "JLPT N3/ふくざつ.mp3"
+   "ふくざつ": "JLPT N3/ふくざつ.mp3",
+   "よてい": "JLPT N3/よてい.mp3",
+   "れんしゅう": "JLPT N3/れんしゅう.mp3"
   },
   "Shigoto-no-nihongo-it-tagged": {
    "あきはばら": "Shigoto-no-nihongo-it-tagged/あきはばら.mp3",
@@ -40,6 +46,7 @@
    "しゅっしん": "Shigoto-no-nihongo-it-tagged/しゅっしん.mp3",
    "しょうさい": "Shigoto-no-nihongo-it-tagged/しょうさい.mp3",
    "しんじゅく": "Shigoto-no-nihongo-it-tagged/しんじゅく.mp3",
+   "じっすう": "Shigoto-no-nihongo-it-tagged/じっすう.mp3",
    "じんいん": "Shigoto-no-nihongo-it-tagged/じんいん.mp3",
    "せいきゅうしょ": "Shigoto-no-nihongo-it-tagged/せいきゅうしょ.mp3",
    "せいすうがた": "Shigoto-no-nihongo-it-tagged/せいすうがた.mp3",
@@ -52,13 +59,16 @@
    "なかま": "Shigoto-no-nihongo-it-tagged/なかま.mp3",
    "にゅうきんしゅうけいひょう": "Shigoto-no-nihongo-it-tagged/にゅうきんしゅうけいひょう.mp3",
    "はんどうたい": "Shigoto-no-nihongo-it-tagged/はんどうたい.mp3",
+   "ふまん": "Shigoto-no-nihongo-it-tagged/ふまん.mp3",
    "ぶんきもうらテスト": "Shigoto-no-nihongo-it-tagged/ぶんきもうらテスト.mp3",
    "ぶんや": "Shigoto-no-nihongo-it-tagged/ぶんや.mp3",
    "へんぴん": "Shigoto-no-nihongo-it-tagged/へんぴん.mp3",
    "まま": "Shigoto-no-nihongo-it-tagged/まま.mp3",
    "みにつける": "Shigoto-no-nihongo-it-tagged/みにつける.mp3",
    "みらいそうぞうしゃ": "Shigoto-no-nihongo-it-tagged/みらいそうぞうしゃ.mp3",
+   "むしする": "Shigoto-no-nihongo-it-tagged/むしする.mp3",
    "もとめる": "Shigoto-no-nihongo-it-tagged/もとめる.mp3",
+   "りゅうほ": "Shigoto-no-nihongo-it-tagged/りゅうほ.mp3",
    "わえいじてん": "Shigoto-no-nihongo-it-tagged/わえいじてん.mp3",
    "インターネット": "Shigoto-no-nihongo-it-tagged/インターネット.mp3",
    "インド": "Shigoto-no-nihongo-it-tagged/インド.mp3",

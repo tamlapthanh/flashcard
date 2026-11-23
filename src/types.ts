@@ -122,3 +122,59 @@ export interface LookupResult {
   hanviet: string | null;
   meanings: string[];
 }
+
+/* ---- tests (quizzes) ---- */
+
+export type TestMode = 'mixed' | 'meaning' | 'listen' | 'reading';
+
+/** A new test as the app sends it: every question with the ids of its options in the order shown. The server works out which answers are right. */
+export interface TestCreateBody {
+  sessionId: string;
+  at: string;
+  deckId: string;
+  tags: string[];
+  mode: TestMode;
+  questions: { wordId: string; kind: 'meaning' | 'listen' | 'reading'; options: string[] }[];
+}
+
+/** A test with the score so far. answered counts the skipped questions too; total - answered is what is not done yet. */
+export interface TestSessionInfo {
+  sessionId: string;
+  at: string;
+  deckId: string;
+  deckName: string;
+  tags: string[];
+  mode: TestMode;
+  status: 'open' | 'done';
+  total: number;
+  nListen: number;
+  nMeaning: number;
+  nReading?: number; // older servers do not send the reading counts
+  finishedAt: string | null;
+  answered: number;
+  correct: number;
+  answeredListen: number;
+  correctListen: number;
+  answeredMeaning: number;
+  correctMeaning: number;
+  answeredReading?: number;
+  correctReading?: number;
+}
+
+export interface TestWord {
+  id: string;
+  headword: string;
+  reading: string | null;
+  meaning: string;
+  hanviet?: string | null; // Sino-Vietnamese reading (older servers do not send it)
+}
+
+export interface TestAnswerDetail {
+  n: number;
+  kind: 'meaning' | 'listen' | 'reading';
+  options: string[];
+  answered: boolean; // false: not done yet
+  correct: boolean;
+  word: TestWord | null; // null: the word was removed from the dictionary since
+  picked: TestWord | null; // null on an answered question: skipped
+}

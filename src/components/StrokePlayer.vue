@@ -5,7 +5,7 @@ import { strokeStart } from '../lib/strokes';
 
 const props = defineProps<{ literal: string; paths: string[] }>();
 
-const stripOpen = ref(true); // the stroke-by-stroke row can be folded away
+const stripOpen = ref(false); // the stroke-by-stroke row can be folded away
 const step = ref(props.paths.length); // how many strokes are drawn (all = finished character)
 const playing = ref(false);
 const animating = ref(false); // the newest stroke draws itself
@@ -95,13 +95,13 @@ onUnmounted(stop);
     </div>
 
     <div class="controls">
-      <v-btn class="ctl" icon="mdi-skip-previous" variant="text" size="small" :aria-label="t('strokes.prev')" @click="go(-1)" />
       <v-btn class="ctl" :icon="playing ? 'mdi-pause' : 'mdi-play'" variant="tonal" size="small" :aria-label="playing ? t('strokes.pause') : t('strokes.play')" @click="play" />
+      <v-btn class="ctl" icon="mdi-skip-previous" variant="text" size="small" :aria-label="t('strokes.prev')" @click="go(-1)" />
+      <!-- the stroke counter sits between Prev and Next (the row is at most 210px wide, so it cannot run into the text beside the player) -->
+      <span class="count">{{ step }} / {{ paths.length }}</span>
       <v-btn class="ctl" icon="mdi-skip-next" variant="text" size="small" :aria-label="t('strokes.next')" @click="go(1)" />
       <v-btn class="ctl" icon="mdi-pencil" variant="text" size="small" :aria-label="t('practice.start')" :title="t('practice.start')" @click="startPractice" />
     </div>
-    <!-- the stroke counter sits under the buttons, on its own line, so it can never run into the text beside the player -->
-    <div class="count">{{ step }} / {{ paths.length }}</div>
     </div>
 
     <!-- stroke by stroke: one small picture per stroke, click to jump there. Desktop only (hidden on touch screens). -->
@@ -188,13 +188,16 @@ onUnmounted(stop);
 }
 .controls {
   display: flex;
-  justify-content: space-between;
+  justify-content: space-between; /* equal gaps between the four buttons and the counter */
   align-items: center;
   gap: 2px;
   margin-top: 4px;
 }
 /* The three player buttons are pressed-in 3D like the rest of the app. */
 .ctl {
+  flex: 0 0 auto;
+  width: 34px !important; /* a little narrower than Vuetify's "small" (40px) so the counter fits at the right */
+  height: 34px !important;
   background: var(--paper) !important;
   border: 1px solid var(--paper-edge);
   box-shadow: 0 3px 0 rgba(31, 77, 36, 0.35);
@@ -207,10 +210,10 @@ onUnmounted(stop);
   padding-bottom: 3px; /* room for the buttons' edge */
 }
 .count {
-  text-align: center;
-  font-size: 0.72rem;
+  flex: 0 0 auto;
+  white-space: nowrap;
+  font-size: 0.6rem;
   opacity: 0.7;
-  margin-top: 2px;
 }
 .stripwrap {
   display: none;

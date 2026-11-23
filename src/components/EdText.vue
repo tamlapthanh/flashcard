@@ -43,7 +43,7 @@ function reset(): void {
 </script>
 
 <template>
-  <component :is="block ? 'div' : 'span'" class="ed" :class="{ on }" :style="{ fontSize: style.size + 'px', color, fontStyle: style.italic ? 'italic' : 'normal' }" @click.stop="emit('pick', k)">
+  <component :is="block ? 'div' : 'span'" class="ed" :class="{ on, withbar: on && !nobar }" :style="{ fontSize: style.size + 'px', color, fontStyle: style.italic ? 'italic' : 'normal' }" @click.stop="emit('pick', k)">
     <slot />
     <span v-if="on && !nobar" ref="barEl" class="bar" :class="['al-' + (align ?? 'center'), { up }]" @click.stop>
       <span class="nm">{{ name }}</span>
@@ -72,6 +72,9 @@ function reset(): void {
 }
 .ed.on {
   outline: 2px solid rgb(var(--v-theme-primary));
+}
+/* Only the copy that shows the bar is raised: a twin of the same text (the second answer) must not cover the bar's buttons. */
+.ed.withbar {
   z-index: 20;
 }
 .bar {
