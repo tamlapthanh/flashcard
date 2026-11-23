@@ -26,7 +26,6 @@ const decks = ref<Deck[]>([]);
 const loading = ref(true);
 const waking = ref(false);
 const error = ref('');
-const filterOpen = ref(false);
 
 const statuses = ref<StudyStatus[]>(['new', 'learning']);
 const tagsByDeck = ref<Record<string, string[]>>({}); // deck id -> the tags chosen for it (each deck keeps its own)
@@ -77,11 +76,6 @@ async function openList(d: Deck): Promise<void> {
 }
 
 const learnedPercent = (d: Deck): number => (d.total ? Math.round((100 * d.counts.learned) / d.total) : 0);
-
-/* One-line summary of the filter, shown on the main screen. */
-const filterSummary = computed(() => {
-  return [statuses.value.map((s) => statusLabel(s)).join(' + ') || t('filter.allStatus')];
-});
 
 /* The tag sheet of one deck. */
 const tagOpen = ref(false);
@@ -192,15 +186,13 @@ onMounted(load);
     <v-progress-linear v-if="loading" indeterminate class="mb-3" color="primary" />
 
     <template v-if="decks.length">
-      <button type="button" class="paper-card filter" :aria-label="filterSummary[0]" :data-tip="t('tip.filter')" @click="filterOpen = true">
+      <!-- the status filter, always in view: the four statuses are chips to tick right here (none ticked = every status); it applies to every deck -->
+      <div class="paper-card filter" role="group" :aria-label="t('filter.status')">
         <v-icon icon="mdi-filter-variant" class="mr-3" color="primary" />
-        <div class="d-flex flex-wrap ga-1 flex-grow-1">
-          <!-- one chip per chosen status, in its own colour (lib/status.ts) -->
-          <v-chip v-for="s in statuses" :key="s" size="small" variant="tonal" class="stchip stshown" :style="statusStyle(s)" :prepend-icon="STATUS_ICON[s]">{{ statusLabel(s) }}</v-chip>
-          <v-chip v-if="!statuses.length" size="small" variant="tonal">{{ t('filter.allStatus') }}</v-chip>
-        </div>
-        <v-icon icon="mdi-chevron-right" />
-      </button>
+        <v-chip-group v-model="statuses" multiple column class="flex-grow-1 statusbar"> <!-- no tick icon: the fill and the strikethrough say on / off -->
+          <v-chip v-for="s in STATUS_ORDER" :key="s" :value="s" size="small" class="stchip" :style="statusStyle(s)" :prepend-icon="STATUS_ICON[s]" :data-tip="t('tip.filter')">{{ statusLabel(s) }} ({{ decks.reduce((n, d) => n + d.counts[s], 0) }})</v-chip>
+        </v-chip-group>
+      </div>
 
       <!-- a deck card: tapping anywhere on it studies the deck (the invisible button covers the card); the tile and the tag button sit above it -->
       <div class="decks">
@@ -266,21 +258,6 @@ onMounted(load);
 
   <!-- the test of one deck: number of questions and, if wanted, only the words of some statuses -->
   <TestSheet v-model="testOpen" :deck="testDeck" :tags="testDeck ? tagsOf(testDeck) : []" />
-
-  <!-- filter sheet: status, for every deck (tags are chosen per deck, from its tag button; there is no limit on the number of cards) -->
-  <v-bottom-sheet v-model="filterOpen">
-    <v-card class="sheet" rounded="t-xl">
-      <div class="grip" />
-      <div class="pa-4 pt-1">
-        <div class="label"><v-icon icon="mdi-progress-check" size="14" />{{ t('filter.status') }}</div>
-        <v-chip-group v-model="statuses" multiple filter color="primary" class="mb-2">
-          <v-chip v-for="s in STATUS_ORDER" :key="s" :value="s" size="small" class="stchip" :style="statusStyle(s)" :prepend-icon="STATUS_ICON[s]">{{ statusLabel(s) }} ({{ decks.reduce((n, d) => n + d.counts[s], 0) }})</v-chip>
-        </v-chip-group>
-
-        <v-btn block color="primary" class="mt-3" prepend-icon="mdi-check" :data-tip="t('tip.done')" @click="filterOpen = false">{{ t('filter.done') }}</v-btn>
-      </div>
-    </v-card>
-  </v-bottom-sheet>
 </template>
 
 <style scoped>

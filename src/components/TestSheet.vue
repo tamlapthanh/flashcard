@@ -87,7 +87,7 @@ function start(): void {
           <v-chip value="reading" size="small" prepend-icon="mdi-syllabary-hiragana">{{ t('test.kindReading') }}</v-chip>
         </v-chip-group>
         <div class="sub s-words mb-1"><v-icon icon="mdi-filter-variant" size="16" />{{ t('test.source') }}</div>
-        <v-chip-group v-model="statuses" multiple filter color="primary" class="ind mb-1">
+        <v-chip-group v-model="statuses" multiple color="primary" class="ind mb-1">
           <v-chip v-for="s in STATUS_ORDER" :key="s" :value="s" size="small" class="stchip" :style="statusStyle(s)" :prepend-icon="STATUS_ICON[s]">{{ statusLabel(s) }} ({{ countText(s) }})</v-chip>
         </v-chip-group>
         <div v-if="statuses.length === 0" class="ind text-caption text-medium-emphasis">{{ t('test.allWords') }}</div>

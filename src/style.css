@@ -317,8 +317,31 @@ html.v-overlay-scroll-blocked::-webkit-scrollbar {
 .stchip .v-chip__prepend .v-icon {
   color: var(--stc);
 }
-.stchip.v-chip--selected {
-  color: var(--stc) !important;
+/* not ticked: a white chip with a fine edge (light theme; the dark theme keeps its own colours) */
+.v-theme--light .stchip.v-chip:not(.v-chip--selected) {
+  background: #fff !important;
+  box-shadow: inset 0 0 0 1px var(--paper-edge);
+}
+/* not ticked: the name is struck through, so "off" reads at a glance (the tick and the fill mean "on") */
+.stchip.v-chip:not(.v-chip--selected) .v-chip__content {
+  text-decoration: line-through;
+  text-decoration-thickness: 1.5px;
+  opacity: 0.8;
+}
+/* dark theme, not ticked: a darker chip with a light edge (a white chip would glare on the dark green) */
+.v-theme--dark .stchip.v-chip:not(.v-chip--selected) {
+  background: color-mix(in srgb, #000 30%, var(--paper)) !important;
+  box-shadow: inset 0 0 0 1px var(--grid);
+}
+/* ticked: filled with the status colour and white text, so it reads at a glance (not only by the tick) */
+.stchip.v-chip.v-chip--selected {
+  background: var(--stc) !important;
+  color: #fff !important;
+  font-weight: 600;
+}
+.stchip.v-chip.v-chip--selected .v-chip__prepend .v-icon,
+.stchip.v-chip.v-chip--selected .v-chip__filter {
+  color: #fff;
 }
 .stchip.stshown {
   color: var(--stc);

@@ -56,15 +56,15 @@ test.describe('deck screen', () => {
   test('the remembered status filter comes back', async ({ page, request }) => {
     const decks = await apiDecks(request, 'alice');
     await openSignedIn(page, request, 'alice');
-    await expect(page.getByRole('button', { name: /New \+ Learning/ })).toBeVisible();
+    await expect(page.locator('.filter .stchip.v-chip--selected')).toHaveCount(2); // the default: New + Learning
     await page.evaluate((deckId) => {
       const user = 'alice';
       localStorage.setItem(`flashmobile.deckPick.${user}`, JSON.stringify({ deckId, statuses: ['new'], tagsByDeck: {} }));
     }, decks[0]!.id);
     await page.reload();
-    const filter = page.locator('button.filter');
-    await expect(filter).toContainText('New');
-    await expect(filter).not.toContainText('Learning');
+    const ticked = page.locator('.filter .stchip.v-chip--selected');
+    await expect(ticked).toHaveCount(1);
+    await expect(ticked).toContainText('New');
   });
 
   test('a stored pick that is damaged or names things that no longer exist is read as far as it makes sense', async ({ page, request }) => {
@@ -72,7 +72,7 @@ test.describe('deck screen', () => {
     await openSignedIn(page, request, 'alice');
     await expect(page.locator('.deck').first()).toBeVisible();
     await expect(page.locator('.tc')).toHaveCount(0); // no tags on any card
-    await expect(page.getByRole('button', { name: /New \+ Learning/ })).toBeVisible(); // the bad status list is ignored
+    await expect(page.locator('.filter .stchip.v-chip--selected')).toHaveCount(2); // the bad status list is ignored: back to New + Learning
   });
 });
 
@@ -102,10 +102,10 @@ test.describe('tags of a deck', () => {
     await expect(deckCard(page, b!).locator('.tagn')).toHaveText('1');
     await expect(deckCard(page, a!).locator('.tagn')).toHaveCount(0);
     await tagButton(page, a!).click();
-    await expect(page.locator('.v-chip--selected')).toHaveCount(0); // A's sheet: nothing chosen
+    await expect(page.locator('.tagsheet-content .v-chip--selected')).toHaveCount(0); // A's sheet: nothing chosen
     await page.keyboard.press('Escape');
     await tagButton(page, b!).click();
-    await expect(page.locator('.v-chip--selected')).toHaveCount(1); // B's sheet: its tag is chosen
+    await expect(page.locator('.tagsheet-content .v-chip--selected')).toHaveCount(1); // B's sheet: its tag is chosen
   });
 
   test('the Start button of the tag sheet studies the deck with the tags chosen, and tapping the card studies it with the remembered ones', async ({ page, request }) => {

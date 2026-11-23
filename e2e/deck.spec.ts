@@ -28,11 +28,24 @@ test.describe('decks', () => {
     await expect(start).toBeEnabled(); // always: with nothing to study it opens the "Deck finished" screen
   });
 
-  test('the filter sheet lists the four study statuses', async ({ page, request }) => {
+  test('the four study statuses are on the deck screen to tick (no popup): New and Learning are ticked by default', async ({ page, request }) => {
     await openSignedIn(page, request, 'alice');
-    await page.getByRole('button', { name: /New \+ Learning/ }).click();
     for (const s of ['New', 'Learning', 'Learned', 'Skipped']) {
-      await expect(page.getByText(new RegExp(`^${s} \\(\\d+\\)$`))).toBeVisible();
+      await expect(page.locator('.filter .stchip', { hasText: new RegExp(`^${s} \\(\\d+\\)$`) })).toBeVisible();
     }
+    const ticked = page.locator('.filter .stchip.v-chip--selected');
+    await expect(ticked).toHaveCount(2);
+    await expect(ticked.nth(0)).toContainText('New');
+    await expect(ticked.nth(1)).toContainText('Learning');
+  });
+
+  test('ticking a status changes the filter at once and is remembered after a reload', async ({ page, request }) => {
+    await openSignedIn(page, request, 'alice');
+    const learned = page.locator('.filter .stchip', { hasText: /^Learned/ });
+    await learned.click();
+    await expect(learned).toHaveClass(/v-chip--selected/);
+    await expect(page.locator('.filter .stchip.v-chip--selected')).toHaveCount(3);
+    await page.reload();
+    await expect(page.locator('.filter .stchip', { hasText: /^Learned/ })).toHaveClass(/v-chip--selected/);
   });
 });
