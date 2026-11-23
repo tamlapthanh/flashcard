@@ -148,11 +148,12 @@ test.describe('tags of a deck', () => {
     const all = deck!.tags.map((t) => t.tag);
     await page.addInitScript(([id, tags]) => localStorage.setItem('flashmobile.deckPick.alice', JSON.stringify({ deckId: id, statuses: ['new', 'learning'], tagsByDeck: { [id as string]: tags } })), [deck!.id, all]);
     await openSignedIn(page, request, 'alice');
-    const row = deckCard(page, deck!).locator('.tc');
+    // On a phone `.tc` is `display: contents` (the chips share the line with the buttons), so it has no box: measure the card's info column.
+    const row = deckCard(page, deck!).locator('.deckinfo');
     await expect(row).toBeVisible();
-    await expect(row.locator('> .tcchip')).toHaveCount(all.length); // none is folded into "+N"
+    await expect(row.locator('.tcchip')).toHaveCount(all.length); // none is folded into "+N"
     const rowBox = (await row.boundingBox())!;
-    for (const chip of await row.locator('> .tcchip').all()) {
+    for (const chip of await row.locator('.tcchip').all()) {
       const b = (await chip.boundingBox())!;
       expect(b.x + b.width).toBeLessThanOrEqual(rowBox.x + rowBox.width + 1); // nothing sticks out of the row
     }

@@ -60,10 +60,15 @@ test.describe('study screen without a run', () => {
   test('a deck with nothing left to study shows the "Deck finished" screen from its saved progress', async ({ page, request }) => {
     // the first deck of bob, with every card marked learned on the screen (the deck list is stubbed: the server data is not touched)
     await page.route('**/api/decks', async (route) => {
-      const res = await route.fetch();
-      const body = (await res.json()) as { decks: { id: string; total: number; counts: Record<string, number> }[] };
-      for (const d of body.decks) d.counts = { new: 0, learning: 0, learned: d.total, skipped: 0 };
-      await route.fulfill({ response: res, json: body });
+      try {
+        const res = await route.fetch();
+        const body = (await res.json()) as { decks: { id: string; total: number; counts: Record<string, number> }[] };
+        for (const d of body.decks) d.counts = { new: 0, learning: 0, learned: d.total, skipped: 0 };
+        await route.fulfill({ response: res, json: body });
+      } catch {
+        // The page reloaded while the request was in flight (Vite re-optimises its dependencies on a cold start and reloads): the retry is stubbed again.
+        await route.abort().catch(() => undefined);
+      }
     });
     await openSignedIn(page, request, 'bob');
     await expect(page.locator('.deck').first()).toBeVisible();

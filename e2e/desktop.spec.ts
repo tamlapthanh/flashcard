@@ -130,14 +130,14 @@ test.describe('kanji of a word side by side', () => {
     const n = await findCardWithKanji(page, 2);
     test.skip(n < 2, 'no card with two kanji in the first 40 cards of the local data');
     await page.keyboard.press('Escape');
-    await page.setViewportSize({ width: 1700, height: 520 });
+    await page.setViewportSize({ width: 1700, height: 360 }); // the compact sheet fits in 520px now, so use a window it cannot fit in
     await page.keyboard.press('ArrowUp');
     await page.locator('.hvp button.k').first().click();
     const sheet = page.locator('.sheet');
     await expect(page.locator('.multi')).toBeVisible();
     await expect.poll(() => sheet.evaluate((el) => el.scrollHeight - el.clientHeight), { timeout: 5000 }).toBeGreaterThan(1); // it scrolls
     const box = await sheet.boundingBox();
-    expect(box!.height).toBeLessThanOrEqual(520 * 0.95 + 1); // never taller than 95% of the window
+    expect(box!.height).toBeLessThanOrEqual(360 * 0.95 + 1); // never taller than 95% of the window
     const zoom = Number(await page.locator('.multi').evaluate((el) => getComputedStyle(el).zoom));
     expect(zoom).toBe(1);
   });
@@ -155,10 +155,10 @@ test.describe('kanji of a word side by side', () => {
 });
 
 test.describe('the same margins on every screen', () => {
-  test('decks, settings and the "no study session" page start 12px from the left edge', async ({ page }) => {
+  test('decks start 6px from the left edge; settings and the "no study session" page start 12px', async ({ page }) => {
     const left = async (selector: string): Promise<number> => (await page.locator(selector).first().boundingBox())!.x;
     await expect(page.locator('.deck').first()).toBeVisible();
-    expect(await left('.deck')).toBeCloseTo(12, 0);
+    expect(await left('.deck')).toBeCloseTo(6, 0); // the deck cards run almost to the edge (the same 6px as the gap between two cards)
     await page.evaluate(() => (location.hash = '#/settings'));
     await expect(page.locator('.sechead').first()).toBeVisible();
     expect(await left('.sechead')).toBeCloseTo(12, 0);
