@@ -313,7 +313,7 @@ html.v-overlay-scroll-blocked::-webkit-scrollbar {
   display: none;
 }
 
-/* A status chip (New / Learning / Learned / Suspended): its own colour in --stc (see lib/status.ts); the icon always has it, the whole chip when it is ticked. */
+/* A status chip (New / Learning / Learned / Skipped): its own colour in --stc (see lib/status.ts); the icon always has it, the whole chip when it is ticked. */
 .stchip .v-chip__prepend .v-icon {
   color: var(--stc);
 }

@@ -31,7 +31,7 @@ test.describe('decks', () => {
   test('the filter sheet lists the four study statuses', async ({ page, request }) => {
     await openSignedIn(page, request, 'alice');
     await page.getByRole('button', { name: /New \+ Learning/ }).click();
-    for (const s of ['New', 'Learning', 'Learned', 'Suspended']) {
+    for (const s of ['New', 'Learning', 'Learned', 'Skipped']) {
       await expect(page.getByText(new RegExp(`^${s} \\(\\d+\\)$`))).toBeVisible();
     }
   });

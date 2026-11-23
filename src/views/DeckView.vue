@@ -41,6 +41,8 @@ const shownDecks = computed(() => {
 const statusLabel = (s: StudyStatus): string => t(`status.${s}`);
 
 const tagsOf = (d: Deck): string[] => tagsByDeck.value[d.id] ?? [];
+/** The statuses a deck has words in, with how many (none for an empty status). */
+const statusParts = (d: Deck): { s: StudyStatus; n: number }[] => STATUS_ORDER.filter((s) => d.counts[s] > 0).map((s) => ({ s, n: d.counts[s] }));
 
 /* What studying a deck will load: the cards of the status filter; with tags, at most the cards that carry them (an upper bound, tags may overlap). */
 function countFor(d: Deck, tags: string[]): number {
@@ -203,14 +205,18 @@ onMounted(load);
       <!-- a deck card: tapping anywhere on it studies the deck (the invisible button covers the card); the tile and the tag button sit above it -->
       <div class="decks">
         <div v-for="d in shownDecks" :key="d.id" class="paper-card deck">
-          <button type="button" class="deckhit" :aria-label="`${d.name}. ${t('deck.count', { total: d.total, fresh: d.counts.new })}`" :data-tip="t('tip.deck')" @click="startDeck(d)" />
+          <button type="button" class="deckhit" :aria-label="`${d.name}. ${t('deck.count', { total: d.total, fresh: d.counts.new })}${statusParts(d).filter((p) => p.s !== 'new').map((p) => ', ' + p.n + ' ' + statusLabel(p.s)).join('')}`" :data-tip="t('tip.deck')" @click="startDeck(d)" />
           <div class="d-flex align-center ga-3">
             <div class="deck-tile jp" :style="{ background: tileColor(d.name) }" :class="{ two: tileMark(d.name).length > 1, busy: listLoadingId === d.id }" role="button" tabindex="0" :aria-label="t('list.open')" :data-tip="t('list.open')" @click.stop="openList(d)" @keydown.enter.self.prevent="openList(d)" @keydown.space.self.prevent="openList(d)">
               {{ tileMark(d.name) }}<span class="tilelist" aria-hidden="true"><v-icon icon="mdi-format-list-bulleted" size="11" /></span>
             </div>
             <div class="flex-grow-1 text-start deckinfo">
               <div class="text-subtitle-1 font-weight-medium">{{ d.name }}<v-icon v-if="d.isDefault" icon="mdi-star" size="14" color="warning" class="ml-1 defstar" :title="t('deck.default')" :aria-label="t('deck.default')" /></div>
-              <div class="text-caption text-medium-emphasis">{{ t('deck.count', { total: d.total, fresh: d.counts.new }) }}</div>
+              <!-- the total, then every status the deck has words in (its own colour and icon; the name shows from a tablet up) -->
+              <div class="deckcount text-caption text-medium-emphasis">
+                <span>{{ t('deck.total', { total: d.total }) }}</span>
+                <span v-for="p in statusParts(d)" :key="p.s" class="stn" :style="statusStyle(p.s)" :title="statusLabel(p.s)"><v-icon :icon="STATUS_ICON[p.s]" size="13" />{{ p.n }}<span class="stl">{{ statusLabel(p.s) }}</span></span>
+              </div>
               <!-- the tags chosen for this deck (the next tap studies exactly these): as many as fit on one line, the rest as "+N" -->
               <TagChips v-if="tagsOf(d).length" :tags="tagsOf(d)" class="mt-1 tagrow" />
             </div>
@@ -518,6 +524,29 @@ onMounted(load);
   padding: 12px 14px;
   text-align: start;
   color: inherit;
+}
+.deckcount {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 10px;
+}
+.stn {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--stc);
+  font-weight: 600;
+}
+.stl {
+  display: none; /* the status name: from a tablet up */
+  margin-left: 3px;
+  font-weight: 500;
+}
+@media (min-width: 601px) {
+  .stl {
+    display: inline;
+  }
 }
 .sheet {
   background: var(--paper);

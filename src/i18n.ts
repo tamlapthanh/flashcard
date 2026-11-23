@@ -37,7 +37,7 @@ const en = {
   'status.new': 'New',
   'status.learning': 'Learning',
   'status.learned': 'Learned',
-  'status.skipped': 'Suspended',
+  'status.skipped': 'Skipped',
 
   'study.none': 'No study session yet',
   'study.noneHint': 'Pick a deck to get started.',
@@ -167,6 +167,7 @@ const en = {
   'deck.default': 'Default deck (as in LCT)',
   'deck.tagsOf': 'Tags of {name}',
   'deck.count': '{total} cards · {fresh} new',
+  'deck.total': '{total} cards',
   'deck.dirForward': 'Japanese to Vietnamese',
   'deck.dirReverse': 'Vietnamese to Japanese',
   'deck.start': '{n} cards',
@@ -335,7 +336,7 @@ const vi: Record<keyof typeof en, string> = {
   'status.new': 'Mới',
   'status.learning': 'Đang học',
   'status.learned': 'Đã học',
-  'status.skipped': 'Tạm dừng',
+  'status.skipped': 'Bỏ qua',
 
   'study.none': 'Chưa có buổi học nào',
   'study.noneHint': 'Chọn một bộ thẻ để bắt đầu.',
@@ -465,6 +466,7 @@ const vi: Record<keyof typeof en, string> = {
   'deck.default': 'Deck mặc định (như trong LCT)',
   'deck.tagsOf': 'Tag của {name}',
   'deck.count': '{total} thẻ · {fresh} mới',
+  'deck.total': '{total} thẻ',
   'deck.dirForward': 'Nhật sang Việt',
   'deck.dirReverse': 'Việt sang Nhật',
   'deck.start': '{n} thẻ',
