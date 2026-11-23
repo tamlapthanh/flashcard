@@ -7,7 +7,7 @@ import type { InjectionKey } from 'vue';
 
 export interface CardTextDef {
   key: string;
-  group: 'front' | 'back' | 'other';
+  group: 'front' | 'back' | 'kanji' | 'other';
   en: string;
   vi: string;
   size: number; // px (the old rem value x 16)
@@ -57,6 +57,23 @@ export const CARD_TEXTS: CardTextDef[] = [
   { key: 'pitchLabel', group: 'back', en: 'Pitch accent text', vi: 'Chữ ghi giọng (pitch)', size: 14.72, light: TEXT_L, dark: TEXT_D },
   { key: 'notes', group: 'back', en: 'Notes', vi: 'Ghi chú', size: 14.72, light: TEXT_L, dark: TEXT_D },
   { key: 'related', group: 'back', en: 'Related words (link)', vi: 'Từ liên quan (liên kết)', size: 14.72, light: FOREST_L, dark: FOREST_D },
+
+  { key: 'kGlyph', group: 'kanji', en: 'Kanji sheet: the kanji', vi: 'Bảng Kanji: chữ kanji', size: 41.6, light: HEAD_L, dark: HEAD_D },
+  { key: 'kHanviet', group: 'kanji', en: 'Kanji sheet: Sino-Vietnamese', vi: 'Bảng Kanji: Hán Việt', size: 14, light: HV_L, dark: HV_D },
+  { key: 'kMeaning', group: 'kanji', en: 'Kanji sheet: meaning', vi: 'Bảng Kanji: nghĩa', size: 14, light: TEXT_L, dark: TEXT_D },
+  { key: 'kMeta', group: 'kanji', en: 'Kanji sheet: strokes and JLPT', vi: 'Bảng Kanji: số nét và JLPT', size: 12, light: TEXT_L, dark: TEXT_D },
+  { key: 'kFieldLabel', group: 'kanji', en: 'Kanji sheet: On / Kun / Radical labels', vi: 'Bảng Kanji: nhãn On / Kun / Bộ', size: 10.56, light: LEAF_L, dark: LEAF_D },
+  { key: 'kReading', group: 'kanji', en: 'Kanji sheet: On and Kun readings', vi: 'Bảng Kanji: cách đọc On và Kun', size: 14, light: RD_L, dark: RD_D },
+  { key: 'kRadical', group: 'kanji', en: 'Kanji sheet: radical', vi: 'Bảng Kanji: bộ thủ', size: 16, light: JP_L, dark: JP_D },
+  { key: 'kSection', group: 'kanji', en: 'Kanji sheet: section titles (Memory hint, Compounds)', vi: 'Bảng Kanji: tiêu đề mục (Gợi ý cách nhớ, Từ ghép)', size: 12.8, light: LEAF_L, dark: LEAF_D },
+  { key: 'kWhole', group: 'kanji', en: 'Memory hint: the whole kanji', vi: 'Gợi ý cách nhớ: chữ kanji gốc', size: 48, light: HEAD_L, dark: HEAD_D },
+  { key: 'kPart', group: 'kanji', en: 'Memory hint: each part', vi: 'Gợi ý cách nhớ: từng thành phần', size: 20.8, light: TEXT_L, dark: TEXT_D },
+  { key: 'kPartHv', group: 'kanji', en: 'Memory hint: part Sino-Vietnamese', vi: 'Gợi ý cách nhớ: Hán Việt của thành phần', size: 13.12, light: HV_L, dark: HV_D },
+  { key: 'kPartMeaning', group: 'kanji', en: 'Memory hint: part meaning', vi: 'Gợi ý cách nhớ: nghĩa của thành phần', size: 13.12, light: TEXT_L, dark: TEXT_D },
+  { key: 'kResult', group: 'kanji', en: 'Memory hint: result after the arrow', vi: 'Gợi ý cách nhớ: kết quả sau mũi tên', size: 16, light: TEXT_L, dark: TEXT_D },
+  { key: 'kMnemonic', group: 'kanji', en: 'Memory hint: mnemonic lines', vi: 'Gợi ý cách nhớ: câu mẹo', size: 14, light: TEXT_L, dark: TEXT_D },
+  { key: 'kCompWord', group: 'kanji', en: 'Compounds: the word', vi: 'Từ ghép: từ', size: 14, light: HEAD_L, dark: HEAD_D },
+  { key: 'kCompText', group: 'kanji', en: 'Compounds: reading and meaning', vi: 'Từ ghép: cách đọc và nghĩa', size: 14, light: TEXT_L, dark: TEXT_D },
 
   { key: 'counter', group: 'other', en: 'Counter (1 / N)', vi: 'Bộ đếm (1 / N)', size: 10.88, light: LEAF_L, dark: LEAF_D }
 ];

@@ -2,6 +2,8 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { swipeDown } from '../lib/swipeDown';
 import { api } from '../api';
+import { cardTextVars } from '../cardText';
+import { settings } from '../settings';
 import { t } from '../i18n';
 import type { KanjiInfo } from '../types';
 import KanjiBlock from './KanjiBlock.vue';
@@ -53,6 +55,8 @@ watch([open, () => props.selected, () => props.kanji], () => {
   practicing.value = null;
 });
 
+/* The sheet is shown in an overlay, outside the study screen: it carries the text styles (--s-k…, --c-k…) of the Card Style settings itself. */
+const textVars = computed(() => cardTextVars(settings.cardText));
 const swipe = swipeDown(() => emit('close')); // drag the sheet down to close it
 
 // Remember the last shown kanji so the sheet does not go blank while it slides away.
@@ -67,12 +71,11 @@ watch(open, (isOpen) => isOpen && opened.value++, { immediate: true });
 <!-- Slides up from the card: one kanji with its stroke order, sized to fit without scrolling. Swipe down to close. -->
 <template>
   <v-bottom-sheet :model-value="open" @update:model-value="(v: boolean) => !v && emit('close')">
-    <v-card ref="sheetRef" class="sheet" rounded="t-xl" @touchstart.passive="swipe.onTouchstart" @touchend.passive="swipe.onTouchend">
+    <v-card ref="sheetRef" class="sheet" rounded="t-xl" :style="textVars" @touchstart.passive="swipe.onTouchstart" @touchend.passive="swipe.onTouchend">
       <div class="grip" />
       <div class="px-4 pb-4">
         <div v-if="practicing" class="stage">
-          <v-btn variant="tonal" color="primary" size="large" prepend-icon="mdi-arrow-left" class="back mb-2" @click="practicing = null">{{ t('practice.back') }}</v-btn>
-          <KanjiPractice :key="practicing.Literal" :kanji="practicing" />
+          <KanjiPractice :key="practicing.Literal" :kanji="practicing" @back="practicing = null" />
         </div>
         <div v-else-if="drilled" class="stage">
           <v-btn variant="tonal" color="primary" size="large" prepend-icon="mdi-arrow-left" class="back mb-2" @click="back">

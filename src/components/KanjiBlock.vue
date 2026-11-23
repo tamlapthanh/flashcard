@@ -62,9 +62,9 @@ onMounted(() => void fitHint());
     <div class="top">
       <div class="glyph jp">{{ kanji.Literal }}</div>
       <div class="info">
-        <div v-if="kanji.HanViet" class="hv text-subtitle-2">{{ kanji.HanViet.toUpperCase() }}</div>
-        <div v-if="meaning" class="text-body-2">{{ meaning }}</div>
-        <div class="text-caption meta">
+        <div v-if="kanji.HanViet" class="hv khv">{{ kanji.HanViet.toUpperCase() }}</div>
+        <div v-if="meaning" class="kmean">{{ meaning }}</div>
+        <div class="meta">
           <span v-if="kanji.Strokes">{{ t('kanji.strokes', { n: kanji.Strokes }) }}</span>
           <span v-if="jlpt">{{ jlpt }}</span>
         </div>
@@ -73,10 +73,10 @@ onMounted(() => void fitHint());
 
     <div class="body" :class="{ single: !hasStrokes }">
       <StrokePlayer v-if="hasStrokes" :literal="kanji.Literal" :paths="kanji.StrokePaths!" @practice="emit('practice', kanji)" />
-      <div class="side text-body-2">
-        <div v-if="kanji.Onyomi.length"><div class="label">On</div><span class="rd">{{ kanji.Onyomi.join('、') }}</span></div>
-        <div v-if="kanji.Kunyomi.length"><div class="label">Kun</div><span class="rd">{{ kanji.Kunyomi.join('、') }}</span></div>
-        <div v-if="radical"><div class="label">{{ t('kanji.radical') }}</div><span class="jp">{{ radical }}</span></div>
+      <div class="side">
+        <div v-if="kanji.Onyomi.length"><div class="label flabel">On</div><span class="rd kread">{{ kanji.Onyomi.join('、') }}</span></div>
+        <div v-if="kanji.Kunyomi.length"><div class="label flabel">Kun</div><span class="rd kread">{{ kanji.Kunyomi.join('、') }}</span></div>
+        <div v-if="radical"><div class="label flabel nocaps">{{ t('kanji.radical') }}</div><span class="jp krad">{{ radical }}</span></div>
       </div>
     </div>
 
@@ -99,7 +99,7 @@ onMounted(() => void fitHint());
         </template>
       </div>
       <div v-if="hintOpen && mnemonic.length" class="notes">
-        <p v-for="m in mnemonic" :key="m.lang" class="text-body-2" :class="{ jp: m.lang === 'Ja' }">{{ m.text }}</p>
+        <p v-for="m in mnemonic" :key="m.lang" class="kmn" :class="{ jp: m.lang === 'Ja' }">{{ m.text }}</p>
       </div>
     </div>
 
@@ -109,10 +109,10 @@ onMounted(() => void fitHint());
         <v-icon icon="mdi-format-list-bulleted" size="14" />{{ t('kanji.compounds') }}<v-icon :icon="compOpen ? 'mdi-chevron-up' : 'mdi-chevron-down'" size="16" />
       </button>
       <ul v-if="compOpen" class="clist">
-        <li v-for="(c, i) in compounds" :key="i" class="text-body-2">
+        <li v-for="(c, i) in compounds" :key="i">
           <span class="jp cw">{{ c.Word }}</span>
-          <span v-if="c.Reading" class="jp"> ({{ c.Reading }})</span>
-          <span v-if="c.Vi"> {{ c.Vi }}</span>
+          <span v-if="c.Reading" class="jp ctj"> ({{ c.Reading }})</span>
+          <span v-if="c.Vi" class="ct"> {{ c.Vi }}</span>
         </li>
       </ul>
     </div>
@@ -128,17 +128,34 @@ onMounted(() => void fitHint());
   align-items: center;
 }
 .glyph {
-  font-size: 2.6rem;
+  font-size: var(--s-kGlyph, 41.6px);
+  font-style: var(--i-kGlyph, normal);
   line-height: 1;
   min-width: 52px;
   text-align: center;
-  color: var(--headword); /* the same red as the word on the card */
+  color: var(--c-kGlyph, var(--headword)); /* the same red as the word on the card */
 }
 .info {
   flex: 1;
   min-width: 0;
 }
+.khv {
+  font-size: var(--s-kHanviet, 14px);
+  font-style: var(--i-kHanviet, normal);
+  line-height: 1.4;
+  font-weight: 500;
+  color: var(--c-kHanviet, var(--hv));
+}
+.kmean {
+  font-size: var(--s-kMeaning, 14px);
+  font-style: var(--i-kMeaning, normal);
+  line-height: 1.4;
+  color: var(--c-kMeaning, inherit);
+}
 .meta {
+  font-size: var(--s-kMeta, 12px);
+  font-style: var(--i-kMeta, normal);
+  color: var(--c-kMeta, inherit);
   display: flex;
   gap: 10px;
   opacity: 0.7;
@@ -166,23 +183,51 @@ onMounted(() => void fitHint());
 /* Mouse only: a second row for the stroke thumbnails, spanning the full width. (No empty row on touch screens.) */
 @media (hover: hover) and (pointer: fine) {
   .body:not(.single) {
+    /* the stroke-by-stroke row sits in the right column, right under Radical, beside the drawing */
     grid-template-areas:
       'main side'
-      'strip strip';
+      'main strip';
+    grid-template-rows: auto 1fr;
+    row-gap: 0; /* Stroke follows Radical closely: no gap between the two rows */
   }
+  .body:not(.single) :deep(.stripwrap) {
+    margin-top: 8px;
+  }
+}
+.flabel {
+  font-size: var(--s-kFieldLabel, 0.66rem);
+  font-style: var(--i-kFieldLabel, normal);
+  color: var(--c-kFieldLabel, var(--leaf));
+}
+.nocaps {
+  text-transform: none; /* "Radical", not "RADICAL" */
+}
+.kread {
+  font-size: var(--s-kReading, 14px);
+  font-style: var(--i-kReading, normal);
+  line-height: 1.4;
+  color: var(--c-kReading, var(--rd));
+}
+.krad {
+  font-size: var(--s-kRadical, 16px);
+  font-style: var(--i-kRadical, normal);
+  color: var(--c-kRadical, var(--jp));
 }
 .side {
   grid-area: side;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 5px; /* On, Kun and Radical sit a little closer, each one a bit higher */
+  margin-top: -3px;
 }
 .hint {
   margin-top: 6px;
   padding: 6px 0;
 }
 .hint-toggle {
-  font-size: 0.8rem;
+  font-size: var(--s-kSection, 0.8rem);
+  font-style: var(--i-kSection, normal);
+  color: var(--c-kSection, var(--leaf));
   text-transform: none; /* only the first letter is a capital */ /* the section titles (Stroke, Memory hint, Components) share this size */
   display: flex;
   align-items: center;
@@ -206,9 +251,30 @@ onMounted(() => void fitHint());
   min-width: 0;
   overflow-wrap: anywhere;
 }
+.clist li {
+  line-height: 1.4;
+}
 .cw {
   font-weight: 700;
-  color: var(--headword);
+  font-size: var(--s-kCompWord, 14px);
+  font-style: var(--i-kCompWord, normal);
+  color: var(--c-kCompWord, var(--headword));
+}
+.ctj {
+  font-size: var(--s-kCompText, 14px);
+  font-style: var(--i-kCompText, normal);
+  color: var(--c-kCompText, var(--jp));
+}
+.ct {
+  font-size: var(--s-kCompText, 14px);
+  font-style: var(--i-kCompText, normal);
+  color: var(--c-kCompText, inherit);
+}
+.kmn {
+  font-size: var(--s-kMnemonic, 14px);
+  font-style: var(--i-kMnemonic, normal);
+  line-height: 1.4;
+  color: var(--c-kMnemonic, inherit);
 }
 .notes {
   margin-top: 6px;
@@ -230,9 +296,10 @@ onMounted(() => void fitHint());
   grid-column: 1;
   align-self: center;
   padding-right: 6px;
-  font-size: 3rem;
+  font-size: var(--s-kWhole, 48px);
+  font-style: var(--i-kWhole, normal);
   line-height: 1;
-  color: var(--headword);
+  color: var(--c-kWhole, var(--headword));
 }
 .op {
   grid-column: 2;
@@ -247,7 +314,9 @@ onMounted(() => void fitHint());
   width: 42px;
   padding: 2px 0;
   text-align: center;
-  font-size: 1.3rem;
+  font-size: var(--s-kPart, 20.8px);
+  font-style: var(--i-kPart, normal);
+  color: var(--c-kPart, var(--jp));
   line-height: 1.2;
   background: var(--paper);
   border: 1px solid var(--paper-edge);
@@ -255,17 +324,24 @@ onMounted(() => void fitHint());
 }
 .phv {
   grid-column: 3;
-  font-size: 0.82rem;
+  font-size: var(--s-kPartHv, 13.12px);
+  font-style: var(--i-kPartHv, normal);
+  color: var(--c-kPartHv, var(--hv));
   line-height: 1.3;
   white-space: nowrap;
 }
 .pm {
   grid-column: 4;
-  font-size: 0.82rem;
+  font-size: var(--s-kPartMeaning, 13.12px);
+  font-style: var(--i-kPartMeaning, normal);
+  color: var(--c-kPartMeaning, inherit);
   line-height: 1.3;
 }
 .result {
   grid-column: 3 / -1; /* free text right after the arrow, not tied to the meaning column */
   font-weight: 700;
+  font-size: var(--s-kResult, 16px);
+  font-style: var(--i-kResult, normal);
+  color: var(--c-kResult, inherit);
 }
 </style>

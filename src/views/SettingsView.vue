@@ -237,7 +237,7 @@ const directionSummary = computed(() => (settings.direction === 'forward' ? t('d
 </style>
 
 <template>
-  <TopBar :title="t('set.title')" />
+  <TopBar :title="t('set.title')" back />
 
   <v-container fluid class="px-3 pt-1" :class="{ warm: !settings.dark }">
     <button type="button" class="sechead" :data-tip="t('tip.section')" :aria-expanded="open.size" @click="open.size = !open.size">

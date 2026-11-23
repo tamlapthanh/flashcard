@@ -112,6 +112,7 @@ export interface Deck {
   total: number;
   counts: Record<StudyStatus, number>;
   tags: { tag: string; count: number }[];
+  isDefault?: boolean; // the dictionary LCT marks as default (listed first)
 }
 
 export interface LookupResult {

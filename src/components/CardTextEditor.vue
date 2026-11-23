@@ -46,6 +46,7 @@ const sel = ref<string | null>(null);
 const back = ref(false);
 const ruby = ref(false);
 const reverse = ref(false);
+const kanji = ref(false); // the Kanji sheet (opened from a kanji on the back of the card) instead of the card
 const answered = ref(false); // Vietnamese -> Japanese only: false = the question, true = after the card was turned (the answer)
 /* Full screen: the sample covers the whole window and the card fills it, exactly the room the real study screen has. Esc leaves it. */
 const full = ref(false);
@@ -91,12 +92,14 @@ function resetAll(): void {
     <p v-if="!full" class="hint">{{ vi('Đây là bản sao màn hình học. Bấm vào một chữ để đổi cỡ, màu, kiểu nghiêng ngay tại chỗ. Chỉnh xong bấm Lưu.', 'This is a copy of the study screen. Tap any text to change its size, colour and italic right there. Press Save when you are done.') }}</p>
 
     <div class="chips" @click.stop>
-      <button type="button" class="chip" :class="{ on: back }" @click="back = !back; sel = null"><v-icon icon="mdi-rotate-3d-variant" size="16" /> {{ back ? vi('Mặt sau', 'Back') : vi('Mặt trước', 'Front') }}</button>
+      <button type="button" class="chip" :class="{ on: back }" :disabled="kanji" @click="back = !back; sel = null"><v-icon icon="mdi-rotate-3d-variant" size="16" /> {{ back ? vi('Mặt sau', 'Back') : vi('Mặt trước', 'Front') }}</button>
       <!-- furigana shows on the back too; on the front only in the Japanese -> Vietnamese direction -->
-      <button type="button" class="chip" :class="{ on: ruby }" :disabled="!back && reverse" @click="ruby = !ruby; sel = null">{{ vi('Furigana', 'Furigana') }}</button>
-      <button type="button" class="chip" :class="{ on: reverse }" :disabled="back" @click="reverse = !reverse; answered = false; sel = null">{{ vi('Việt → Nhật', 'Vietnamese → Japanese') }}</button>
+      <button type="button" class="chip" :class="{ on: ruby }" :disabled="kanji || (!back && reverse)" @click="ruby = !ruby; sel = null">{{ vi('Furigana', 'Furigana') }}</button>
+      <button type="button" class="chip" :class="{ on: reverse }" :disabled="back || kanji" @click="reverse = !reverse; answered = false; sel = null">{{ vi('Việt → Nhật', 'Vietnamese → Japanese') }}</button>
       <!-- Vietnamese -> Japanese: the question first, the answer (Japanese word) once the card is turned -->
       <button v-if="reverse && !back" type="button" class="chip" :class="{ on: answered }" @click="answered = !answered; sel = null">{{ answered ? vi('Đáp án', 'Answer') : vi('Câu hỏi', 'Question') }}</button>
+      <!-- the Kanji sheet: kanji, readings, Memory hint, Compounds -->
+      <button type="button" class="chip" :class="{ on: kanji }" @click="kanji = !kanji; sel = null"><span class="jp">漢</span> {{ vi('Bảng Kanji', 'Kanji sheet') }}</button>
       <!-- full screen: the sample as big as the real study screen (Esc or the same button to leave) -->
       <button type="button" class="chip fullbtn" :class="{ on: full }" :aria-pressed="full" @click="full = !full">
         <v-icon :icon="full ? 'mdi-fullscreen-exit' : 'mdi-fullscreen'" size="16" /> {{ full ? vi('Thu nhỏ', 'Exit full screen') : vi('Toàn màn hình', 'Full screen') }}
@@ -120,7 +123,7 @@ function resetAll(): void {
 
       <div class="pcard">
         <!-- FRONT -->
-        <div v-if="!back" class="word-area">
+        <div v-if="!kanji && !back" class="word-area">
           <template v-if="!reverse">
             <span v-if="ruby" class="rb">
               <span class="cellr"><EdText k="furigana" :sel="sel" :name="vi('Furigana', 'Furigana')" @pick="pick">か</EdText><EdText k="wordRuby" :sel="sel" :name="vi('Kanji chính (có furigana)', 'Main kanji (with furigana)')" class="jp bold" @pick="pick">香</EdText></span>
@@ -152,7 +155,7 @@ function resetAll(): void {
         </div>
 
         <!-- BACK (details) -->
-        <div v-else class="detail">
+        <div v-else-if="!kanji" class="detail">
           <div class="back-head">
             <div class="bline">
               <span class="gbtn small"><v-icon icon="mdi-volume-high" size="16" /></span>
@@ -238,8 +241,70 @@ function resetAll(): void {
           </div>
         </div>
 
+        <!-- KANJI SHEET: one kanji (香) with its facts, the Memory hint (parts) and the Compounds -->
+        <div v-else class="ksheet">
+          <div class="ktop">
+            <EdText k="kGlyph" :sel="sel" :name="vi('Bảng Kanji: chữ kanji', 'Kanji sheet: the kanji')" align="left" class="jp kglyph" @pick="pick">香</EdText>
+            <div class="kinfo">
+              <EdText k="kHanviet" block :sel="sel" :name="vi('Bảng Kanji: Hán Việt', 'Kanji sheet: Sino-Vietnamese')" align="left" class="kmed" @pick="pick">HƯƠNG</EdText>
+              <EdText k="kMeaning" block :sel="sel" :name="vi('Bảng Kanji: nghĩa', 'Kanji sheet: meaning')" align="left" @pick="pick">hương; mùi thơm</EdText>
+              <EdText k="kMeta" block :sel="sel" :name="vi('Bảng Kanji: số nét và JLPT', 'Kanji sheet: strokes and JLPT')" align="left" class="kmeta" @pick="pick">{{ t('kanji.strokes', { n: 9 }) }} · N1</EdText>
+            </div>
+          </div>
+          <div class="kside">
+            <div>
+              <EdText k="kFieldLabel" block :sel="sel" :name="vi('Bảng Kanji: nhãn On / Kun / Bộ (chung một kiểu)', 'Kanji sheet: On / Kun / Radical labels (one shared style)')" align="left" class="lbl" @pick="pick">On</EdText>
+              <EdText k="kReading" :sel="sel" :name="vi('Bảng Kanji: cách đọc On và Kun', 'Kanji sheet: On and Kun readings')" align="left" @pick="pick">コウ、キョウ</EdText>
+            </div>
+            <div>
+              <EdText k="kFieldLabel" block nobar :sel="sel" :name="vi('Nhãn', 'Label')" align="left" class="lbl" @pick="pick">Kun</EdText>
+              <EdText k="kReading" nobar :sel="sel" :name="vi('Bảng Kanji: cách đọc On và Kun', 'Kanji sheet: On and Kun readings')" align="left" @pick="pick">か、かお.り、かお.る</EdText>
+            </div>
+            <div>
+              <EdText k="kFieldLabel" block nobar :sel="sel" :name="vi('Nhãn', 'Label')" align="left" class="lbl nocaps" @pick="pick">{{ t('kanji.radical') }}</EdText>
+              <EdText k="kRadical" :sel="sel" :name="vi('Bảng Kanji: bộ thủ', 'Kanji sheet: radical')" align="left" class="jp" @pick="pick">香 HƯƠNG</EdText>
+            </div>
+          </div>
+
+          <div class="ksec">
+            <EdText k="kSection" block :sel="sel" :name="vi('Bảng Kanji: tiêu đề mục (chung một kiểu)', 'Kanji sheet: section titles (one shared style)')" align="left" class="lbl2" @pick="pick"><v-icon icon="mdi-lightbulb-on-outline" size="14" /> {{ t('kanji.hint') }}</EdText>
+            <div class="kformula">
+              <EdText k="kWhole" :sel="sel" :name="vi('Gợi ý cách nhớ: chữ kanji gốc', 'Memory hint: the whole kanji')" align="left" class="jp kwhole" @pick="pick">香</EdText>
+              <EdText k="kPart" :sel="sel" :name="vi('Gợi ý cách nhớ: từng thành phần', 'Memory hint: each part')" align="left" class="jp kpart" @pick="pick">禾</EdText>
+              <EdText k="kPartHv" :sel="sel" :name="vi('Gợi ý cách nhớ: Hán Việt của thành phần', 'Memory hint: part Sino-Vietnamese')" align="left" @pick="pick">HÒA</EdText>
+              <EdText k="kPartMeaning" :sel="sel" :name="vi('Gợi ý cách nhớ: nghĩa của thành phần', 'Memory hint: part meaning')" align="left" @pick="pick">lúa</EdText>
+              <EdText k="kPart" nobar :sel="sel" :name="vi('Gợi ý cách nhớ: từng thành phần', 'Memory hint: each part')" align="left" class="jp kpart kp2" @pick="pick">日</EdText>
+              <EdText k="kPartHv" nobar :sel="sel" :name="vi('Gợi ý cách nhớ: Hán Việt của thành phần', 'Memory hint: part Sino-Vietnamese')" align="left" @pick="pick">NHẬT</EdText>
+              <EdText k="kPartMeaning" nobar :sel="sel" :name="vi('Gợi ý cách nhớ: nghĩa của thành phần', 'Memory hint: part meaning')" align="left" @pick="pick">ngày, mặt trời</EdText>
+              <span class="kop">→</span>
+              <EdText k="kResult" :sel="sel" :name="vi('Gợi ý cách nhớ: kết quả sau mũi tên', 'Memory hint: result after the arrow')" align="left" class="kres" @pick="pick">hương, mùi thơm</EdText>
+            </div>
+            <div class="knotes">
+              <EdText k="kMnemonic" block :sel="sel" :name="vi('Gợi ý cách nhớ: câu mẹo', 'Memory hint: mnemonic lines')" align="left" class="jp" @pick="pick">稲の日に香りが立つ。</EdText>
+              <EdText k="kMnemonic" block nobar :sel="sel" :name="vi('Gợi ý cách nhớ: câu mẹo', 'Memory hint: mnemonic lines')" align="left" @pick="pick">The scent of grain under the sun.</EdText>
+              <EdText k="kMnemonic" block nobar :sel="sel" :name="vi('Gợi ý cách nhớ: câu mẹo', 'Memory hint: mnemonic lines')" align="left" @pick="pick">Mùi thơm của lúa dưới nắng.</EdText>
+            </div>
+          </div>
+
+          <div class="ksec">
+            <EdText k="kSection" block nobar :sel="sel" :name="vi('Tiêu đề mục', 'Section title')" align="left" class="lbl2" @pick="pick"><v-icon icon="mdi-format-list-bulleted" size="14" /> {{ t('kanji.compounds') }}</EdText>
+            <div class="kcomp">
+              <div>
+                <EdText k="kCompWord" :sel="sel" :name="vi('Từ ghép: từ', 'Compounds: the word')" align="left" class="jp kcw" @pick="pick">香り</EdText>
+                <EdText k="kCompText" :sel="sel" :name="vi('Từ ghép: cách đọc và nghĩa', 'Compounds: reading and meaning')" align="left" class="jp" @pick="pick"> (かおり)</EdText>
+                <EdText k="kCompText" nobar :sel="sel" :name="vi('Từ ghép: cách đọc và nghĩa', 'Compounds: reading and meaning')" align="left" @pick="pick"> mùi thơm</EdText>
+              </div>
+              <div>
+                <EdText k="kCompWord" nobar :sel="sel" :name="vi('Từ ghép: từ', 'Compounds: the word')" align="left" class="jp kcw" @pick="pick">香水</EdText>
+                <EdText k="kCompText" nobar :sel="sel" :name="vi('Từ ghép: cách đọc và nghĩa', 'Compounds: reading and meaning')" align="left" class="jp" @pick="pick"> (こうすい)</EdText>
+                <EdText k="kCompText" nobar :sel="sel" :name="vi('Từ ghép: cách đọc và nghĩa', 'Compounds: reading and meaning')" align="left" @pick="pick"> nước hoa</EdText>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- bottom strip: the eye button (left; its four marks are the Hiragana / Vietnamese / English / Hán Việt switches), counter (centre), speaker (right) -->
-        <div v-if="!back" class="tools">
+        <div v-if="!back && !kanji" class="tools">
           <span class="gbtn eye4"><span class="marks"><span v-for="m in marks" :key="m.key" class="mk" :class="['k-' + m.key, { on: m.on }]">{{ m.glyph }}</span></span></span>
           <EdText k="counter" :sel="sel" :name="vi('Bộ đếm', 'Counter')" class="ctr" @pick="pick">1 / 706</EdText>
           <span class="gbtn"><v-icon icon="mdi-volume-high" size="18" /></span>
@@ -441,7 +506,7 @@ function resetAll(): void {
   flex-direction: column;
   min-height: 460px;
   border: 1px solid var(--paper-edge);
-  border-radius: 24px;
+  border-radius: 10px;
   background: var(--paper);
 }
 .word-area {
@@ -575,6 +640,100 @@ function resetAll(): void {
   border: 1px solid var(--paper-edge);
   border-radius: 6px;
   background: rgb(var(--v-theme-surface));
+}
+.ksheet {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px 20px;
+  text-align: left;
+}
+.ktop {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.kglyph {
+  min-width: 52px;
+  line-height: 1;
+}
+.kinfo {
+  flex: 1;
+  min-width: 0;
+}
+.kmed {
+  font-weight: 500;
+}
+.kmeta {
+  opacity: 0.7;
+}
+.kside {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ksec {
+  padding: 6px 0;
+}
+.lbl.nocaps {
+  text-transform: none;
+}
+.lbl2 {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 700;
+}
+.kformula {
+  display: grid;
+  grid-template-columns: auto auto auto minmax(0, 1fr);
+  column-gap: 10px;
+  row-gap: 6px;
+  align-items: center;
+  margin: 8px 0 0 18px;
+}
+.kwhole {
+  grid-column: 1;
+  grid-row: 1 / span 3;
+  align-self: center;
+  padding-right: 6px;
+  line-height: 1;
+}
+.kpart {
+  grid-column: 2;
+  min-width: 42px;
+  text-align: center;
+  font-weight: 700;
+  padding: 2px 0;
+  border: 1px solid var(--paper-edge);
+  border-radius: 6px;
+  background: var(--paper);
+}
+.kop {
+  grid-column: 2;
+  text-align: center;
+  opacity: 0.55;
+  font-weight: 700;
+}
+.kres {
+  grid-column: 3 / -1;
+  font-weight: 700;
+}
+.knotes {
+  margin: 6px 0 0 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.kcomp {
+  margin: 6px 0 0 18px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 16px;
+}
+.kcw {
+  font-weight: 700;
 }
 .rb {
   display: inline-flex;

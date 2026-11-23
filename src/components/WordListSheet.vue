@@ -91,9 +91,20 @@ function onWheel(e: WheelEvent): void {
 /* The green border marks the row you picked (while you are still on that card); a list opened without a pick has none. */
 const pickedId = ref<string | null>(null);
 
-/* Text can be selected and copied: a click that only ended a text selection must not jump to the word. */
+/* Text can be selected and copied: a click that only ended a text selection, or that only cleared one (the browser clears it already on
+   press, before the click), must not jump to the word. */
+let hadSelection = false;
+function onRowsDown(): void {
+  hadSelection = !!window.getSelection()?.toString();
+}
 function onRowClick(id: string): void {
-  if (window.getSelection()?.toString()) return;
+  const before = hadSelection;
+  hadSelection = false;
+  if (before) {
+    window.getSelection()?.removeAllRanges(); // there was a selection when pressed: this click only drops it
+    return;
+  }
+  if (window.getSelection()?.toString()) return; // a selection made by this very press (a drag over the text): keep it
   pickedId.value = id;
   emit('pick', id);
 }
@@ -337,7 +348,7 @@ const currentId = computed(() => props.session.current?.id ?? null);
         </div>
       </div>
       <div class="rowswrap">
-      <div ref="rowsEl" class="rows px-3 pb-3" :style="{ '--cols': cols }" @scroll.passive="updateThumb" @touchstart.passive="onTouchStart" @touchmove.passive="onTouchMove" @touchend.passive="onTouchEnd" @touchcancel.passive="onTouchEnd" @wheel="onWheel">
+      <div ref="rowsEl" class="rows px-3 pb-3" @pointerdown.capture="onRowsDown" :style="{ '--cols': cols }" @scroll.passive="updateThumb" @touchstart.passive="onTouchStart" @touchmove.passive="onTouchMove" @touchend.passive="onTouchEnd" @touchcancel.passive="onTouchEnd" @wheel="onWheel">
         <template v-for="({ c, n }, idx) in visibleCards" :key="c.id">
         <div
           role="button"

@@ -10,6 +10,7 @@ import StrokePractice from './StrokePractice.vue';
  * shows up when the writing is finished (or when the faint outline is turned on: it is then in front of the user anyway).
  */
 const props = defineProps<{ kanji: KanjiInfo }>();
+const emit = defineEmits<{ back: [] }>();
 
 const revealed = ref(false);
 const hintOpen = ref(false); // the parts are a help: folded until the user asks for them
@@ -22,7 +23,11 @@ const parts = computed(() => props.kanji.Parts ?? props.kanji.Components.filter(
   <div class="kpwrap">
   <div class="kp">
     <div class="cue">
-      <div class="label">{{ t('practice.cue') }}</div>
+      <!-- the way back and the title share one row -->
+      <div class="cuehead">
+        <v-btn variant="tonal" color="primary" size="small" prepend-icon="mdi-arrow-left" class="back" @click="emit('back')">{{ t('practice.back') }}</v-btn>
+        <div class="label">{{ t('practice.cue') }}</div>
+      </div>
       <div class="top">
         <div class="glyph jp" :class="{ unknown: !revealed }" :aria-hidden="!revealed">{{ revealed ? kanji.Literal : '?' }}</div>
         <div class="info">
@@ -102,9 +107,18 @@ const parts = computed(() => props.kanji.Parts ?? props.kanji.Components.filter(
 }
 .side {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  flex-wrap: wrap;
+  gap: 2px 18px; /* On and Kun on one line, evenly spaced (they wrap only when too long) */
   margin-top: 6px;
+}
+.cuehead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.back {
+  flex: none;
+  font-weight: 700;
 }
 .parts {
   display: grid;

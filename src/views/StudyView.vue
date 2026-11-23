@@ -13,6 +13,7 @@ import TopBar from '../components/TopBar.vue';
 import WordListSheet from '../components/WordListSheet.vue';
 import { detailOf, ensureDetails } from '../lib/cardDetail';
 import { parseNote, type RelatedWord } from '../lib/note';
+import ReadingText from '../components/ReadingText.vue';
 import { swipeDown } from '../lib/swipeDown';
 import { canSpeak, prefetchSpeech, speakJapanese, stopSpeaking, voiceSource, type VoiceOrigin, type VoiceSource } from '../lib/speech';
 import { cardTextVars } from '../cardText';
@@ -191,17 +192,32 @@ function openDetail(): void {
 
 /* Text on the card can be selected and copied; the click or swipe that only ended a selection must not flip or browse. */
 const hasSelection = (): boolean => !!window.getSelection()?.toString();
+/* The browser drops a selection already when the mouse is pressed, before the click: remember it from the press. A click on a card with a
+   selection (or just after one) only drops the selection; the next click works as usual. */
+let selectedAtPress = false;
+function onPress(): void {
+  selectedAtPress = hasSelection();
+}
+function dropSelection(): boolean {
+  const before = selectedAtPress;
+  selectedAtPress = false;
+  if (before) {
+    window.getSelection()?.removeAllRanges(); // there was a selection when pressed: this click only drops it
+    return true;
+  }
+  return hasSelection(); // a selection made by this very press (a drag over the text): keep it, do not flip
+}
 
 /* Tap the card: the first tap shows the answer, the next tap opens the Details (when the card has any). */
 function tapCard(): void {
-  if (swallowClick || hasSelection()) return;
+  if (swallowClick || dropSelection()) return;
   if (!answerShown.value) flip();
   else openDetail();
 }
 
 /* Tap the details side to turn back; the click that ends a mouse swipe (or a text selection) must not do it. */
 function closeDetail(): void {
-  if (swallowClick || hasSelection()) return;
+  if (swallowClick || dropSelection()) return;
   detailOpen.value = false;
 }
 
@@ -565,7 +581,7 @@ onUnmounted(() => {
         <div class="flipper" :class="{ back: detailOpen }">
         <div class="face">
         <!-- the word; tapping it flips the card -->
-        <div class="wordarea" :class="{ tappable: !answerShown || hasDetail }" @click="tapCard">
+        <div class="wordarea" :class="{ tappable: !answerShown || hasDetail }" @pointerdown.capture="onPress" @click="tapCard">
           <Hanko v-if="stamping" char="習" :size="92" stamping class="press-seal" />
           <!-- Only this part changes when you move to another word (the card, the top bar buttons and the tools stay still). -->
           <Transition :name="slide" mode="out-in">
@@ -577,7 +593,7 @@ onUnmounted(() => {
               <div v-fit-line class="word jp">{{ card.headword }}</div>
               <div v-if="readingVisible && card.reading" class="reading rd">
                 <PitchLine v-if="card.pitch" :morae="card.pitch.morae" />
-                <template v-else>{{ card.reading }}</template>
+                <template v-else><ReadingText :reading="card.reading" /></template>
               </div>
             </template>
             <!-- step 2: the meaning -->
@@ -597,7 +613,7 @@ onUnmounted(() => {
             <template v-if="s.flipped">
               <div class="sep" />
               <div v-fit-line class="word jp small">{{ card.headword }}</div>
-              <div v-if="card.reading && s.showReading" class="reading rd">{{ card.reading }}</div>
+              <div v-if="card.reading && s.showReading" class="reading rd"><ReadingText :reading="card.reading" /></div>
             </template>
           </template>
           <!-- read aloud: right under the last line of the card, in the middle (a tap on it must not flip the card) -->
@@ -650,7 +666,7 @@ onUnmounted(() => {
 
         </div>
         <!-- back of the card: the details (tap, or swipe down, to turn back) -->
-        <div class="face back-face" @click="closeDetail"@touchstart.passive="detailSwipe.onTouchstart" @touchend.passive="detailSwipe.onTouchend">
+        <div class="face back-face" @pointerdown.capture="onPress" @click="closeDetail"@touchstart.passive="detailSwipe.onTouchstart" @touchend.passive="detailSwipe.onTouchend">
         <div ref="detailEl" class="px-4 pt-3 pb-2 detail">
           <!-- the word and its meaning stay visible on the back (the meaning follows the Settings switch) -->
           <div class="back-head">
@@ -674,7 +690,7 @@ onUnmounted(() => {
                   <span v-fit-line class="jp bw">{{ card.headword }}</span>
                   <span v-if="card.reading" class="rd br">
                     <PitchLine v-if="card.pitch" :morae="card.pitch.morae" />
-                    <template v-else>{{ card.reading }}</template>
+                    <template v-else><ReadingText :reading="card.reading" /></template>
                   </span>
                 </template>
               </div>
@@ -782,7 +798,10 @@ onUnmounted(() => {
 }
 .stage.focus {
   height: 100dvh;
-  padding-top: 4px;
+  padding: 1px 2px 2px; /* top 1px; left, right and bottom 2px */
+}
+.stage.focus .detail.pt-3 {
+  padding-top: 6px !important; /* and the details start a little higher inside it */
 }
 .card {
   position: relative;
@@ -791,6 +810,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  border-radius: 10px; /* slightly rounded corners (the other cards stay 24px) */
 }
 /* The card slides out and the next one slides in from the side you swiped towards. */
 .slide-next-enter-active,
@@ -864,8 +884,8 @@ onUnmounted(() => {
 }
 .focusbtn {
   position: absolute;
-  top: 2px;
-  right: 2px;
+  top: 0;
+  right: 0;
   z-index: 3;
   width: 28px;
   height: 28px;
@@ -889,6 +909,7 @@ onUnmounted(() => {
   display: flex;
   gap: 8px;
   margin-right: 6px;
+  transform: translateY(-1px); /* 1px higher: the line of buttons looks centred in the bar (their 4px shadow sits below) */
 }
 .act {
   min-width: 0;
@@ -1243,7 +1264,6 @@ onUnmounted(() => {
   color: var(--c-meaning, inherit);
   font-weight: 500;
   line-height: 1.4;
-  white-space: pre-line;
 }
 .hanviet {
   font-size: var(--s-hanviet);
@@ -1411,7 +1431,6 @@ onUnmounted(() => {
   font-style: var(--i-backMeaning);
   color: var(--c-backMeaning, inherit);
   font-weight: 600;
-  white-space: pre-line;
 }
 .pair {
   display: grid;

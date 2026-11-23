@@ -30,6 +30,12 @@ const filterOpen = ref(false);
 const statuses = ref<StudyStatus[]>(['new', 'learning']);
 const tagsByDeck = ref<Record<string, string[]>>({}); // deck id -> the tags chosen for it (each deck keeps its own)
 const lastDeckId = ref<string | null>(null); // the deck studied last (the study screen without a run shows it)
+/* Order on screen: the default deck (LCT) first, then the deck studied last, then the rest by name. */
+const nameOrder = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+const shownDecks = computed(() => {
+  const rank = (d: Deck): number => (d.isDefault ? 0 : d.id === lastDeckId.value ? 1 : 2);
+  return [...decks.value].sort((a, b) => rank(a) - rank(b) || nameOrder.compare(a.name, b.name));
+});
 
 const statusLabel = (s: StudyStatus): string => t(`status.${s}`);
 const STATUS_ORDER: StudyStatus[] = ['new', 'learning', 'learned', 'skipped'];
@@ -200,7 +206,7 @@ onMounted(load);
 </script>
 
 <template>
-  <TopBar title="単語帳" />
+  <TopBar title="単語帳" back />
 
   <v-container fluid class="deckpage">
     <v-alert v-if="waking" type="info" variant="tonal" icon="mdi-power-sleep" class="mb-3">{{ t('deck.waking') }}</v-alert>
@@ -221,14 +227,14 @@ onMounted(load);
 
       <!-- a deck card: tapping anywhere on it studies the deck (the invisible button covers the card); the tile and the tag button sit above it -->
       <div class="decks">
-        <div v-for="d in decks" :key="d.id" class="paper-card deck" :class="{ busy: startingId === d.id }">
+        <div v-for="d in shownDecks" :key="d.id" class="paper-card deck" :class="{ busy: startingId === d.id }">
           <button type="button" class="deckhit" :disabled="!!startingId" :aria-label="`${d.name}. ${t('deck.count', { total: d.total, fresh: d.counts.new })}`" :data-tip="t('tip.deck')" @click="startDeck(d)" />
           <div class="d-flex align-center ga-3">
             <div class="deck-tile jp" :class="{ two: tileMark(d.name).length > 1, busy: listLoadingId === d.id }" role="button" tabindex="0" :aria-label="t('list.open')" :data-tip="t('list.open')" @click.stop="openList(d)" @keydown.enter.self.prevent="openList(d)" @keydown.space.self.prevent="openList(d)">
               {{ tileMark(d.name) }}<span class="tilelist" aria-hidden="true"><v-icon icon="mdi-format-list-bulleted" size="11" /></span>
             </div>
             <div class="flex-grow-1 text-start deckinfo">
-              <div class="text-subtitle-1 font-weight-medium">{{ d.name }}</div>
+              <div class="text-subtitle-1 font-weight-medium">{{ d.name }}<v-icon v-if="d.isDefault" icon="mdi-star" size="14" color="warning" class="ml-1 defstar" :title="t('deck.default')" :aria-label="t('deck.default')" /></div>
               <div class="text-caption text-medium-emphasis">{{ t('deck.count', { total: d.total, fresh: d.counts.new }) }}</div>
               <!-- the tags chosen for this deck (the next tap studies exactly these): as many as fit on one line, the rest as "+N" -->
               <TagChips v-if="tagsOf(d).length" :tags="tagsOf(d)" class="mt-1" />
