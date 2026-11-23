@@ -175,7 +175,7 @@ onMounted(load);
 </script>
 
 <template>
-  <TopBar title="単語帳" back />
+  <TopBar title="単語帳" back flush />
 
   <v-container fluid class="deckpage">
     <v-alert v-if="waking" type="info" variant="tonal" icon="mdi-power-sleep" class="mb-3">{{ t('deck.waking') }}</v-alert>
@@ -198,7 +198,7 @@ onMounted(load);
       <div class="decks">
         <div v-for="d in shownDecks" :key="d.id" class="paper-card deck">
           <button type="button" class="deckhit" :aria-label="`${d.name}. ${t('deck.count', { total: d.total, fresh: d.counts.new })}${statusParts(d).filter((p) => p.s !== 'new').map((p) => ', ' + p.n + ' ' + statusLabel(p.s)).join('')}`" :data-tip="t('tip.deck')" @click="startDeck(d)" />
-          <div class="d-flex align-center ga-3">
+          <div class="d-flex align-center ga-3 deckrow">
             <div class="deck-tile jp" :style="{ background: tileColor(d.name) }" :class="{ two: tileMark(d.name).length > 1, busy: listLoadingId === d.id }" role="button" tabindex="0" :aria-label="t('list.open')" :data-tip="t('list.open')" @click.stop="openList(d)" @keydown.enter.self.prevent="openList(d)" @keydown.space.self.prevent="openList(d)">
               {{ tileMark(d.name) }}<span class="tilelist" aria-hidden="true"><v-icon icon="mdi-format-list-bulleted" size="11" /></span>
             </div>
@@ -226,7 +226,7 @@ onMounted(load);
             </span>
             </div>
           </div>
-          <v-progress-linear :model-value="learnedPercent(d)" height="4" rounded color="primary" bg-color="surface-variant" class="mt-3" />
+          <v-progress-linear :model-value="learnedPercent(d)" height="4" rounded color="primary" bg-color="surface-variant" class="mt-3 deckprog" />
         </div>
       </div>
     </template>
@@ -266,7 +266,7 @@ onMounted(load);
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding-inline: 12px; /* the same side margin on every screen */
+  padding-inline: 6px; /* the same side margin on every screen (the same as the gap between two cards); the menu button lines up with it */
   padding-top: 4px; /* Vuetify container adds 16px; keep the first panel close to the top bar */
   padding-bottom: 16px;
 }
@@ -397,15 +397,40 @@ onMounted(load);
   align-items: center;
   gap: 12px; /* the same space as between the tile and the info */
 }
-/* On a phone the three buttons stay in a row but sit at the right of line 2 (the count line), so they add no height;
-   line 3 (the tags) then has the whole width of the card. */
+/* On a phone the three buttons are the LAST line of the card: under the name, the counts and every tag (however many), at the right.
+   The row wraps, so the buttons take a line of their own below the tile and the info. */
 @media (max-width: 600px) {
+  .deckpage {
+    padding-inline: 6px; /* the cards (and the status filter) run almost to the edge of the screen: the same 6px as the gap between two cards */
+  }
+  .deckrow {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+  /* the card ends right under the buttons: less padding below, and the learned bar becomes a thin line on the bottom edge (it adds no height) */
+  .deck {
+    padding-top: 7px;
+    padding-bottom: 9px;
+  }
+  .deckprog {
+    position: absolute !important;
+    top: auto !important; /* Vuetify sets top: 0 by itself: without this the line jumps to the top edge */
+    left: 16px;
+    right: 16px;
+    bottom: 2px;
+    margin: 0 !important;
+    width: auto !important;
+    height: 3px !important;
+  }
+  .deckrow .deckinfo {
+    flex: 1 1 0; /* the info takes what the tile leaves: it never pushes itself onto a line of its own */
+  }
   .deckbtns {
-    position: absolute;
-    right: 14px;
-    top: 30px; /* line 2, under the name (clear of the tags on line 3) */
+    flex: 0 0 100%;
+    justify-content: flex-end;
+    position: relative;
     z-index: 2; /* above the invisible button that covers the card */
-    gap: 8px;
+    gap: 10px;
   }
   .deckbtns .tagbtn,
   .deckbtns .play {
@@ -498,7 +523,7 @@ onMounted(load);
   display: flex;
   align-items: center;
   width: 100%;
-  padding: 12px 14px;
+  padding: 8px 14px;
   text-align: start;
   color: inherit;
 }
