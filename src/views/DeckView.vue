@@ -203,27 +203,27 @@ onMounted(load);
               {{ tileMark(d.name) }}<span class="tilelist" aria-hidden="true"><v-icon icon="mdi-format-list-bulleted" size="11" /></span>
             </div>
             <div class="flex-grow-1 text-start deckinfo">
-              <div class="text-subtitle-1 font-weight-medium">{{ d.name }}<v-icon v-if="d.isDefault" icon="mdi-star" size="14" color="warning" class="ml-1 defstar" :title="t('deck.default')" :aria-label="t('deck.default')" /></div>
+              <div class="text-subtitle-1 font-weight-medium deckname">{{ d.name }}<v-icon v-if="d.isDefault" icon="mdi-star" size="14" color="warning" class="ml-1 defstar" :title="t('deck.default')" :aria-label="t('deck.default')" /></div>
               <!-- the total, then every status the deck has words in (its own colour and icon; the name shows from a tablet up) -->
-              <div class="deckcount text-caption text-medium-emphasis">
+              <div class="deckcount text-caption text-medium-emphasis" :class="{ hastags: tagsOf(d).length }">
                 <span>{{ t('deck.total', { total: d.total }) }}</span>
                 <span v-for="p in statusParts(d)" :key="p.s" class="stn" :style="statusStyle(p.s)" :title="statusLabel(p.s)"><v-icon :icon="STATUS_ICON[p.s]" size="13" />{{ p.n }}<span class="stl">{{ statusLabel(p.s) }}</span></span>
               </div>
               <!-- the tags chosen for this deck (the next tap studies exactly these): as many as fit on one line, the rest as "+N" -->
               <TagChips v-if="tagsOf(d).length" :tags="tagsOf(d)" class="mt-1 tagrow" />
-            </div>
-            <!-- tags, test and play: in a row; on a phone they sit at the bottom right of the card -->
-            <div class="deckbtns">
-            <button v-if="d.tags.length" type="button" class="tagbtn tagc" :class="{ on: tagsOf(d).length }" :aria-label="t('deck.tagsOf', { name: d.name })" :data-tip="t('tip.tags')" @click.stop="openTags(d)">
-              <v-icon icon="mdi-tag-outline" size="18" />
-              <span v-if="tagsOf(d).length" class="tagn">{{ tagsOf(d).length }}</span>
-            </button>
-            <button v-if="d.total >= 4" type="button" class="tagbtn testc" :aria-label="t('tip.test')" :data-tip="t('tip.test')" @click.stop="openTest(d)">
-              <v-icon icon="mdi-school-outline" size="18" />
-            </button>
-            <span class="play" aria-hidden="true">
-              <v-icon icon="mdi-play" size="20" />
-            </span>
+              <!-- tags, test and play: in a row; on a phone they sit at the bottom right of the card -->
+              <div class="deckbtns">
+              <button v-if="d.tags.length" type="button" class="tagbtn tagc" :class="{ on: tagsOf(d).length }" :aria-label="t('deck.tagsOf', { name: d.name })" :data-tip="t('tip.tags')" @click.stop="openTags(d)">
+                <v-icon icon="mdi-tag-outline" size="18" />
+                <span v-if="tagsOf(d).length" class="tagn">{{ tagsOf(d).length }}</span>
+              </button>
+              <button v-if="d.total >= 4" type="button" class="tagbtn testc" :aria-label="t('tip.test')" :data-tip="t('tip.test')" @click.stop="openTest(d)">
+                <v-icon icon="mdi-school-outline" size="18" />
+              </button>
+              <span class="play" aria-hidden="true">
+                <v-icon icon="mdi-play" size="20" />
+              </span>
+              </div>
             </div>
           </div>
           <v-progress-linear :model-value="learnedPercent(d)" height="4" rounded color="primary" bg-color="surface-variant" class="mt-3 deckprog" />
@@ -348,8 +348,21 @@ onMounted(load);
     border-color: color-mix(in srgb, rgb(var(--v-theme-primary)) 55%, transparent); /* the mouse is over a card you can study */
   }
 }
+/* name, counts and tags in the left column, the three buttons in the right one (centred on the card) */
 .deckinfo {
   min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  column-gap: 12px;
+}
+.deckinfo > :not(.deckbtns) {
+  grid-column: 1;
+}
+.deckinfo > .deckbtns {
+  grid-column: 2;
+  grid-row: 1 / span 3;
+  align-self: center;
 }
 .deck-tile,
 .tagbtn {
@@ -397,15 +410,12 @@ onMounted(load);
   align-items: center;
   gap: 12px; /* the same space as between the tile and the info */
 }
-/* On a phone the three buttons are the LAST line of the card: under the name, the counts and every tag (however many), at the right.
-   The row wraps, so the buttons take a line of their own below the tile and the info. */
+/* On a phone the info becomes one wrapping line of items: name, counts, every tag chip and the three buttons (at the right).
+   No tags: the buttons sit on the counts line. Tags: the counts take a line of their own and the buttons follow the last tag if it fits,
+   or drop to a line of their own when the tags are too long. */
 @media (max-width: 600px) {
   .deckpage {
     padding-inline: 6px; /* the cards (and the status filter) run almost to the edge of the screen: the same 6px as the gap between two cards */
-  }
-  .deckrow {
-    flex-wrap: wrap;
-    row-gap: 6px;
   }
   /* the card ends right under the buttons: less padding below, and the learned bar becomes a thin line on the bottom edge (it adds no height) */
   .deck {
@@ -424,10 +434,23 @@ onMounted(load);
   }
   .deckrow .deckinfo {
     flex: 1 1 0; /* the info takes what the tile leaves: it never pushes itself onto a line of its own */
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+  }
+  .deckname {
+    flex: 0 0 100%;
+  }
+  .deckcount.hastags {
+    flex: 0 0 100%;
+  }
+  .deckinfo :deep(.tc) {
+    display: contents; /* the chips join the same wrapping line as the buttons */
   }
   .deckbtns {
-    flex: 0 0 100%;
-    justify-content: flex-end;
+    flex: 0 0 auto;
+    margin-left: auto;
     position: relative;
     z-index: 2; /* above the invisible button that covers the card */
     gap: 10px;
