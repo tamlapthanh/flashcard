@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { api } from '../api';
 import ConfirmDialog from '../components/ConfirmDialog.vue';
+import TestTabs from '../components/TestTabs.vue';
 import TopBar from '../components/TopBar.vue';
 import { t } from '../i18n';
 import { settings } from '../settings';
@@ -103,7 +104,9 @@ onMounted(() => void load());
 </script>
 
 <template>
-  <TopBar :title="t('test.history')" back />
+  <TopBar :title="t('nav.tests')" back />
+
+  <TestTabs />
 
   <v-container fluid class="histpage">
     <v-progress-linear v-if="loading" indeterminate color="primary" />
@@ -111,7 +114,7 @@ onMounted(() => void load());
       {{ t('test.historyError') }}
       <template #append><v-btn variant="tonal" size="small" :data-tip="t('tip.retry')" @click="load()">{{ t('deck.retry') }}</v-btn></template>
     </v-alert>
-    <div v-else-if="!loading && sessions.length === 0" class="empty text-body-2 text-medium-emphasis">{{ t('test.historyEmpty') }}</div>
+    <div v-else-if="!loading && sessions.length === 0" class="empty text-body-2">{{ t('test.historyEmpty') }}</div>
 
     <template v-for="g in groups" :key="g.key">
       <div class="grid">
@@ -212,6 +215,7 @@ onMounted(() => void load());
 .empty {
   padding: 32px 8px;
   text-align: center;
+  color: var(--jp); /* the main text colour: the grey of text-medium-emphasis is hard to read on the dark page */
 }
 .row {
   display: flex;

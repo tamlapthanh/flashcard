@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildQuiz, canListen, canRead, editDistance, meaningLabel, optionLabel, pickDistractors, restoreQuestion, similarity } from '../src/lib/quiz';
+import { ALL_KINDS, buildQuiz, canListen, canRead, editDistance, kindsOf, meaningLabel, modeOf, optionLabel, pickDistractors, restoreQuestion, similarity } from '../src/lib/quiz';
 import type { LightCard } from '../src/types';
 
 let nextId = 1;
@@ -106,6 +106,27 @@ describe('buildQuiz', () => {
     expect(listen.every((q) => q.kind === 'listen')).toBe(true);
     const kanji = Array.from({ length: 8 }, (_, i) => card({ headword: String.fromCodePoint(0x4e00 + i), meaning: `chữ ${i}` }));
     expect(buildQuiz(kanji, kanji, { count: 8, mode: 'listen', rng: seeded() })).toEqual([]);
+  });
+
+  it('asks any chosen set of kinds, sharing the questions between them', () => {
+    const cards = deck(30);
+    const two = buildQuiz(cards, cards, { count: 12, kinds: ['listen', 'reading'], rng: seeded() });
+    expect(two).toHaveLength(12);
+    expect(two.every((q) => q.kind === 'listen' || q.kind === 'reading')).toBe(true);
+    expect(two.filter((q) => q.kind === 'listen').length).toBeGreaterThanOrEqual(5); // 12 over 2 kinds: about 6 each
+    expect(two.filter((q) => q.kind === 'reading').length).toBeGreaterThanOrEqual(5);
+    expect(buildQuiz(cards, cards, { count: 10, kinds: ['reading'], rng: seeded() }).every((q) => q.kind === 'reading')).toBe(true);
+    // `kinds` wins over `mode`; no kind at all asks nothing
+    expect(buildQuiz(cards, cards, { count: 10, mode: 'meaning', kinds: ['listen'], rng: seeded() }).every((q) => q.kind === 'listen')).toBe(true);
+    expect(buildQuiz(cards, cards, { count: 10, kinds: [], rng: seeded() })).toEqual([]);
+    // a word that fits none of the chosen kinds is left out: single kanji cannot be heard
+    const kanji = Array.from({ length: 8 }, (_, i) => card({ headword: String.fromCodePoint(0x4e00 + i), reading: `On: x${i}`, meaning: `chữ ${i}` }));
+    expect(buildQuiz(kanji, kanji, { count: 8, kinds: ['listen'], rng: seeded() })).toEqual([]);
+    expect(kindsOf('mixed')).toEqual(['meaning', 'listen', 'reading']);
+    expect(kindsOf('listen')).toEqual(['listen']);
+    expect(modeOf(['listen'])).toBe('listen');
+    expect(modeOf(['listen', 'reading'])).toBe('mixed');
+    expect(modeOf(ALL_KINDS)).toBe('mixed');
   });
 
   it('asks every word at most once and never more than there are words', () => {

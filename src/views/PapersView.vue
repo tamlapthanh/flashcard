@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router';
 import { api, me } from '../api';
 import ConfirmDialog from '../components/ConfirmDialog.vue';
 import PaperMaker from '../components/PaperMaker.vue';
+import TestTabs from '../components/TestTabs.vue';
 import TopBar from '../components/TopBar.vue';
 import { t } from '../i18n';
 import { ANY_DECK } from '../lib/paper';
@@ -115,9 +116,11 @@ onMounted(() => void load());
 </script>
 
 <template>
-  <TopBar :title="t('papers.title')" back>
-    <v-btn v-if="me.admin" variant="tonal" prepend-icon="mdi-plus" class="mr-2" :data-tip="t('papers.new')" @click="makerOpen = true">{{ t('papers.new') }}</v-btn>
+  <TopBar :title="t('nav.tests')" back>
+    <v-btn v-if="me.admin" variant="flat" color="primary" prepend-icon="mdi-plus" class="act3d act3d-green mr-2" :data-tip="t('papers.new')" @click="makerOpen = true">{{ t('papers.new') }}</v-btn>
   </TopBar>
+
+  <TestTabs />
 
   <v-container fluid class="histpage paperspage">
     <v-progress-linear v-if="loading" indeterminate color="primary" />
@@ -126,7 +129,7 @@ onMounted(() => void load());
       <template #append><v-btn variant="tonal" size="small" :data-tip="t('tip.retry')" @click="load()">{{ t('deck.retry') }}</v-btn></template>
     </v-alert>
     <v-alert v-if="startError" type="error" variant="tonal" density="compact" closable @click:close="startError = false">{{ t('papers.startError') }}</v-alert>
-    <div v-if="!loading && !failed && papers.length === 0" class="empty text-body-2 text-medium-emphasis">{{ t('papers.empty') }}</div>
+    <div v-if="!loading && !failed && papers.length === 0" class="empty text-body-2">{{ t('papers.empty') }}</div>
 
     <div class="grid">
       <div v-for="p in papers" :key="p.paperId" class="paper-card row" :class="{ open: p.attempts === 0 }">
@@ -242,6 +245,7 @@ onMounted(() => void load());
 .empty {
   padding: 32px 8px;
   text-align: center;
+  color: var(--jp); /* the main text colour: the grey of text-medium-emphasis is hard to read on the dark page */
 }
 .row {
   display: flex;

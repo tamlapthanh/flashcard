@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue';
 import { api } from '../api';
 import { t } from '../i18n';
 import { ANY_DECK, drawPaper, loadPool, wordsWithTags } from '../lib/paper';
-import { MAX_QUESTIONS, type QuizMode, type QuizQuestion } from '../lib/quiz';
+import { ALL_KINDS, MAX_QUESTIONS, modeOf, type QuizKind, type QuizQuestion } from '../lib/quiz';
 import type { Deck, LightCard } from '../types';
 
 /*
@@ -24,7 +24,18 @@ const anyDeck = ref(false); // random from every deck
 const deckIds = ref<string[]>([]);
 const tags = ref<string[]>([]);
 const count = ref(20);
-const kinds = ref<QuizMode>('mixed');
+const kinds = ref<QuizKind[]>([...ALL_KINDS]); // any choice of the three kinds; "All" stands for the three
+
+/* The chips: "All" first, then the three kinds. Tapping "All" picks the three; tapping a kind toggles it, and at least one stays picked. */
+const allKinds = computed(() => ALL_KINDS.every((k) => kinds.value.includes(k)));
+const kindChips = computed<string[]>({
+  get: () => (allKinds.value ? ['all', ...kinds.value] : kinds.value),
+  set: (v) => {
+    const picked = ALL_KINDS.filter((k) => v.includes(k));
+    if (v.includes('all') && !allKinds.value) kinds.value = [...ALL_KINDS];
+    else if (picked.length > 0) kinds.value = picked;
+  }
+});
 
 type Phase = 'form' | 'loading' | 'preview';
 const phase = ref<Phase>('form');
@@ -96,7 +107,7 @@ async function publish(): Promise<void> {
       paperId: newId(),
       title: title.value.trim(),
       sources: chosenDecks.value.map((d) => ({ deckId: d.id, tags: [...tags.value] })),
-      mode: kinds.value,
+      mode: modeOf(kinds.value),
       questions: questions.value.map((q) => ({ wordId: q.card.id, kind: q.kind, options: q.options.map((o) => o.id) }))
     });
     open.value = false;
@@ -149,8 +160,8 @@ const kindIcon = (kind: string): string => (kind === 'listen' ? 'mdi-volume-high
           </v-chip-group>
 
           <div class="sub s-kind mb-1"><v-icon icon="mdi-shape-outline" size="16" />{{ t('test.kinds') }}</div>
-          <v-chip-group v-model="kinds" mandatory filter color="primary" class="ind mb-3">
-            <v-chip value="mixed" size="small">{{ t('test.kindMixed') }}</v-chip>
+          <v-chip-group v-model="kindChips" multiple filter column color="primary" class="ind mb-3">
+            <v-chip value="all" size="small">{{ t('test.kindMixed') }}</v-chip>
             <v-chip value="meaning" size="small" prepend-icon="mdi-translate">{{ t('test.kindMeaning') }}</v-chip>
             <v-chip value="listen" size="small" prepend-icon="mdi-volume-high">{{ t('test.kindListen') }}</v-chip>
             <v-chip value="reading" size="small" prepend-icon="mdi-syllabary-hiragana">{{ t('test.kindReading') }}</v-chip>

@@ -22,11 +22,13 @@ const router = useRouter();
 const items = computed(() => [
   { path: '/', title: t('nav.decks'), glyph: '札', color: 'success' },
   { path: '/study', title: t('nav.study'), glyph: '学', color: 'info' },
-  { path: '/papers', title: t('nav.papers'), glyph: '題', color: 'primary' },
-  { path: '/tests', title: t('nav.tests'), glyph: '試', color: 'error' },
+  { path: '/papers', title: t('nav.tests'), glyph: '試', color: 'error' }, // Tests: the assigned ones first, the user's own (/tests) one tab over
   { path: '/settings', title: t('nav.settings'), glyph: '設', color: 'warning' }
 ]);
-const current = computed(() => items.value.find((i) => (i.path === '/' ? route.path === '/' : route.path.startsWith(i.path)))?.path ?? '/');
+const current = computed(() => {
+  const path = route.path.startsWith('/tests') ? '/papers' : route.path; // both halves of the Tests entry light it
+  return items.value.find((i) => (i.path === '/' ? path === '/' : path.startsWith(i.path)))?.path ?? '/';
+});
 
 /* Signing out (or a session the server no longer accepts) always lands on the login screen. */
 function logout(): void {

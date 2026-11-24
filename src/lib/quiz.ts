@@ -154,9 +154,19 @@ export function restoreQuestion(saved: SavedQuestion, byId: Map<string, LightCar
 /** The most questions one test can hold (the server and the worker refuse more): "All" stops here. */
 export const MAX_QUESTIONS = 500;
 
+export const ALL_KINDS: QuizKind[] = ['meaning', 'listen', 'reading'];
+
+/** The kinds a mode stands for: mixed is all three. */
+export const kindsOf = (mode: QuizMode): QuizKind[] => (mode === 'mixed' ? ALL_KINDS : [mode]);
+
+/** The mode to store for a choice of kinds: one kind is itself, any other choice is "mixed". */
+export const modeOf = (kinds: QuizKind[]): QuizMode => (kinds.length === 1 ? kinds[0]! : 'mixed');
+
 export interface QuizParams {
   count: number;
   mode?: QuizMode;
+  /** Which kinds may be asked (any choice of the three). Wins over `mode`. */
+  kinds?: QuizKind[];
   rng?: Rng;
 }
 
@@ -164,24 +174,16 @@ export interface QuizParams {
  * `cards` are the words to ask about, `pool` the whole deck the wrong answers come from. The kinds are shared out evenly among the ones a word fits
  * (a single kanji cannot be heard, a word with no reading of its own cannot be read); a word that fits none is only asked as `meaning`. A word with fewer than two usable wrong answers is left out.
  */
-export function buildQuiz(cards: LightCard[], pool: LightCard[], { count, mode = 'mixed', rng = Math.random }: QuizParams): QuizQuestion[] {
+export function buildQuiz(cards: LightCard[], pool: LightCard[], { count, mode = 'mixed', kinds, rng = Math.random }: QuizParams): QuizQuestion[] {
+  const allowed = kinds ?? kindsOf(mode);
   const questions: QuizQuestion[] = [];
   let turn = Math.floor(rng() * 3); // where the rotation of the kinds starts
   for (const card of shuffle(cards, rng)) {
     if (questions.length >= count) break;
-    let kind: QuizKind = 'meaning';
-    if (mode === 'listen') {
-      if (!canListen(card)) continue;
-      kind = 'listen';
-    } else if (mode === 'reading') {
-      if (!canRead(card)) continue;
-      kind = 'reading';
-    } else if (mode === 'mixed') {
-      const fits: QuizKind[] = ['meaning'];
-      if (canListen(card)) fits.push('listen');
-      if (canRead(card)) fits.push('reading');
-      kind = fits[turn++ % fits.length]!;
-    }
+    // the allowed kinds this word fits (meaning fits every word); a word that fits none of them is left out
+    const fits = allowed.filter((k) => (k === 'listen' ? canListen(card) : k === 'reading' ? canRead(card) : true));
+    if (fits.length === 0) continue;
+    const kind = fits[turn++ % fits.length]!;
     const wrong = pickDistractors(card, pool, kind, rng);
     if (wrong.length < 2) continue;
     const options = shuffle([card, ...wrong], rng).map((c) => ({ id: c.id, label: optionLabel(c, kind) }));
