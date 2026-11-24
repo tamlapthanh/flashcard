@@ -9,6 +9,7 @@ import ConfirmDialog from '../components/ConfirmDialog.vue';
 import TopBar from '../components/TopBar.vue';
 import { t } from '../i18n';
 import { buildQuiz, meaningLabel, restoreQuestion, spoken, type QuizKind, type QuizQuestion } from '../lib/quiz';
+import { ANY_DECK, loadPool } from '../lib/paper';
 import { prefetchSpeech, speakJapanese, stopSpeaking } from '../lib/speech';
 import { useVoiceBadge } from '../lib/voiceBadge';
 import { settings } from '../settings';
@@ -22,7 +23,6 @@ import type { StudyStatus } from '../types';
  * could not be sent yet and resends them), so it can be left at any time and continued from any device.
  */
 const router = useRouter();
-const ALL_STATUSES: StudyStatus[] = ['new', 'learning', 'learned', 'skipped'];
 const AUTO_NEXT_MS = 1200; // after a right answer
 const DEFER_NEXT_MS = 350; // marking at the end: the chosen answer stays lit for a moment, then the next question comes
 const KINDS: QuizKind[] = ['listen', 'meaning', 'reading'];
@@ -115,7 +115,8 @@ async function load(): Promise<void> {
   const wake = setTimeout(() => (waking.value = true), 2500); // a free server sleeps: say so instead of looking frozen
   try {
     const resuming = j.resumeId;
-    const [{ cards: pool }, saved] = await Promise.all([api.cards({ deck: j.deckId, tags: [], status: ALL_STATUSES }), resuming ? api.testAnswers(resuming) : Promise.resolve(null)]);
+    // A paper over several decks has deck '*': its words (and the wrong answers) come from every deck.
+    const [pool, saved] = await Promise.all([loadPool([j.deckId]), resuming ? api.testAnswers(resuming) : Promise.resolve(null)]);
     if (gone) return;
     if (saved && resuming) {
       /* Continue an unfinished test: its questions come back as they were made, from the first one not done. */
@@ -432,7 +433,7 @@ void load();
       <!-- what to do next sits right under the score (the list of missed words can be long); on a phone only the icons show -->
       <div class="actions resultacts">
         <v-btn v-if="missed.length" class="rbtn" color="primary" prepend-icon="mdi-school-outline" :aria-label="t('test.again')" :data-tip="t('test.again')" @click="testMissed"><span class="lbl">{{ t('test.again') }}</span></v-btn>
-        <v-btn v-if="missed.length" class="rbtn" variant="tonal" prepend-icon="mdi-cards-outline" :aria-label="t('test.study')" :data-tip="t('test.study')" @click="studyMissed"><span class="lbl">{{ t('test.study') }}</span></v-btn>
+        <v-btn v-if="missed.length && job?.deckId !== ANY_DECK" class="rbtn" variant="tonal" prepend-icon="mdi-cards-outline" :aria-label="t('test.study')" :data-tip="t('test.study')" @click="studyMissed"><span class="lbl">{{ t('test.study') }}</span></v-btn>
         <v-btn class="rbtn" variant="tonal" color="info" prepend-icon="mdi-history" :aria-label="t('test.history')" :data-tip="t('tip.history')" @click="router.push('/tests')"><span class="lbl">{{ t('test.history') }}</span></v-btn>
         <v-btn class="rbtn" variant="tonal" prepend-icon="mdi-arrow-left" :aria-label="t('test.toDecks')" :data-tip="t('test.toDecks')" @click="router.push('/')"><span class="lbl">{{ t('test.toDecks') }}</span></v-btn>
       </div>

@@ -70,14 +70,14 @@ const groups = computed(() =>
 
 /* Goes on with an unfinished test: the screen of the test gets its questions back from the server, from the first one not done. */
 function resume(s: TestSessionInfo): void {
-  pendingTest.value = { deckId: s.deckId, deckName: s.deckName, tags: s.tags, statuses: [], count: s.total, kinds: s.mode, resumeId: s.sessionId };
+  pendingTest.value = { deckId: s.deckId, deckName: s.paperTitle || s.deckName, tags: s.tags, statuses: [], count: s.total, kinds: s.mode, resumeId: s.sessionId };
   void router.push('/test');
 }
 
 function testMissed(): void {
   const s = current.value;
   if (!s || missedIds.value.length === 0) return;
-  pendingTest.value = { deckId: s.deckId, deckName: s.deckName, tags: [], statuses: [], count: missedIds.value.length, wordIds: missedIds.value };
+  pendingTest.value = { deckId: s.deckId, deckName: s.paperTitle || s.deckName, tags: [], statuses: [], count: missedIds.value.length, wordIds: missedIds.value };
   void router.push('/test');
 }
 
@@ -119,7 +119,7 @@ onMounted(() => void load());
         <div class="info">
           <!-- the deck name, and for an unfinished test how many are done, right aligned on the same line -->
           <div class="decktop">
-            <div class="deck jp">{{ s.deckName }}</div>
+            <div class="deck jp"><v-icon v-if="s.paperId" icon="mdi-school-outline" size="14" class="mr-1" />{{ s.paperTitle || s.deckName }}</div>
             <span v-if="s.status === 'open'" class="scoreline openline">{{ s.answered }}/{{ s.total }}</span>
             <span v-else class="scoreline doneline" :class="{ perfect: s.answered > 0 && s.correct === s.answered }">{{ s.correct }}/{{ s.answered }}</span>
           </div>
@@ -160,7 +160,7 @@ onMounted(() => void load());
       <div class="grip" />
       <div class="pa-4 pt-1">
         <div v-if="current" class="head">
-          <div class="jp deck">{{ current.deckName }}</div>
+          <div class="jp deck">{{ current.paperTitle || current.deckName }}</div>
           <div class="text-caption text-medium-emphasis">{{ when(current.at) }} · {{ t('test.score', { correct: current.correct, total: current.answered }) }}<span v-if="current.answered < current.total"> · {{ t('test.notDone', { n: current.total - current.answered }) }}</span></div>
         </div>
         <v-progress-linear v-if="detailLoading" indeterminate color="primary" class="my-2" />

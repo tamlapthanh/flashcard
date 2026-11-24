@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useTheme } from 'vuetify';
-import { flushResults, flushTests, loadServerInfo } from './api';
+import { flushResults, flushTests, loadMe, loadServerInfo } from './api';
 import { auth, clearSession, loginRequired } from './auth';
 import Hanko from './components/Hanko.vue';
 import { t } from './i18n';
@@ -22,6 +22,7 @@ const router = useRouter();
 const items = computed(() => [
   { path: '/', title: t('nav.decks'), glyph: '札', color: 'success' },
   { path: '/study', title: t('nav.study'), glyph: '学', color: 'info' },
+  { path: '/papers', title: t('nav.papers'), glyph: '題', color: 'primary' },
   { path: '/tests', title: t('nav.tests'), glyph: '試', color: 'error' },
   { path: '/settings', title: t('nav.settings'), glyph: '設', color: 'warning' }
 ]);
@@ -36,6 +37,7 @@ watch(
   () => auth.token,
   (token) => {
     if (!token && loginRequired && route.name !== 'login') void router.replace('/login');
+    void loadMe(); // signed in (or out): who is an admin changes with the user
   }
 );
 
@@ -52,6 +54,7 @@ const retry = (): void => {
 onMounted(() => {
   retry();
   void loadServerInfo();
+  void loadMe();
   window.addEventListener('online', retry);
   document.addEventListener('visibilitychange', retry);
 });

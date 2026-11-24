@@ -151,6 +151,8 @@ export interface TestSessionInfo {
   nMeaning: number;
   nReading?: number; // older servers do not send the reading counts
   finishedAt: string | null;
+  paperId?: string | null; // set when it is an attempt at a paper an admin made
+  paperTitle?: string | null;
   answered: number;
   correct: number;
   answeredListen: number;
@@ -159,6 +161,53 @@ export interface TestSessionInfo {
   correctMeaning: number;
   answeredReading?: number;
   correctReading?: number;
+}
+
+/* ---- papers: tests an admin makes, the same for every user ---- */
+
+export interface PaperSource {
+  deckId: string;
+  deckName: string;
+  tags: string[];
+}
+
+/** A paper with what the signed-in user did with it. deckId is '*' when it draws on several decks. */
+export interface PaperInfo {
+  paperId: string;
+  title: string;
+  createdBy: string;
+  at: string;
+  deckId: string;
+  sources: PaperSource[];
+  mode: TestMode;
+  total: number;
+  nListen: number;
+  nMeaning: number;
+  nReading: number;
+  attempts: number;
+  done: number;
+  bestCorrect: number | null;
+  latest: { at: string; status: 'open' | 'done'; correct: number; answered: number } | null;
+}
+
+/** One attempt of one user at a paper (the admin sees all of them). */
+export interface PaperResult {
+  userId: string;
+  sessionId: string;
+  at: string;
+  status: 'open' | 'done';
+  total: number;
+  finishedAt: string | null;
+  answered: number;
+  correct: number;
+}
+
+export interface PaperCreateBody {
+  paperId: string;
+  title: string;
+  sources: { deckId: string; tags: string[] }[];
+  mode: TestMode;
+  questions: { wordId: string; kind: 'meaning' | 'listen' | 'reading'; options: string[] }[];
 }
 
 export interface TestWord {

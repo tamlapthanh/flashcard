@@ -7,7 +7,7 @@ import { reactive } from 'vue';
 import { auth, clearSession, setSession } from './auth';
 import { t } from './i18n';
 import { isOfflineFailure, readCached, withCache, writeCached } from './lib/apiCache';
-import type { CardDetail, Deck, KanjiInfo, LightCard, LookupResult, StudyResult, TestAnswerDetail, TestCreateBody, TestSessionInfo } from './types';
+import type { CardDetail, Deck, KanjiInfo, LightCard, LookupResult, PaperCreateBody, PaperInfo, PaperResult, StudyResult, TestAnswerDetail, TestCreateBody, TestSessionInfo } from './types';
 
 const BASE = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 const KEY = import.meta.env.VITE_API_KEY ?? '';
@@ -143,6 +143,19 @@ export const api = {
   /** Every question of one test, answered or not. */
   testAnswers: (sessionId: string) => request<{ answers: TestAnswerDetail[] }>(`/api/tests/${encodeURIComponent(sessionId)}`).then((r) => r.answers),
   deleteTest: (sessionId: string) => request<{ ok: boolean }>(`/api/tests/${encodeURIComponent(sessionId)}`, { method: 'DELETE' }),
+  /** Who is signed in and whether they are an admin (the server checks it again on every admin call). */
+  me: () => request<{ user: string; admin: boolean }>('/api/me'),
+  /** Every paper (a test an admin made), newest first, with what this user did with it. */
+  papers: () => request<{ papers: PaperInfo[] }>('/api/papers').then((r) => r.papers),
+  /** Admin: saves a paper whole. */
+  createPaper: (body: PaperCreateBody) => request<{ saved: number }>('/api/papers', { method: 'POST', body: JSON.stringify(body) }),
+  /** A new test of the user's own from the paper (any number of times). Continue and score it like any test. */
+  startPaper: (paperId: string, sessionId: string) =>
+    request<{ sessionId: string }>(`/api/papers/${encodeURIComponent(paperId)}/start`, { method: 'POST', body: JSON.stringify({ sessionId, at: new Date().toISOString() }) }),
+  /** Admin: every attempt of every user. */
+  paperResults: (paperId: string) => request<{ results: PaperResult[] }>(`/api/papers/${encodeURIComponent(paperId)}/results`).then((r) => r.results),
+  /** Admin: deletes the paper only; attempts already made stay. */
+  deletePaper: (paperId: string) => request<{ ok: boolean }>(`/api/papers/${encodeURIComponent(paperId)}`, { method: 'DELETE' }),
   /** Free servers sleep: ping /health first so the UI can say "waking up". */
   health: () => request<{ ok: boolean; saveVoice?: boolean }>('/health')
 };
@@ -155,6 +168,21 @@ export async function loadServerInfo(): Promise<void> {
     serverInfo.saveVoice = (await api.health()).saveVoice === true;
   } catch {
     /* server asleep or offline: the option stays hidden */
+  }
+}
+
+/* Whether the signed-in user is an admin (makes papers, sees everyone's results). Only decides what the app shows: the server decides what is allowed.
+   False until the server has answered, and again when it cannot be reached. */
+export const me = reactive({ admin: false });
+export async function loadMe(): Promise<void> {
+  if (!auth.token && import.meta.env.VITE_LOGIN !== 'false') {
+    me.admin = false;
+    return;
+  }
+  try {
+    me.admin = (await api.me()).admin === true;
+  } catch {
+    /* asleep or offline: not an admin until it answers */
   }
 }
 
