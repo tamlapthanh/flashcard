@@ -285,11 +285,26 @@ onBeforeRouteLeave(() => {
   // The question is asked in the app's own dialog; the navigation waits for the answer.
   return new Promise<boolean>((resolve) => {
     leaveAnswer = resolve;
+    keepTest.value = true; // saved unless the box is unticked
     leaveOpen.value = true;
   });
 });
+/* Leave without keeping it: the test is deleted from the server (what was queued is sent first, so the session exists to be deleted). A failure
+   leaves the test in the list of tests, where it can be deleted by hand. */
+const keepTest = ref(true); // the box in the leave dialog: keep this test (continue it later), or leave and delete it
+async function discard(): Promise<void> {
+  const id = sessionId.value;
+  if (!id) return;
+  try {
+    await flushTests();
+    await api.deleteTest(id);
+  } catch {
+    /* it stays in the list of tests */
+  }
+}
 function answerLeave(leave: boolean): void {
   leaveOpen.value = false;
+  if (leave && !keepTest.value) void discard();
   leaveAnswer?.(leave);
   leaveAnswer = null;
 }
@@ -316,7 +331,9 @@ void load();
     :cancel-label="t('test.stay')"
     @confirm="answerLeave(true)"
     @cancel="answerLeave(false)"
-  />
+  >
+    <v-checkbox v-model="keepTest" :label="t('test.saveIt')" density="compact" hide-details color="primary" />
+  </ConfirmDialog>
 
   <ConfirmDialog
     :model-value="endOpen"

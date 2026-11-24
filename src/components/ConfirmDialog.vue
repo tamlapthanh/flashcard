@@ -25,6 +25,7 @@ const emit = defineEmits<{ confirm: []; cancel: [] }>();
         <div class="title">{{ title }}</div>
       </div>
       <div class="message">{{ message }}</div>
+      <slot />
       <div class="actions">
         <!-- both are the app's 3D buttons: tonal (blue / red) and the green main one, each with an icon, sinking under the mouse -->
         <v-btn variant="tonal" color="info" :prepend-icon="cancelIcon ?? 'mdi-close'" @click="emit('cancel')">{{ cancelLabel }}</v-btn>

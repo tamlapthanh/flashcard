@@ -2,7 +2,8 @@ import { createRouter, createWebHashHistory } from 'vue-router';
 import { isLoggedIn } from './auth';
 import DeckView from './views/DeckView.vue';
 import LoginView from './views/LoginView.vue';
-import PapersView from './views/PapersView.vue';
+import NewPaperView from './views/NewPaperView.vue';
+import ResultsView from './views/ResultsView.vue';
 import SettingsView from './views/SettingsView.vue';
 import StudyLoadView from './views/StudyLoadView.vue';
 import TestHistoryView from './views/TestHistoryView.vue';
@@ -19,7 +20,11 @@ export const router = createRouter({
     { path: '/study', name: 'study', component: StudyLoadView },
     { path: '/test', name: 'test', component: TestView },
     { path: '/tests', name: 'tests', component: TestHistoryView },
-    { path: '/papers', name: 'papers', component: PapersView },
+    { path: '/tests/new', name: 'tests-new', component: NewPaperView },
+    { path: '/tests/results/:id', name: 'tests-results', component: ResultsView },
+    { path: '/papers', redirect: '/tests' }, // the old list of assigned tests, now part of the Tests screen
+    { path: '/manage', redirect: '/tests' },
+    { path: '/results', redirect: '/tests' },
     { path: '/settings', name: 'settings', component: SettingsView },
     { path: '/:rest(.*)*', redirect: '/' }
   ]

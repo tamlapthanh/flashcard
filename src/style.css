@@ -383,6 +383,8 @@ html.v-overlay-scroll-blocked::-webkit-scrollbar {
 .act3d-blue { --bc: #1e88e5; --bd: #1565a8; --bh: #4aa3f0; }
 .act3d-purple { --bc: #8e4ec6; --bd: #6a3499; --bh: #aa75d8; }
 .act3d-green { --bc: #5db82f; --bd: #3f8a1f; --bh: #9be35f; }
+.act3d-orange { --bc: #ef8a17; --bd: #b8600f; --bh: #f7a94d; }
+.act3d-red { --bc: #e5533d; --bd: #b13c2c; --bh: #ef7a68; }
 .act3d.v-btn.bg-primary:not(.v-btn--disabled) {
   background-color: var(--bc) !important;
   color: #fff !important;

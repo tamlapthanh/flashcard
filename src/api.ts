@@ -7,7 +7,7 @@ import { reactive } from 'vue';
 import { auth, clearSession, setSession } from './auth';
 import { t } from './i18n';
 import { isOfflineFailure, readCached, withCache, writeCached } from './lib/apiCache';
-import type { CardDetail, Deck, KanjiInfo, LightCard, LookupResult, PaperCreateBody, PaperInfo, PaperResult, StudyResult, TestAnswerDetail, TestCreateBody, TestSessionInfo } from './types';
+import type { CardDetail, Deck, KanjiInfo, LightCard, LookupResult, PaperCreateBody, PaperInfo, PaperQuestionStat, PaperResult, StudyResult, TestAnswerDetail, TestCreateBody, TestSessionInfo } from './types';
 
 const BASE = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 const KEY = import.meta.env.VITE_API_KEY ?? '';
@@ -154,6 +154,8 @@ export const api = {
     request<{ sessionId: string }>(`/api/papers/${encodeURIComponent(paperId)}/start`, { method: 'POST', body: JSON.stringify({ sessionId, at: new Date().toISOString() }) }),
   /** Admin: every attempt of every user. */
   paperResults: (paperId: string) => request<{ results: PaperResult[] }>(`/api/papers/${encodeURIComponent(paperId)}/results`).then((r) => r.results),
+  /** Admin: per question of the paper, how many attempts answered it, got it right, skipped it. */
+  paperStats: (paperId: string) => request<{ questions: PaperQuestionStat[] }>(`/api/papers/${encodeURIComponent(paperId)}/stats`).then((r) => r.questions),
   /** Admin: deletes the paper only; attempts already made stay. */
   deletePaper: (paperId: string) => request<{ ok: boolean }>(`/api/papers/${encodeURIComponent(paperId)}`, { method: 'DELETE' }),
   /** Free servers sleep: ping /health first so the UI can say "waking up". */

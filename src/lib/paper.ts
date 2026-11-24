@@ -21,7 +21,25 @@ export async function loadPool(deckIds: string[]): Promise<LightCard[]> {
 /** The words a choice of tags picks out (none chosen: all of them). */
 export const wordsWithTags = (pool: LightCard[], tags: string[]): LightCard[] => (tags.length === 0 ? pool : pool.filter((c) => c.tags.some((tag) => tags.includes(tag))));
 
+/** A lesson picked in one deck (the same tag name can exist in several decks, so a pick says which deck it is of). */
+export const pickKey = (deckId: string, tag: string): string => `${deckId}\t${tag}`;
+
+/** The words the lessons picked (see pickKey) point at; no pick at all: every word of the pool. A deck with no pick adds nothing once any lesson is picked. */
+export const wordsWithPicks = (pool: LightCard[], picks: string[]): LightCard[] =>
+  picks.length === 0 ? pool : pool.filter((c) => c.tags.some((tag) => picks.includes(pickKey(c.deckId, tag))));
+
+/** `count` questions about `words`, the wrong answers drawn from the whole pool. */
+export function drawFrom(words: LightCard[], pool: LightCard[], count: number, kinds: QuizMode | QuizKind[], rng?: () => number): QuizQuestion[] {
+  return buildQuiz(words, pool, { count, kinds: typeof kinds === 'string' ? kindsOf(kinds) : kinds, rng });
+}
+
 /** The questions of a new paper: `count` of them from the words with those tags, the wrong answers drawn from the whole pool. */
 export function drawPaper(pool: LightCard[], tags: string[], count: number, kinds: QuizMode | QuizKind[], rng?: () => number): QuizQuestion[] {
-  return buildQuiz(wordsWithTags(pool, tags), pool, { count, kinds: typeof kinds === 'string' ? kindsOf(kinds) : kinds, rng });
+  return drawFrom(wordsWithTags(pool, tags), pool, count, kinds, rng);
+}
+
+/** One other question of the given kind for a paper being made: a word with those tags that is not asked yet (`taken` are the ids already in the paper), or null when none is left. */
+export function drawOther(words: LightCard[], pool: LightCard[], taken: Set<string>, kind: QuizKind, rng?: () => number): QuizQuestion | null {
+  const spare = words.filter((c) => !taken.has(c.id));
+  return buildQuiz(spare, pool, { count: 1, kinds: [kind], rng })[0] ?? null;
 }

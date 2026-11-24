@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { drawPaper, wordsWithTags } from '../src/lib/paper';
+import { drawPaper, pickKey, wordsWithPicks, wordsWithTags } from '../src/lib/paper';
 import type { LightCard } from '../src/types';
 
 let nextId = 1;
@@ -50,5 +50,15 @@ describe('drawPaper', () => {
     expect(new Set(questions.map((q) => q.card.id)).size).toBe(5); // no word twice
     const all = drawPaper(pool, [], 500, 'meaning');
     expect(new Set(all.map((q) => q.card.deckId))).toEqual(new Set(['a', 'b']));
+  });
+});
+
+describe('wordsWithPicks', () => {
+  it('keeps every word with no pick, else only the words of the lessons picked in their own deck', () => {
+    expect(wordsWithPicks(pool, [])).toHaveLength(12);
+    const got = wordsWithPicks(pool, [pickKey('a', 'bài0')]);
+    expect(got.length).toBeGreaterThan(0);
+    expect(got.every((c) => c.deckId === 'a' && c.tags.includes('bài0'))).toBe(true); // bài0 of deck b is not picked
+    expect(wordsWithPicks(pool, [pickKey('zzz', 'bài0')])).toEqual([]);
   });
 });

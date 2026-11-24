@@ -202,6 +202,18 @@ export interface PaperResult {
   correct: number;
 }
 
+/** How one question of a paper went over every attempt of every user (answered includes skipped). */
+export interface PaperQuestionStat {
+  n: number;
+  wordId: string;
+  kind: 'meaning' | 'listen' | 'reading';
+  taken: number;
+  answered: number;
+  correct: number;
+  skipped: number;
+  word: TestWord | null;
+}
+
 export interface PaperCreateBody {
   paperId: string;
   title: string;
