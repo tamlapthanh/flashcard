@@ -1,9 +1,13 @@
 {
  "version": 1,
  "decks": {
+  "214 bộ thủ": {
+   "いち": "214 bộ thủ/いち.mp3"
+  },
   "700 Kanji book": {
    "さんかする": "700 Kanji book/さんかする.mp3",
    "しゅっせき": "700 Kanji book/しゅっせき.mp3",
+   "しょきゅう": "700 Kanji book/しょきゅう.mp3",
    "れんしゅうする": "700 Kanji book/れんしゅうする.mp3"
   },
   "All decks": {
