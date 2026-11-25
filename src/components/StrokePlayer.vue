@@ -95,10 +95,10 @@ onUnmounted(stop);
     </div>
 
     <div class="controls">
-      <v-btn class="ctl" :icon="playing ? 'mdi-pause' : 'mdi-play'" variant="tonal" size="small" :aria-label="playing ? t('strokes.pause') : t('strokes.play')" @click="play" />
-      <v-btn class="ctl" icon="mdi-skip-previous" variant="text" size="small" :aria-label="t('strokes.prev')" @click="go(-1)" />
-      <!-- the stroke counter sits between Prev and Next (the row is at most 210px wide, so it cannot run into the text beside the player) -->
+      <!-- order: counter, Prev, Play, Next, Pencil (the row is at most 210px wide, so it cannot run into the text beside the player) -->
       <span class="count">{{ step }} / {{ paths.length }}</span>
+      <v-btn class="ctl" icon="mdi-skip-previous" variant="text" size="small" :aria-label="t('strokes.prev')" @click="go(-1)" />
+      <v-btn class="ctl" :icon="playing ? 'mdi-pause' : 'mdi-play'" variant="tonal" size="small" :aria-label="playing ? t('strokes.pause') : t('strokes.play')" @click="play" />
       <v-btn class="ctl" icon="mdi-skip-next" variant="text" size="small" :aria-label="t('strokes.next')" @click="go(1)" />
       <v-btn class="ctl" icon="mdi-pencil" variant="text" size="small" :aria-label="t('practice.start')" :title="t('practice.start')" @click="startPractice" />
     </div>
@@ -212,6 +212,9 @@ onUnmounted(stop);
 .count {
   flex: 0 0 auto;
   white-space: nowrap;
+  font-weight: 700;
+  position: relative;
+  top: 3px; /* the row has 3px padding below for the buttons' edge, which lifted the text above the buttons' middle */
   font-size: 0.6rem;
   opacity: 0.7;
 }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { api, me } from '../api';
 import TopBar from '../components/TopBar.vue';
@@ -125,22 +125,34 @@ watch(
     if (admin && !paper.value && !failed.value) void load();
   }
 );
+/* back: to the all-results screen when this was opened from there, else to the Tests screen */
+function back(): void {
+  const from = String((router.options.history.state as { back?: string | null }).back ?? '');
+  void router.replace(from === '/tests/results' ? '/tests/results' : '/tests');
+}
+
 watch(paperId, () => void load());
-onMounted(() => {
-  if (me.admin) void load();
-  else loading.value = false;
-});
+/* wait until it is known who is signed in: a reload opens this screen before the server has said whether it is an admin */
+watch(
+  () => me.ready,
+  (ready) => {
+    if (!ready) return;
+    if (me.admin) void load();
+    else loading.value = false;
+  },
+  { immediate: true }
+);
 </script>
 
 <template>
   <TopBar :title="paper ? t('papers.resultsTitle', { title: paper.title }) : t('nav.tests')">
-    <v-btn variant="flat" color="primary" prepend-icon="mdi-arrow-left" class="act3d act3d-purple barbtn mr-2" :aria-label="t('results.back')" :data-tip="t('results.back')" @click="router.replace('/tests')"><span class="lbl">{{ t('results.back') }}</span></v-btn>
+    <v-btn variant="flat" color="primary" prepend-icon="mdi-arrow-left" class="act3d act3d-purple barbtn mr-2" :aria-label="t('results.back')" :data-tip="t('results.back')" @click="back"><span class="lbl">{{ t('results.back') }}</span></v-btn>
   </TopBar>
 
   <v-container fluid class="detailpage">
-    <v-alert v-if="!me.admin" type="info" variant="tonal" density="compact" icon="mdi-lock-outline">{{ t('results.adminOnly') }}</v-alert>
+    <v-alert v-if="me.ready && !me.admin" type="info" variant="tonal" density="compact" icon="mdi-lock-outline">{{ t('results.adminOnly') }}</v-alert>
 
-    <template v-else>
+    <template v-else-if="me.ready">
       <v-progress-linear v-if="loading" indeterminate color="primary" />
       <v-alert v-if="failed" type="error" variant="tonal" icon="mdi-alert-circle-outline">
         {{ t('papers.error') }}

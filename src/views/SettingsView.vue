@@ -291,6 +291,11 @@ const directionSummary = computed(() => (settings.direction === 'forward' ? t('d
         <template #append><v-switch v-model="settings.showReading" color="primary" hide-details density="compact" /></template>
       </v-list-item>
       <v-divider />
+      <v-list-item :title="t('set.studyInOrder')" :subtitle="t('set.studyInOrderSub')" class="wrapsub">
+        <template #prepend><v-avatar color="primary" variant="tonal" size="38"><v-icon icon="mdi-sort-variant" /></v-avatar></template>
+        <template #append><v-switch v-model="settings.studyInOrder" color="primary" hide-details density="compact" /></template>
+      </v-list-item>
+      <v-divider />
       <v-list-item :title="t('set.showMeaning')" :subtitle="t('set.showMeaningSub')">
         <template #prepend><v-avatar color="primary" variant="tonal" size="38"><v-icon icon="mdi-translate" /></v-avatar></template>
         <template #append><v-switch v-model="settings.showMeaning" color="primary" hide-details density="compact" /></template>

@@ -102,10 +102,19 @@ describe('StudySession', () => {
 describe('parseNote', () => {
   it('turns "Liên quan" lines into related words, keeps the rest as text', () => {
     const lines = parseNote('dùng cho mùi dễ chịu\nLiên quan: 香る(かおる)=tỏa hương\nLiên quan: 匂い=mùi\nLiên quan: hỏng');
-    expect(lines[0]).toEqual({ text: 'dùng cho mùi dễ chịu', related: null });
+    expect(lines[0]).toEqual({ text: 'dùng cho mùi dễ chịu', related: null, compound: null });
     expect(lines[1]?.related).toEqual({ headword: '香る', reading: 'かおる', meaning: 'tỏa hương' });
     expect(lines[2]?.related).toEqual({ headword: '匂い', reading: null, meaning: 'mùi' });
     expect(lines[3]?.related).toBeNull();
+  });
+
+  it('turns a compound line of a kanji note into a tappable word; free text and "Liên quan" lines are not compounds', () => {
+    const lines = parseNote('冬休み (ふゆやすみ) nghỉ đông\nGợi nhớ: hai chấm (ở trên)\nLiên quan: 香る(かおる)=tỏa hương');
+    expect(lines[0]?.compound).toEqual({ headword: '冬休み', reading: 'ふゆやすみ', meaning: 'nghỉ đông' });
+    expect(lines[0]?.related).toBeNull();
+    expect(lines[1]?.compound).toBeNull();
+    expect(lines[2]?.compound).toBeNull();
+    expect(lines[2]?.related).not.toBeNull();
   });
 
   it('handles empty notes and full-width brackets', () => {

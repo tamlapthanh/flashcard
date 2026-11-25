@@ -175,16 +175,20 @@ export async function loadServerInfo(): Promise<void> {
 
 /* Whether the signed-in user is an admin (makes papers, sees everyone's results). Only decides what the app shows: the server decides what is allowed.
    False until the server has answered, and again when it cannot be reached. */
-export const me = reactive({ admin: false });
+/* `ready`: the server has answered (or there is nobody signed in): a screen that is only for admins waits for it, so a reload does not take the admin for somebody else. */
+export const me = reactive({ admin: false, ready: false });
 export async function loadMe(): Promise<void> {
   if (!auth.token && import.meta.env.VITE_LOGIN !== 'false') {
     me.admin = false;
+    me.ready = true;
     return;
   }
   try {
     me.admin = (await api.me()).admin === true;
   } catch {
     /* asleep or offline: not an admin until it answers */
+  } finally {
+    me.ready = true;
   }
 }
 

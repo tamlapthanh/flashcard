@@ -247,7 +247,7 @@ function resetAll(): void {
             <div>
               <EdText k="label" block nobar :sel="sel" :name="labelName" align="left" class="lbl" @pick="pick">{{ t('detail.pitch') }}</EdText>
               <PitchLine :morae="morae" />
-              <EdText k="pitchLabel" :sel="sel" :name="vi('Chữ ghi giọng (pitch)', 'Pitch accent text')" align="left" class="ml" @pick="pick">[0] heiban</EdText>
+              <EdText k="pitchLabel" :sel="sel" :name="vi('Chữ ghi giọng (pitch)', 'Pitch accent text')" align="left" class="ml" @pick="pick">{{ vi('[0] bằng: âm 1 thấp, từ âm 2 trở đi cao đến hết, không hạ', '[0] heiban: first mora low, then high to the end, no drop') }}</EdText>
             </div>
           </div>
           <div class="item">

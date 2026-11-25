@@ -14,6 +14,7 @@ export interface Settings {
   showTooltips: boolean; // web only: a small label when the mouse is over a button
   naturalVoice: boolean; // read words with the natural (ElevenLabs) voice when the server has one
   direction: 'forward' | 'reverse'; // forward = Japanese -> Vietnamese, reverse = Vietnamese -> Japanese
+  studyInOrder: boolean; // false = a run is in random order, true = in the order of the word list (see lib/cardOrder.ts)
   autoFrontSec: number; // auto play: seconds the front of a card stays
   autoBackSec: number; // auto play: seconds the answer side stays
   autoSpeak: boolean; // auto play: read the word aloud
@@ -33,7 +34,7 @@ const KEY = 'flashmobile.settings';
 
 function defaults(): Settings {
   const vietnamese = typeof navigator !== 'undefined' && navigator.language?.toLowerCase().startsWith('vi');
-  return { cardText: defaultCardStyles(), showReading: false, dark: false, language: vietnamese ? 'vi' : 'en', showMeaning: true, showHanViet: true, showEnglish: false, showTooltips: true, naturalVoice: true, direction: 'forward', autoFrontSec: 3, autoBackSec: 4, autoSpeak: true, autoSaveVoice: true, strokeStrictness: 'normal', testInstantCheck: true };
+  return { cardText: defaultCardStyles(), showReading: false, dark: false, language: vietnamese ? 'vi' : 'en', showMeaning: true, showHanViet: true, showEnglish: false, showTooltips: true, naturalVoice: true, direction: 'forward', studyInOrder: false, autoFrontSec: 3, autoBackSec: 4, autoSpeak: true, autoSaveVoice: true, strokeStrictness: 'normal', testInstantCheck: true };
 }
 
 /* Any saved / received shape -> valid Settings (unknown keys dropped, bad values replaced by defaults). */
@@ -51,6 +52,7 @@ export function normalizeSettings(input: unknown, tooltips = true, strictness: S
     showTooltips: typeof raw.showTooltips === 'boolean' ? raw.showTooltips : tooltips,
     naturalVoice: typeof raw.naturalVoice === 'boolean' ? raw.naturalVoice : base.naturalVoice,
     direction: raw.direction === 'reverse' ? 'reverse' : 'forward',
+    studyInOrder: typeof raw.studyInOrder === 'boolean' ? raw.studyInOrder : base.studyInOrder,
     autoFrontSec: autoSec(raw.autoFrontSec, base.autoFrontSec),
     autoBackSec: autoSec(raw.autoBackSec, base.autoBackSec),
     autoSpeak: typeof raw.autoSpeak === 'boolean' ? raw.autoSpeak : base.autoSpeak,

@@ -14,7 +14,7 @@ const canResume = computed(() => !!props.back && !!activeSession.value && !activ
 <template>
   <v-app-bar v-if="!hidden" flat density="compact" :class="{ flush }">
     <v-app-bar-nav-icon :aria-label="t('tip.menu')" @click="menuOpen = !menuOpen" />
-    <v-app-bar-title class="text-body-1 font-weight-medium">
+    <v-app-bar-title class="ttl text-body-1 font-weight-medium">
       <slot name="center">{{ title }}</slot>
     </v-app-bar-title>
     <slot />
@@ -31,6 +31,10 @@ const canResume = computed(() => !!props.back && !!activeSession.value && !activ
 /* the menu button sits 1px higher, level with the row of buttons beside it */
 :deep(.v-app-bar-nav-icon) {
   transform: translateY(-1px);
+}
+/* the name of the screen: the bar's own dark green in light mode (white would not show on the pale background), white in dark mode */
+:global(.v-theme--dark) .ttl {
+  color: #fff;
 }
 .resume {
   position: fixed;

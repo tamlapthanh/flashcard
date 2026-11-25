@@ -4,6 +4,7 @@ import { settings } from '../settings';
 import { setActiveSession, type PendingStart } from '../store';
 import type { StudyStatus } from '../types';
 import { clearDetails, ensureDetails } from './cardDetail';
+import { listOrder } from './cardOrder';
 
 const ALL_STATUSES: StudyStatus[] = ['new', 'learning', 'learned', 'skipped'];
 
@@ -25,7 +26,8 @@ async function keepForOffline(deckId: string, ids: string[]): Promise<void> {
  */
 export async function loadDeckRun(p: PendingStart): Promise<'run' | 'finished'> {
   const found = await api.cards({ deck: p.deckId, tags: p.wordIds ? [] : p.tags, status: p.wordIds ? ALL_STATUSES : p.statuses });
-  const cards = p.wordIds ? found.cards.filter((c) => p.wordIds!.includes(c.id)) : found.cards;
+  const picked = p.wordIds ? found.cards.filter((c) => p.wordIds!.includes(c.id)) : found.cards;
+  const cards = settings.studyInOrder ? listOrder(picked) : picked; // the server sends them shuffled
   if (cards.length === 0) {
     setActiveSession(null);
     return 'finished';

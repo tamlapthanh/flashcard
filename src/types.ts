@@ -40,6 +40,8 @@ export interface KanjiCompound {
   Word: string;
   Reading: string | null;
   Vi: string | null;
+  /** Sino-Vietnamese sound of the word (filled by the server; absent from an older server). */
+  HanViet?: string | null;
 }
 
 export interface KanjiMnemonic {
@@ -121,6 +123,18 @@ export interface LookupResult {
   reading: string | null;
   hanviet: string | null;
   meanings: string[];
+  /** Each meaning with its part of speech (and English gloss when the dictionary has one). */
+  senses: { pos: string | null; meaning: string; english: string | null }[];
+  english: string | null;
+  pitch: PitchView | null;
+  /** Furigana cells of the word (null when the reading cannot be split under the kanji). */
+  ruby: RubyCell[] | null;
+  /** The kanji of the word in short form. */
+  kanji: { literal: string; hanviet: string | null; meaning: string; jlpt: number | null; strokes: number | null }[];
+  /** The user's study status when the word is one of their cards (null for dictionary-only words). */
+  status: StudyStatus | null;
+  example: string | null;
+  exampleVi: string | null;
 }
 
 /* ---- tests (quizzes) ---- */

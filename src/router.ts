@@ -1,5 +1,6 @@
 import { createRouter, createWebHashHistory } from 'vue-router';
 import { isLoggedIn } from './auth';
+import AllResultsView from './views/AllResultsView.vue';
 import DeckView from './views/DeckView.vue';
 import LoginView from './views/LoginView.vue';
 import NewPaperView from './views/NewPaperView.vue';
@@ -21,6 +22,7 @@ export const router = createRouter({
     { path: '/test', name: 'test', component: TestView },
     { path: '/tests', name: 'tests', component: TestHistoryView },
     { path: '/tests/new', name: 'tests-new', component: NewPaperView },
+    { path: '/tests/results', name: 'tests-all-results', component: AllResultsView },
     { path: '/tests/results/:id', name: 'tests-results', component: ResultsView },
     { path: '/papers', redirect: '/tests' }, // the old list of assigned tests, now part of the Tests screen
     { path: '/manage', redirect: '/tests' },

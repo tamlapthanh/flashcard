@@ -8,9 +8,13 @@ export interface RelatedWord {
 export interface NoteLine {
   text: string;
   related: RelatedWord | null;
+  /* A compound line of a kanji's note, "冬休み (ふゆやすみ) nghỉ đông": its word is tappable too (same popup as a related word). */
+  compound: RelatedWord | null;
 }
 
 const PREFIX = 'Liên quan:';
+/* word (reading) meaning: the word is only Japanese characters, so "Gợi nhớ: …" and other free text never match. */
+const COMPOUND = /^([々぀-ヿ㐀-䶿一-鿿ｦ-ﾟ]+)\s*[(（]([^)）]+)[)）]\s*(\S.*)$/;
 const RELATED = /^\s*([^()（）=＝\s][^()（）=＝]*?)\s*(?:[(（]([^)）]*)[)）])?\s*[=＝]\s*(\S.*)$/;
 
 export function parseNote(note: string | null | undefined): NoteLine[] {
@@ -19,9 +23,16 @@ export function parseNote(note: string | null | undefined): NoteLine[] {
   for (const raw of note.replace(/\r\n?/g, '\n').split('\n')) {
     const text = raw.trim();
     if (!text) continue;
-    lines.push({ text, related: tryRelated(text) });
+    const related = tryRelated(text);
+    lines.push({ text, related, compound: related ? null : tryCompound(text) });
   }
   return lines;
+}
+
+function tryCompound(line: string): RelatedWord | null {
+  const m = COMPOUND.exec(line);
+  if (!m) return null;
+  return { headword: m[1] ?? '', reading: (m[2] ?? '').trim() || null, meaning: (m[3] ?? '').trim() };
 }
 
 function tryRelated(line: string): RelatedWord | null {

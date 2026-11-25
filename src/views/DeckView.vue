@@ -30,12 +30,9 @@ const error = ref('');
 const statuses = ref<StudyStatus[]>(['new', 'learning']);
 const tagsByDeck = ref<Record<string, string[]>>({}); // deck id -> the tags chosen for it (each deck keeps its own)
 const lastDeckId = ref<string | null>(null); // the deck studied last (the study screen without a run shows it)
-/* Order on screen: the default deck (LCT) first, then the deck studied last, then the rest by name. */
+/* Order on screen: the default deck (LCT) first, then the rest by name. The deck studied last does not move, so the list stays put. */
 const nameOrder = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
-const shownDecks = computed(() => {
-  const rank = (d: Deck): number => (d.isDefault ? 0 : d.id === lastDeckId.value ? 1 : 2);
-  return [...decks.value].sort((a, b) => rank(a) - rank(b) || nameOrder.compare(a.name, b.name));
-});
+const shownDecks = computed(() => [...decks.value].sort((a, b) => Number(!!b.isDefault) - Number(!!a.isDefault) || nameOrder.compare(a.name, b.name)));
 
 const statusLabel = (s: StudyStatus): string => t(`status.${s}`);
 

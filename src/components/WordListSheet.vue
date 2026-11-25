@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { t } from '../i18n';
+import { listOrder } from '../lib/cardOrder';
 import { swipeDown } from '../lib/swipeDown';
 import { tagStyle } from '../lib/tagColor';
 import PitchLine from './PitchLine.vue';
@@ -119,7 +120,7 @@ const shown = ref(CHUNK);
 
 /*
  * Quick search: typing filters the list by kanji, reading, Hán Việt, meaning or example. Case, Vietnamese accents and
- * hiragana / katakana are ignored (ngan hang finds NGÂN HÀNG, カタカナ finds かたかな). Numbers keep the word's place in the dictionary-ordered list.
+ * hiragana / katakana are ignored (ngan hang finds NGÂN HÀNG, カタカナ finds かたかな). Numbers keep the word's place in the LCT-ordered list.
  */
 const query = ref<string | null>(''); // the clear (x) button of the box sets it to null
 
@@ -187,12 +188,8 @@ watch(tagsOpen, (isOpen) => {
   if (isOpen) setTimeout(() => window.addEventListener('click', foldTags, { once: true }), 0);
   else window.removeEventListener('click', foldTags);
 });
-/* The list is in dictionary order (reading in 五十音 order, the headword when there is no reading), however the run is shuffled for study.
-   The collator treats hiragana and katakana alike and puts Latin words before kana. */
-const collator = new Intl.Collator('ja');
-const dictOrder = computed(() =>
-  [...props.session.cards].sort((a, b) => collator.compare(a.reading || a.headword, b.reading || b.headword) || collator.compare(a.headword, b.headword))
-);
+/* The list is in the same order as LCT's dictionary manager (see lib/cardOrder.ts), however the run is ordered for study. */
+const dictOrder = computed(() => listOrder(props.session.cards));
 const matches = computed(() => {
   const q = norm((query.value ?? '').trim());
   let all = dictOrder.value.map((c, i) => ({ c, n: i + 1 }));
@@ -840,8 +837,8 @@ const currentId = computed(() => props.session.current?.id ?? null);
   line-height: 1;
 }
 .word {
-  display: flex; /* the reading sits right under its kanji, word by word, like on LCT's lookup card */
-  flex-direction: column;
+  display: flex; /* the reading sits right above its kanji, word by word */
+  flex-direction: column-reverse; /* (the markup has the kanji first) */
   align-items: flex-start;
   line-height: 1.15;
 }
@@ -857,8 +854,8 @@ const currentId = computed(() => props.session.current?.id ?? null);
 }
 .seg {
   display: flex;
-  flex-direction: column;
-  align-items: center; /* the reading is centred under its kanji; the column is as wide as the wider of the two */
+  flex-direction: column-reverse; /* the reading above its kanji */
+  align-items: center; /* the reading is centred over its kanji; the column is as wide as the wider of the two */
 }
 .seg .r {
   min-height: 1em; /* okurigana (no reading) still keep the line height, so every piece sits on the same baseline */
@@ -924,19 +921,20 @@ const currentId = computed(() => props.session.current?.id ?? null);
 /* Phones AND very wide screens: each word is a small card of several lines (kanji + reading, Hán Việt, meaning, example). */
 @media (max-width: 560px), (min-width: 1200px) {
   .row {
-    grid-template-columns: auto minmax(0, 1fr) auto; /* the word keeps its full width; the Hán Việt next to it takes the rest and wraps */
+    grid-template-columns: auto minmax(0, 1fr) auto; /* the word keeps its full width; the Hán Việt and the meaning under it take the rest and wrap */
     grid-template-areas:
       'word hv st'
-      'm m m'
-      'ex ex ex';
+      'word m st'
+      'ex ex ex'; /* the meaning sits right under the Hán Việt, beside the kanji */
     column-gap: 8px;
     row-gap: 2px;
     padding: 6px 7px 6px 10px;
   }
   .word {
     grid-area: word;
+    align-self: start; /* the kanji stays at the top while the Hán Việt and the meaning stack beside it */
     display: flex;
-    flex-direction: column;
+    flex-direction: column-reverse; /* the reading above the kanji */
     align-items: flex-start;
     line-height: 1.15;
   }
@@ -949,9 +947,14 @@ const currentId = computed(() => props.session.current?.id ?? null);
     overflow-wrap: anywhere;
     text-align: right; /* Hán Việt sits against the right edge */
   }
+  .hvc:empty {
+    display: none; /* no Hán Việt: no empty line */
+  }
   .m {
     grid-area: m;
     font-size: 0.88rem;
+    text-align: right; /* right under the Hán Việt, against the right edge */
+    align-self: start;
   }
   .ex {
     grid-area: ex;
@@ -991,9 +994,11 @@ const currentId = computed(() => props.session.current?.id ?? null);
     padding: 0 3px;
     font-size: 0.5rem;
   }
-  .m,
   .ex {
-    padding-right: 22px; /* keeps long text clear of the number */
+    padding-right: 22px; /* keeps long text clear of the number (it sits in the corner beside the example) */
+  }
+  .row:has(.ex.empty) .m {
+    padding-right: 22px; /* no example line: the number sits beside the meaning, so keep it clear */
   }
 }
 /* Web (a real mouse): every text of a word - kanji, reading, Hán Việt, meaning, example and its translation - is one size larger.

@@ -213,6 +213,7 @@ onMounted(() => {
 <template>
   <TopBar :title="t('nav.tests')" back>
     <v-btn v-if="me.admin" variant="flat" color="primary" prepend-icon="mdi-plus" class="act3d act3d-green newtest mr-2" :aria-label="t('papers.new')" :data-tip="t('papers.new')" @click="router.push('/tests/new')"><span class="lbl">{{ t('papers.new') }}</span></v-btn>
+    <v-btn v-if="me.admin" variant="flat" color="primary" prepend-icon="mdi-chart-box-outline" class="act3d act3d-purple newtest mr-2" :aria-label="t('papers.results')" :data-tip="t('papers.results')" @click="router.push('/tests/results')"><span class="lbl">{{ t('papers.results') }}</span></v-btn>
   </TopBar>
 
   <v-container fluid class="histpage">

@@ -13,6 +13,7 @@ import TestSheet from '../components/TestSheet.vue';
 import TopBar from '../components/TopBar.vue';
 import WordListSheet from '../components/WordListSheet.vue';
 import { detailOf, ensureDetails } from '../lib/cardDetail';
+import { listOrder } from '../lib/cardOrder';
 import { parseNote, type RelatedWord } from '../lib/note';
 import ReadingText from '../components/ReadingText.vue';
 import { swipeDown } from '../lib/swipeDown';
@@ -340,8 +341,9 @@ async function answer(result: StudyResult): Promise<void> {
 }
 
 function retryAgain(): void {
-  const cards = s.againCards;
-  if (cards.length === 0) return;
+  const again = s.againCards;
+  if (again.length === 0) return;
+  const cards = settings.studyInOrder ? listOrder(again) : again;
   setActiveSession(new StudySession(cards, { reverse: s.reverse, showReading: settings.showReading, deckName: s.deckName, tags: [...s.tags] }));
   void router.replace('/').then(() => router.push('/study'));
 }
@@ -783,7 +785,13 @@ onUnmounted(() => {
               </button>
               <div v-else class="label">{{ t('detail.notes') }}</div>
               <template v-if="!touchOnly || notesOpen">
-                <div v-for="(line, i) in plainNotes" :key="i" class="noteline">{{ line.text }}</div>
+                <div v-for="(line, i) in plainNotes" :key="i" class="noteline">
+                  <template v-if="line.compound">
+                    <a class="related" href="#" @click.prevent.stop="openRelated(line.compound)">{{ line.compound.headword }} ({{ line.compound.reading }})</a>
+                    {{ line.compound.meaning }}
+                  </template>
+                  <template v-else>{{ line.text }}</template>
+                </div>
               </template>
             </div>
           </div>

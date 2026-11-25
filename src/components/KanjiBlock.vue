@@ -4,6 +4,8 @@ import { t } from '../i18n';
 import type { KanjiInfo } from '../types';
 import { compoundsOf, hintBesideCompounds, mnemonicOf } from '../lib/kanjiNotes';
 import KanjiTree from './KanjiTree.vue';
+import RelatedDialog from './RelatedDialog.vue';
+import KanjiPopup from './KanjiPopup.vue';
 import StrokePlayer from './StrokePlayer.vue';
 
 /* sideBySide: Compounds may sit to the right of the Memory hint, when the block is wide enough (only a lone kanji on a wide sheet asks for it). */
@@ -22,7 +24,12 @@ const hasStrokes = computed(() => (props.kanji.StrokePaths?.length ?? 0) > 0);
 const infoText = computed(() => [props.kanji.Strokes ? t('kanji.strokes', { n: props.kanji.Strokes }) : '', jlpt.value ?? ''].filter(Boolean).join(' · '));
 const infoOpen = ref(false);
 const infoUp = computed(() => !!infoText.value && !english.value && !!(props.kanji.HanViet || meaning.value)); // no English line: the icon sits on line 1
-const radical = computed(() => [props.kanji.Radical, props.kanji.RadicalHanViet].filter(Boolean).join(' '));
+/* Radical, its Han-Viet sound and its meaning, as LCT shows it ("⼟ THỔ — đất"); the meaning is Vietnamese when the radical's own kanji has one, else English. */
+const radical = computed(() => {
+  const base = [props.kanji.Radical, props.kanji.RadicalHanViet?.toUpperCase()].filter(Boolean).join(' ');
+  const m = props.kanji.RadicalMeaning?.trim();
+  return base && m ? `${base} — ${m}` : base;
+});
 
 /* The parts of the kanji; without the server's explanations (older server) they still show as bare characters. */
 const parts = computed(() => props.kanji.Parts ?? props.kanji.Components.filter((c) => c !== props.kanji.Literal).map((c) => ({ Literal: c, HanViet: null, Meaning: null })));
@@ -30,6 +37,15 @@ const compounds = computed(() => compoundsOf(props.kanji));
 const mnemonic = computed(() => mnemonicOf(props.kanji));
 const compOpen = ref(false); // Compounds fold like the Memory hint
 const firstMeaning = computed(() => (props.kanji.MeaningsVi[0] ?? props.kanji.MeaningsEn[0] ?? '').trim());
+
+/* Tapping a compound opens the same dictionary popup as a related word on the card. */
+const word = ref<{ headword: string; reading: string | null; meaning: string } | null>(null);
+function openWord(c: { Word: string; Reading?: string | null; Vi?: string | null }): void {
+  word.value = { headword: c.Word, reading: c.Reading || null, meaning: c.Vi ?? '' };
+}
+
+/* A part tapped in Components opens its own kanji in a small popup (it appears like the word popup of a compound). */
+const partLit = ref<string | null>(null);
 
 function toggleComp(): void {
   compOpen.value = !compOpen.value;
@@ -95,7 +111,9 @@ function toggleHint(): void {
       <div v-if="hintOpen && parts.length" class="formula">
         <span class="whole jp" :style="{ gridRow: `1 / span ${parts.length + (firstMeaning ? 1 : 0)}` }">{{ kanji.Literal }}</span>
         <template v-for="(p, i) in parts" :key="i">
-          <span class="pg jp">{{ p.Literal }}</span>
+          <!-- a part that is a kanji of its own opens in the same small popup as a part of Components -->
+          <button v-if="p.HanViet || p.Meaning" type="button" class="pg jp link" :aria-label="`Kanji ${p.Literal}`" @click.stop="partLit = p.Literal">{{ p.Literal }}</button>
+          <span v-else class="pg jp">{{ p.Literal }}</span>
           <span class="phv hv">{{ p.HanViet ? p.HanViet.toUpperCase() : '' }}</span>
           <span class="pm">{{ p.Meaning }}</span>
         </template>
@@ -116,16 +134,21 @@ function toggleHint(): void {
       </button>
       <ul v-if="compOpen" class="clist">
         <li v-for="(c, i) in compounds" :key="i">
-          <span class="jp cw">{{ c.Word }}</span>
-          <span v-if="c.Reading" class="jp ctj"> ({{ c.Reading }})</span>
-          <span v-if="c.Vi" class="ct"> {{ c.Vi }}</span>
+          <a class="jp cw cl" href="#" @click.prevent.stop="openWord(c)">{{ c.Word }}</a>
+          <span class="jp ctj">{{ c.Reading ?? '' }}</span>
+          <span class="chv">{{ c.HanViet ? c.HanViet.toUpperCase() : '' }}</span>
+          <span class="ct">{{ c.Vi ?? '' }}</span>
         </li>
       </ul>
     </div>
 
     </div>
 
-    <KanjiTree v-if="kanji.PartEdges?.length" :literal="kanji.Literal" :edges="kanji.PartEdges" :names="kanji.Tree ?? []" :root-hv="kanji.HanViet" @open="(l: string) => emit('open', l)" />
+    <RelatedDialog :headword="word?.headword ?? null" :reading="word?.reading ?? null" :fallback-meaning="word?.meaning ?? ''" @close="word = null" />
+
+    <KanjiPopup :literal="partLit" @close="partLit = null" />
+
+    <KanjiTree v-if="kanji.PartEdges?.length" :literal="kanji.Literal" :edges="kanji.PartEdges" :names="kanji.Tree ?? []" :root-hv="kanji.HanViet" @open="(l: string) => (partLit = l)" />
   </div>
 </template>
 
@@ -141,9 +164,6 @@ function toggleHint(): void {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     column-gap: 28px;
     align-items: start;
-  }
-  .pair.sbs .clist {
-    grid-template-columns: minmax(0, 1fr); /* half the width: one compound per row */
   }
 }
 .top {
@@ -292,13 +312,17 @@ function toggleHint(): void {
   margin: 6px 0 0;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr)); /* two columns: a kanji can have many compounds */
-  gap: 4px 16px;
+  grid-template-columns: auto auto auto minmax(0, 1fr); /* one compound per row, in aligned columns: word | reading | Sino-Viet | meaning */
+  gap: 6px 12px;
   margin-left: 18px; /* the content of a section sits a little to the right of its title */
 }
 .clist li {
   min-width: 0;
   overflow-wrap: anywhere;
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  align-items: baseline;
 }
 .clist li {
   line-height: 1.4;
@@ -308,6 +332,26 @@ function toggleHint(): void {
   font-size: var(--s-kCompWord, 14px);
   font-style: var(--i-kCompWord, normal);
   color: var(--c-kCompWord, var(--headword));
+}
+/* A tappable compound is framed like the kanji tiles of Sino-Viet (a thin border, rounded corners, no underline that would cross the strokes). */
+.cl {
+  display: inline-block;
+  padding: 1px 6px;
+  text-decoration: none;
+  cursor: pointer;
+  background: rgb(var(--v-theme-surface));
+  border: 1px solid var(--paper-edge);
+  border-radius: 6px;
+  line-height: 1.3;
+}
+.cl:hover {
+  border-color: var(--leaf);
+}
+.chv {
+  font-size: var(--s-kCompText, 14px);
+  color: var(--c-kCompHv, var(--hv));
+  letter-spacing: 0.06em;
+  white-space: nowrap;
 }
 .ctj {
   font-size: var(--s-kCompText, 14px);
@@ -370,6 +414,13 @@ function toggleHint(): void {
   background: var(--paper);
   border: 1px solid var(--paper-edge);
   border-radius: 6px;
+}
+.pg.link {
+  cursor: pointer;
+  padding-inline: 0;
+}
+.pg.link:hover {
+  border-color: var(--leaf);
 }
 .phv {
   grid-column: 3;
