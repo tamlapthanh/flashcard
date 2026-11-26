@@ -3,7 +3,7 @@ import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 import vuetify from 'vite-plugin-vuetify';
 
-// GitHub Pages serves the site under /<repo>/ : set VITE_BASE=/flashmobile-client/ when building there.
+// GitHub Pages serves the site under /<repo>/ : set VITE_BASE=/flashcard/ when building there.
 const base = process.env.VITE_BASE ?? '/';
 
 export default defineConfig({
