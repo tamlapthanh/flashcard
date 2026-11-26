@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue';
-import { pendingResults, serverInfo } from '../api';
+import { computed, reactive, ref, watch } from 'vue';
+import { api, me, pendingResults, serverInfo } from '../api';
 import Flag from '../components/Flag.vue';
 import TopBar from '../components/TopBar.vue';
 import { t } from '../i18n';
@@ -9,7 +9,7 @@ import { clearSamples, samplesJson, sampleStats } from '../lib/strokeSamples';
 import { AUTO_MAX_SEC, AUTO_MIN_SEC, settings } from '../settings';
 
 /* The three groups of settings fold away: tap a heading to show or hide it (all folded at first, each with a one-line summary). */
-const open = reactive({ size: false, direction: false, display: false, auto: false, write: false });
+const open = reactive({ size: false, direction: false, display: false, auto: false, write: false, voice: false });
 
 /* Auto play times: whole seconds, within the limits of the settings. */
 function bump(key: 'autoFrontSec' | 'autoBackSec', delta: number): void {
@@ -26,8 +26,40 @@ async function copySamples(): Promise<void> {
     /* the browser did not allow the clipboard */
   }
 }
+/* Admin only: how much of the ElevenLabs credits is used. Read (free) the first time the ElevenLabs Voice section is opened, and again on "Refresh". */
+type VoiceUsage = { used: number; limit: number; percent: number; resetAt: string | null; tier: string | null };
+const usage = ref<VoiceUsage | null>(null);
+const usageState = ref<'idle' | 'loading' | 'error'>('idle');
+async function loadUsage(): Promise<void> {
+  usageState.value = 'loading';
+  try {
+    usage.value = await api.speechUsage();
+    usageState.value = 'idle';
+  } catch {
+    usageState.value = 'error';
+  }
+}
+watch(
+  () => open.voice && me.admin,
+  (show) => {
+    if (show && !usage.value && usageState.value !== 'loading') void loadUsage();
+  }
+);
+const usageReset = computed(() => (usage.value?.resetAt ? new Date(usage.value.resetAt).toLocaleDateString() : ''));
+const usageDays = computed(() => (usage.value?.resetAt ? Math.max(0, Math.ceil((new Date(usage.value.resetAt).getTime() - Date.now()) / 86_400_000)) : 0));
+/* How far through the period we are. The account only says when it resets, so the period is taken as a month (30 days): about right for a monthly plan. */
+const PERIOD_DAYS = 30;
+const timePct = computed(() => Math.min(100, Math.max(0, ((PERIOD_DAYS - usageDays.value) / PERIOD_DAYS) * 100)));
+const usageColor = computed(() => ((usage.value?.percent ?? 0) >= 90 ? 'error' : (usage.value?.percent ?? 0) >= 70 ? 'warning' : 'primary'));
 const directionSummary = computed(() => (settings.direction === 'forward' ? t('deck.dirForward') : t('deck.dirReverse')));
 </script>
+
+<style>
+/* Light mode: the page behind the Settings cards is white too (the green gradient is the page of every other screen). Only while this screen is open. */
+.v-application:not(.v-theme--dark):has(.settings-page) {
+  background: #fff !important;
+}
+</style>
 
 <style scoped>
 /* The list of switches is a Vuetify v-list, which paints its own surface colour over .soft-card: give it the same paper as every other card. */
@@ -39,6 +71,19 @@ const directionSummary = computed(() => (settings.direction === 'forward' ? t('d
 .warm {
   --v-theme-on-surface: 43, 33, 24; /* #2b2118 */
   color: #2b2118;
+  --paper: #fff; /* light mode: the cards of this screen (and what is inside them) are white instead of cream */
+}
+/* Light mode: the section bars are the app's main green (a clear leaf-green tint on the white page), a deeper one when open */
+.warm .sechead {
+  background: color-mix(in srgb, var(--leaf) 26%, #fff);
+  border-color: color-mix(in srgb, var(--leaf) 45%, #fff);
+}
+.warm .sechead[aria-expanded='true'] {
+  background: color-mix(in srgb, var(--leaf) 42%, #fff);
+  border-color: var(--leaf);
+}
+.warm .sechead .glyph {
+  background: color-mix(in srgb, var(--leaf) 30%, #fff);
 }
 .warm :deep(.v-list-item-subtitle),
 .warm .hint {
@@ -226,6 +271,77 @@ const directionSummary = computed(() => (settings.direction === 'forward' ? t('d
   white-space: normal; /* the explanation may take two lines instead of being cut */
   -webkit-line-clamp: unset;
 }
+.usagehead {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end; /* only the refresh button, at the right */
+  margin-bottom: 4px;
+}
+.usagebody {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap; /* a narrow phone puts the numbers under the ring */
+}
+.usagepct {
+  font-size: 1.6rem;
+  font-weight: 800;
+  line-height: 1;
+}
+.usagepct small {
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+.usagenums {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.usageused b {
+  font-size: 1.5rem;
+}
+.usageused span,
+.usageleft,
+.usagereset {
+  font-size: 0.85rem;
+  opacity: 0.8;
+}
+.usageleft {
+  font-weight: 600;
+  opacity: 1;
+}
+.usagetime {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--paper-edge);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.usagebar {
+  display: grid;
+  grid-template-columns: 64px 1fr 40px;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.8rem;
+}
+.usagebar .n {
+  text-align: right;
+  font-weight: 700;
+}
+.usagepace {
+  font-size: 0.8rem;
+  opacity: 0.8;
+}
+.usagepace.fast {
+  color: rgb(var(--v-theme-warning));
+  font-weight: 600;
+  opacity: 1;
+}
+.usagereset .v-icon {
+  vertical-align: -3px;
+}
 .samplesrow {
   display: flex;
   align-items: center;
@@ -239,7 +355,7 @@ const directionSummary = computed(() => (settings.direction === 'forward' ? t('d
 <template>
   <TopBar :title="t('set.title')" back />
 
-  <v-container fluid class="px-3 pt-1" :class="{ warm: !settings.dark }">
+  <v-container fluid class="settings-page px-3 pt-1" :class="{ warm: !settings.dark }">
     <button type="button" class="sechead" :data-tip="t('tip.section')" :aria-expanded="open.size" @click="open.size = !open.size">
       <span class="glyph">字</span><span class="name">{{ t('set.fontSize') }}</span><span class="sum" />
       <v-icon :icon="open.size ? 'mdi-chevron-up' : 'mdi-chevron-down'" size="20" />
@@ -408,6 +524,48 @@ const directionSummary = computed(() => (settings.direction === 'forward' ? t('d
       </div>
     </v-list>
     </v-expand-transition>
+
+    <!-- admin only (the server refuses everybody else too): how much of the ElevenLabs credits is used -->
+    <template v-if="me.admin">
+      <button type="button" class="sechead" :data-tip="t('tip.section')" :aria-expanded="open.voice" data-testid="voice-section" @click="open.voice = !open.voice">
+        <span class="glyph">声</span><span class="name">{{ t('set.elevenlabs') }}</span><span class="sum" />
+        <v-icon :icon="open.voice ? 'mdi-chevron-up' : 'mdi-chevron-down'" size="20" />
+      </button>
+      <v-expand-transition>
+      <div v-show="open.voice" class="soft-card pa-4 mb-3" data-testid="voice-usage">
+        <div class="usagehead">
+          <v-btn icon="mdi-refresh" variant="text" size="small" :loading="usageState === 'loading'" :aria-label="t('set.voiceUsageRefresh')" @click="loadUsage" />
+        </div>
+        <div v-if="usage" class="usagebody">
+          <!-- a ring that fills with what is used: green, then orange from 70%, red from 90% -->
+          <v-progress-circular :model-value="usage.percent" :color="usageColor" :size="104" :width="11" class="usagering">
+            <span class="usagepct">{{ Math.round(usage.percent) }}<small>%</small></span>
+          </v-progress-circular>
+          <div class="usagenums">
+            <div class="usageused"><b>{{ usage.used.toLocaleString() }}</b> <span>/ {{ usage.limit.toLocaleString() }} credits</span></div>
+            <div class="usageleft">{{ t('set.voiceLeft', { n: Math.max(0, usage.limit - usage.used).toLocaleString() }) }}</div>
+            <div v-if="usageReset" class="usagereset"><v-icon icon="mdi-calendar-refresh-outline" size="16" /> {{ t('set.voiceUsageReset', { date: usageReset, days: usageDays }) }}</div>
+          </div>
+        </div>
+        <!-- the same period as a bar: how far through it we are, against how much credit is gone (a longer credit bar than time bar = spending faster than the month passes) -->
+        <div v-if="usage && usageReset" class="usagetime" data-testid="voice-time">
+          <div class="usagebar">
+            <span>{{ t('set.voiceBarCredit') }}</span>
+            <v-progress-linear :model-value="usage.percent" :color="usageColor" height="8" rounded />
+            <span class="n">{{ Math.round(usage.percent) }}%</span>
+          </div>
+          <div class="usagebar">
+            <span>{{ t('set.voiceBarTime') }}</span>
+            <v-progress-linear :model-value="timePct" color="blue-grey" height="8" rounded />
+            <span class="n">{{ Math.round(timePct) }}%</span>
+          </div>
+          <div class="usagepace" :class="{ fast: usage.percent > timePct + 5 }">{{ usage.percent > timePct + 5 ? t('set.voicePaceFast') : t('set.voicePaceOk') }}</div>
+        </div>
+        <div v-else-if="usageState === 'error'" class="hint">{{ t('set.voiceUsageError') }}</div>
+        <div v-else class="hint">{{ t('set.voiceUsageLoading') }}</div>
+      </div>
+      </v-expand-transition>
+    </template>
 
     <v-alert v-if="pendingResults() > 0" type="warning" variant="tonal" density="compact" icon="mdi-cloud-upload-outline" class="mt-4">
       {{ t('set.pending', { n: pendingResults() }) }}

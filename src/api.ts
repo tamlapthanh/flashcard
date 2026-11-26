@@ -158,6 +158,8 @@ export const api = {
   paperStats: (paperId: string) => request<{ questions: PaperQuestionStat[] }>(`/api/papers/${encodeURIComponent(paperId)}/stats`).then((r) => r.questions),
   /** Admin: deletes the paper only; attempts already made stay. */
   deletePaper: (paperId: string) => request<{ ok: boolean }>(`/api/papers/${encodeURIComponent(paperId)}`, { method: 'DELETE' }),
+  /** Admin: how much of the ElevenLabs credits this period is used (the server reads the account; it costs no credits). */
+  speechUsage: () => request<{ used: number; limit: number; percent: number; resetAt: string | null; tier: string | null }>('/api/speech/usage'),
   /** Free servers sleep: ping /health first so the UI can say "waking up". */
   health: () => request<{ ok: boolean; saveVoice?: boolean }>('/health')
 };
