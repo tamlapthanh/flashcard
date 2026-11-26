@@ -3,19 +3,47 @@ import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { t } from '../i18n';
 import { listOrder } from '../lib/cardOrder';
 import { swipeDown } from '../lib/swipeDown';
-import { STATUS_COLOR, STATUS_ICON } from '../lib/status';
+import { markOf } from '../lib/listMark';
+import { STATUS_COLOR, STATUS_ICON, STATUS_ORDER } from '../lib/status';
 import { tagStyle } from '../lib/tagColor';
 import PitchLine from './PitchLine.vue';
 import type { StudySession } from '../session';
-import type { StudyResult } from '../types';
+import type { StudyResult, StudyStatus } from '../types';
 
 import { VBottomSheet } from 'vuetify/components';
 
 /* inline: the list fills its parent (the "Words" tab on a phone) instead of sliding up as a bottom sheet. */
 /* kanjiGrid: the list opened from the deck screen, only for looking: every word is a square of graph paper holding just its kanji (no status buttons). */
-const props = defineProps<{ open: boolean; session: StudySession; inline?: boolean; kanjiGrid?: boolean }>();
-/* the longer the word, the smaller its kanji, so it always fits its square */
-const tileSize = (word: string): string => `calc(${[...word].length >= 4 ? 1 : [...word].length === 3 ? 1.35 : [...word].length === 2 ? 1.7 : 2.1}rem * var(--kf, 1))`;
+const props = defineProps<{ open: boolean; session: StudySession; inline?: boolean; kanjiGrid?: boolean; popupOpen?: boolean }>();
+/* A word in its square, with big letters: a short word is as big as the square allows (bigger with the square). A longer one goes on 2 to 4 lines, as many as give the biggest
+   letters that fit both the width and the height of the square (every character is about one em wide). The letters never get smaller than a readable size: a word that
+   still does not fit then keeps the characters that do and ends with "…". `tileGrid.size` is the side of the square in px. */
+function tileLayout(word: string): { text: string; size: string; cut: boolean } {
+  const chars = [...word];
+  const n = Math.max(1, chars.length);
+  const room = tileGrid.size - 10; // the border and the padding of the square
+  const wanted = ((n >= 4 ? 1 : n === 3 ? 1.35 : n === 2 ? 1.7 : 2.1) * 16 * tileGrid.size) / 78;
+  const smallest = Math.max(12, Math.round(tileGrid.size * 0.2));
+  let best = { lines: 1, px: 0 };
+  for (let lines = 1; lines <= Math.min(4, n); lines++) {
+    const px = Math.min(wanted, (room / Math.ceil(n / lines)) * 0.98, room / (lines * 1.15));
+    if (px > best.px + 0.5) best = { lines, px }; // another line only when it makes the letters clearly bigger
+  }
+  const chunk = (list: string[], per: number): string => {
+    const rows: string[] = [];
+    for (let i = 0; i < list.length; i += per) rows.push(list.slice(i, i + per).join(''));
+    return rows.join('\n');
+  };
+  if (best.px >= smallest) {
+    const per = Math.ceil(n / best.lines);
+    return { text: best.lines === 1 ? word : chunk(chars, per), size: `${Math.floor(best.px)}px`, cut: false };
+  }
+  // too long even for the smallest letters: as many lines and characters as fit, then "…"
+  const per = Math.max(1, Math.floor((room / smallest) * 0.98));
+  const lines = Math.max(1, Math.floor(room / (smallest * 1.15)));
+  const kept = per * lines;
+  return { text: chunk(n > kept ? [...chars.slice(0, kept - 1), '…'] : chars, per), size: `${smallest}px`, cut: n > kept };
+}
 const wrapper = computed(() => (props.inline ? 'div' : VBottomSheet));
 const wrapperProps = computed(() =>
   props.inline ? { class: 'inline-wrap' } : { modelValue: props.open, 'onUpdate:modelValue': (v: boolean) => !v && emit('close') }
@@ -52,7 +80,9 @@ function shift(px: number, animate: boolean): void {
 const atTop = (el: HTMLElement): boolean => el.scrollTop <= 0;
 const atBottom = (el: HTMLElement): boolean => el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
 
+let touching = false;
 function onTouchStart(e: TouchEvent): void {
+  touching = true;
   touchY = e.touches[0]?.clientY ?? 0;
 }
 
@@ -65,7 +95,9 @@ function onTouchMove(e: TouchEvent): void {
 }
 
 function onTouchEnd(): void {
+  touching = false;
   shift(0, true);
+  scheduleSnap(); // a drag that ends without momentum sends no more scroll events
 }
 
 /*
@@ -84,12 +116,18 @@ function stopGlide(): void {
 function glide(): void {
   const el = rowsEl.value;
   if (!el) return stopGlide();
-  const diff = glideTarget - el.scrollTop;
-  if (Math.abs(diff) < 0.5) {
+  const before = el.scrollTop;
+  const diff = glideTarget - before;
+  if (Math.abs(diff) <= 1) {
     el.scrollTop = glideTarget;
     return stopGlide();
   }
-  el.scrollTop += diff * 0.12;
+  // 12% of what is left, but at least 1px a step: the browser rounds the scroll position to whole pixels, and a smaller step would not move the list (it would stay a few pixels short of the target for ever)
+  el.scrollTop = before + (Math.abs(diff * 0.12) < 1 ? Math.sign(diff) : diff * 0.12);
+  if (el.scrollTop === before) {
+    el.scrollTop = glideTarget; // it did not move (an end of the list was hit): go straight there and finish
+    return stopGlide();
+  }
   glideRaf = requestAnimationFrame(glide);
 }
 
@@ -148,15 +186,19 @@ const shown = ref(chunk());
  */
 const query = ref<string | null>(''); // the clear (x) button of the box sets it to null
 
-/* With a mouse (web) there is room, so the search box is shown from the start; on a touch screen it stays hidden until the magnifier is tapped. */
 const withMouse = typeof window !== 'undefined' && window.matchMedia('(hover: hover) and (pointer: fine)').matches;
-const searchOpen = ref(withMouse);
+/* The search box is hidden from the start (web and phone alike); the magnifier in the corner shows it. */
+const searchOpen = ref(false);
 /* Square grid: with a mouse the Sino-Vietnamese label shows on hover and a click picks the word (its detail popup). On a touch screen the first tap
    shows the label of that word and a second tap on the same word picks it. */
 const labelId = ref<string | null>(null);
-/* the square clicked last has another background (a way to see where you got to); clicking another one moves the mark, and a different list starts clean */
-const seenId = ref<string | null>(null);
-watch(() => props.session, () => (seenId.value = null));
+/* the square clicked last has another background (a way to see where you got to); it stays through search, filters and closing and opening the list (see lib/listMark.ts) */
+const seenId = computed<string | null>({
+  get: () => markOf(props.session).value,
+  set: (id) => {
+    markOf(props.session).value = id;
+  }
+});
 /* With a mouse: moving over another square while a word's popup is open closes the popup and clears the mark. */
 /* The label hangs under its square; when the room below (inside the list box) is too small for it, it goes above the square instead. */
 const upId = ref<string | null>(null);
@@ -169,19 +211,48 @@ function placeLabel(id: string, el: HTMLElement | null): void {
 }
 function onTileEnter(id: string, e: Event): void {
   if (withMouse) placeLabel(id, e.currentTarget as HTMLElement);
-  if (!withMouse || seenId.value === null || seenId.value === id) return;
-  // a short grace: passing over a neighbour on the way to the popup must not close it (leaving that square cancels it)
+}
+/* The mark is let go when the mouse really MOVES (a pointer that rests still does not count: the list opened again under it, the squares sliding under it):
+   - while the word's popup is open: as soon as the mouse leaves that square and its popup, in any direction (up towards the search icon too), and the popup closes with it;
+   - without a popup (the list was closed and opened again, or the popup was closed): only when the mouse goes over another square, so the search box, the filters and
+     the other controls can be used with the mark still there.
+   A short grace lets the mouse cross the 1px gap between the square and its popup. */
+let dismissTimer: ReturnType<typeof setTimeout> | undefined;
+const cancelDismiss = (): void => {
   clearTimeout(dismissTimer);
-  dismissTimer = setTimeout(() => {
+  dismissTimer = undefined;
+};
+function onDocMove(e: MouseEvent): void {
+  const mark = seenId.value;
+  const root = rowsEl.value;
+  if (mark === null || !root || optsOpen.value || tagsOpen.value) return cancelDismiss();
+  const el = document.elementFromPoint(e.clientX, e.clientY);
+  if (!el) return cancelDismiss();
+  if (el.closest('.relpop') || el.closest(`[data-wid="${CSS.escape(mark)}"]`)) return cancelDismiss(); // on the square itself or on its popup
+  const tile = el.closest('.ktile');
+  const overOtherTile = !!tile && root.contains(tile);
+  if (!props.popupOpen && !overOtherTile) return cancelDismiss();
+  dismissTimer ??= setTimeout(() => {
+    dismissTimer = undefined;
     seenId.value = null;
     emit('dismiss');
   }, 180);
 }
-function onTileLeave(): void {
-  clearTimeout(dismissTimer);
-}
-let dismissTimer: ReturnType<typeof setTimeout> | undefined;
-onBeforeUnmount(() => clearTimeout(dismissTimer));
+watch(
+  () => withMouse && seenId.value !== null,
+  (on) => {
+    if (on) document.addEventListener('mousemove', onDocMove);
+    else {
+      document.removeEventListener('mousemove', onDocMove);
+      cancelDismiss();
+    }
+  },
+  { immediate: true }
+);
+onBeforeUnmount(() => {
+  document.removeEventListener('mousemove', onDocMove);
+  cancelDismiss();
+});
 function onTileClick(id: string, e?: Event): void {
   seenId.value = id;
   if (withMouse || labelId.value === id) onRowClick(id, (e?.currentTarget as HTMLElement | null) ?? undefined);
@@ -350,7 +421,7 @@ watch(
       optsOpen.value = false;
       selectedTags.value = [];
       tagsOpen.value = false;
-      searchOpen.value = withMouse;
+      searchOpen.value = false;
     }
   }
 );
@@ -358,11 +429,31 @@ watch(
 /* A thin scroll indicator (3px) that appears while the list scrolls and fades out a moment later. */
 const thumb = reactive({ top: 0, height: 0, visible: false });
 let thumbTimer: ReturnType<typeof setTimeout> | undefined;
+/* The square grid always comes to rest with a whole row at the top edge: a row cut by the edge has no top border and looks broken. A short moment after the scrolling
+   stops (the wheel glide, a finger lifted, the momentum of a trackpad or a phone is over) the list glides to the nearest row. The squares are `pitch` apart. */
+let snapTimer: ReturnType<typeof setTimeout> | undefined;
+function snapToRow(): void {
+  const el = rowsEl.value;
+  if (!el || !props.kanjiGrid || touching || glideRaf) return;
+  const pitch = tileGrid.size + TILE_GAP;
+  const max = el.scrollHeight - el.clientHeight;
+  if (pitch <= 0 || el.scrollTop <= 0.5 || el.scrollTop >= max - 1) return; // at the very top or bottom there is nothing to settle
+  const target = Math.min(max, Math.round(el.scrollTop / pitch) * pitch);
+  if (Math.abs(target - el.scrollTop) < 1) return;
+  glideTarget = target;
+  glideRaf = requestAnimationFrame(glide);
+}
+function scheduleSnap(): void {
+  clearTimeout(snapTimer);
+  if (props.kanjiGrid) snapTimer = setTimeout(snapToRow, 140);
+}
+onBeforeUnmount(() => clearTimeout(snapTimer));
 
 function updateThumb(): void {
   const el = rowsEl.value;
   if (!el) return;
   const { scrollTop, scrollHeight, clientHeight } = el;
+  scheduleSnap();
   if (scrollHeight <= clientHeight + 1) {
     thumb.visible = false;
     return;
@@ -375,8 +466,15 @@ function updateThumb(): void {
   thumbTimer = setTimeout(() => (thumb.visible = false), 900);
 }
 
-/* The heading: which deck the list is of, how many of its words are learned (saved progress + this run), and the tags it was opened with. */
-const learnedCount = computed(() => props.session.cards.filter((c) => props.session.status(c.id) === 'learned' || c.progress.status === 'learned').length);
+/* The heading: which deck the list is of, how many words are in each status (what was saved, with what this run changed on top), and the tags it was opened with. */
+const statusCounts = computed(() => {
+  const n: Record<StudyStatus, number> = { new: 0, learning: 0, learned: 0, skipped: 0 };
+  for (const c of props.session.cards) {
+    const s = props.session.status(c.id);
+    n[s === 'learned' ? 'learned' : s === 'again' ? 'learning' : s === 'skipped' ? 'skipped' : c.progress.status]++;
+  }
+  return STATUS_ORDER.filter((s) => n[s] > 0).map((s) => ({ s, n: n[s] }));
+});
 
 /* Wide web (1200px and up): as many columns as fit (each wants about 560px), 2 to 4. Narrower: one column. */
 const winW = ref(typeof window !== 'undefined' ? window.innerWidth : 1200);
@@ -394,8 +492,12 @@ const currentId = computed(() => props.session.current?.id ?? null);
     <v-card class="sheet" :class="{ inline }" :rounded="inline ? 0 : 't-xl'">
       <div class="grip" @touchstart.passive="swipe.onTouchstart" @touchend.passive="swipe.onTouchend" />
       <!-- which deck this list is of -->
+      <!-- the same line as a deck card: its name, the number of cards, and how many are in each status (only the statuses that have any) -->
       <div v-if="session.deckName" class="deckhead mx-3">
-        <span class="dname">{{ session.deckName }}<span class="dcount"> · {{ t('list.learnedOf', { a: learnedCount, b: session.cards.length }) }}<template v-if="session.tags.length"> · {{ t('list.tagsOf', { tags: session.tags.join(', ') }) }}</template></span></span>
+        <span class="dname">{{ session.deckName }}</span>
+        <span class="dcount">{{ t('deck.total', { total: session.cards.length }) }}</span>
+        <span v-for="p in statusCounts" :key="p.s" class="stn" :style="{ '--stc': STATUS_COLOR[p.s] }" :title="t(`status.${p.s}`)"><v-icon :icon="STATUS_ICON[p.s]" size="13" />{{ p.n }}<span class="stl">{{ t(`status.${p.s}`) }}</span></span>
+        <span v-if="session.tags.length" class="dcount">{{ t('list.tagsOf', { tags: session.tags.join(', ') }) }}</span>
       </div>
       <!-- the magnifier is pinned in the top right corner (next to the grip): it never moves, with the box shown or hidden -->
       <v-btn class="searchbtn" :icon="searchOpen ? 'mdi-magnify-close' : 'mdi-magnify'" variant="text" size="x-small" density="comfortable" :aria-label="t('list.search')" :aria-expanded="searchOpen" @click="toggleSearch" />
@@ -452,7 +554,7 @@ const currentId = computed(() => props.session.current?.id ?? null);
         </div>
       </div>
       <div class="rowswrap">
-      <div ref="rowsEl" class="rows px-3 pb-3" :class="{ kgrid: kanjiGrid }" @pointerdown.capture="onRowsDown" :style="{ '--cols': cols, ...gridStyle }" @scroll.passive="updateThumb" @touchstart.passive="onTouchStart" @touchmove.passive="onTouchMove" @touchend.passive="onTouchEnd" @touchcancel.passive="onTouchEnd" @wheel="onWheel">
+      <div ref="rowsEl" class="rows px-3 pb-3" :class="{ kgrid: kanjiGrid, fanopen: optsOpen || tagsOpen }" @pointerdown.capture="onRowsDown" :style="{ '--cols': cols, ...gridStyle }" @scroll.passive="updateThumb" @touchstart.passive="onTouchStart" @touchmove.passive="onTouchMove" @touchend.passive="onTouchEnd" @touchcancel.passive="onTouchEnd" @wheel="onWheel">
         <template v-for="{ c, n } in visibleCards" :key="c.id">
         <div
           v-if="kanjiGrid"
@@ -460,13 +562,13 @@ const currentId = computed(() => props.session.current?.id ?? null);
           tabindex="0"
           class="ktile jp"
           :class="[session.status(c.id), { show: labelId === c.id, seen: seenId === c.id, up: upId === c.id }]"
-          :style="{ fontSize: tileSize(c.headword) }"
+          :style="{ fontSize: tileLayout(c.headword).size }"
+          :data-wid="c.id"
           @mouseenter="onTileEnter(c.id, $event)"
-          @mouseleave="onTileLeave"
           @click="onTileClick(c.id, $event)"
           @keydown.enter.self.prevent="onTileClick(c.id, $event)"
           @keydown.space.self.prevent="onTileClick(c.id, $event)"
-        >{{ c.headword }}<span v-if="c.hanviet || c.meaning" class="khv"><b v-if="c.hanviet">{{ c.hanviet.toUpperCase() }}</b><span v-if="c.meaning" class="khm">{{ c.meaning }}</span></span></div>
+        >{{ tileLayout(c.headword).text }}<span v-if="c.hanviet || c.meaning || tileLayout(c.headword).cut" class="khv"><span v-if="tileLayout(c.headword).cut" class="khw jp">{{ c.headword }}</span><b v-if="c.hanviet">{{ c.hanviet.toUpperCase() }}</b><span v-if="c.meaning" class="khm">{{ c.meaning }}</span></span></div>
         <div
           v-else
           role="button"
@@ -611,16 +713,16 @@ const currentId = computed(() => props.session.current?.id ?? null);
 }
 .tagfan {
   position: absolute;
-  top: 38px; /* right under the button, over the list */
+  top: 30px; /* right under the button, over the list; its top padding below is the gap, so the box (an invisible frame the mouse can cross) touches the button */
   right: 0;
-  z-index: 8;
+  z-index: 10;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   gap: 8px;
   max-height: calc(var(--sheet-h) - 130px); /* the rest of the sheet below the button (header + search box above it); more tags scroll */
   overflow-y: auto; /* many tags scroll inside the fan */
-  padding: 3px 3px 5px;
+  padding: 11px 3px 5px;
   scrollbar-width: none;
   visibility: hidden;
   transition: visibility 0s linear 0.5s; /* hidden only after the pills have folded */
@@ -704,6 +806,16 @@ const currentId = computed(() => props.session.current?.id ?? null);
   height: 30px;
   margin: 0 0 0 4px;
 }
+/* An invisible frame under the three switches, from the gear down to the last one: the mouse can cross the gaps between them without touching the squares below (which would raise and light up). */
+.sfan.open::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -8px;
+  right: -8px;
+  height: 154px;
+  z-index: 9;
+}
 .gear {
   position: absolute;
   inset: 0; /* exactly the 30px box of .sfan, so the gear is centred in it */
@@ -740,7 +852,7 @@ const currentId = computed(() => props.session.current?.id ?? null);
   position: absolute;
   left: 0;
   top: 0;
-  z-index: 5;
+  z-index: 10; /* above the squares: a hovered square is raised (z-index 5) and would cover the options fanned out over the list */
   width: 30px;
   height: 30px;
   box-sizing: border-box;
@@ -886,7 +998,10 @@ const currentId = computed(() => props.session.current?.id ?? null);
   box-shadow: none;
 }
 .sheet.inline .grip {
-  visibility: hidden;
+  display: none; /* the tab is not a sheet: nothing to drag down */
+}
+.sheet.inline .deckhead {
+  margin-top: 6px;
 }
 .v-theme--dark .sheet {
   background: var(--paper);
@@ -897,32 +1012,50 @@ const currentId = computed(() => props.session.current?.id ?? null);
   height: 4px;
   border-radius: 2px;
   background: var(--paper-edge);
-  margin: 8px auto 16px; /* the magnifier sits beside it, in the top right corner */
+  margin: 8px auto 6px; /* the magnifier sits beside it, in the top right corner */
 }
+/* The heading, like the line of a deck card: name, number of cards, then the count of each status. It takes the row under the grip
+   and leaves room on the right for the magnifier. */
 .deckhead {
-  /* on the very top line: left of the grip, level with the magnifier in the right corner */
-  position: absolute;
-  top: 5px;
-  left: 0;
-  max-width: calc(50% - 26px);
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: 2px 10px;
   min-width: 0;
-  z-index: 1;
+  margin-bottom: 4px;
+  padding-right: 44px;
 }
 .dname {
   min-width: 0;
   font-weight: 700;
   font-size: 0.78rem;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .dcount {
   font-weight: 400;
-  font-size: 0.7rem;
+  font-size: 0.72rem;
   opacity: 0.7;
+}
+.stn {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--stc);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+.stl {
+  display: none; /* the status name: from a tablet up */
+  margin-left: 3px;
+  font-weight: 500;
+}
+@media (min-width: 601px) {
+  .stl {
+    display: inline;
+  }
 }
 .rows {
   flex: 1 1 auto;
@@ -986,6 +1119,7 @@ const currentId = computed(() => props.session.current?.id ?? null);
   grid-template-columns: repeat(var(--kcols, 1), minmax(0, 1fr)) !important;
   grid-auto-rows: var(--kts, 78px); /* a fixed row height keeps the squares square however many there are (aspect-ratio alone gets squeezed once the list is longer than the screen) */
   gap: 1px !important;
+  padding-top: 1px !important; /* room for the top border of the first row (the list box clips what sticks out) */
 }
 .ktile {
   height: var(--kts, 78px);
@@ -1005,7 +1139,7 @@ const currentId = computed(() => props.session.current?.id ?? null);
   color: rgb(var(--v-theme-on-surface));
   line-height: 1.1;
   text-align: center;
-  white-space: nowrap;
+  white-space: pre-line; /* the long words are split into lines on purpose (tileLayout) */
   cursor: pointer;
   user-select: none;
 }
@@ -1014,6 +1148,10 @@ const currentId = computed(() => props.session.current?.id ?? null);
 }
 .ktile.learned {
   background-color: color-mix(in srgb, var(--leaf) 22%, var(--paper));
+}
+/* While a filter is fanned out over the list, the squares under it do not react to the mouse (no raise, no label, no popup dismiss), wherever the pointer strays; a click on the list still folds the filter. */
+.rows.fanopen .ktile {
+  pointer-events: none;
 }
 .ktile.again {
   background-color: color-mix(in srgb, #2f80d1 20%, var(--paper)); /* Again (Learning): blue, like its button */
@@ -1030,7 +1168,7 @@ const currentId = computed(() => props.session.current?.id ?? null);
   transform: translateX(-50%);
   z-index: 6;
   width: max-content;
-  max-width: 220px;
+  max-width: min(480px, 92vw); /* wide enough for a long word on ONE line: it only wraps when even this is not enough */
   padding: 3px 9px;
   border-radius: 8px;
   background: var(--forest);
@@ -1042,10 +1180,18 @@ const currentId = computed(() => props.session.current?.id ?? null);
   white-space: normal;
   pointer-events: none;
 }
+.khw {
+  display: block;
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.25;
+  color: #fff;
+  overflow-wrap: anywhere; /* the whole word on one line while it fits; broken only where there is no more room */
+}
 .khv b {
   display: block;
   letter-spacing: 0.02em;
-  color: #fff; /* Sino-Vietnamese: white ... */
+  color: #7fe3b0; /* Sino-Vietnamese: mint (the word above it is white, the meaning below is gold: three colours) */
 }
 .khm {
   display: block;

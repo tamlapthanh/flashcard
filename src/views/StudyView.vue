@@ -867,16 +867,16 @@ onUnmounted(() => {
 
     <v-snackbar v-model="autoDone" :timeout="4000" color="primary">{{ t('auto.done') }}</v-snackbar>
     <div v-if="isPhone" v-show="listOpen" class="listpane" :class="{ tabs: showTabs }">
-      <WordListSheet inline kanji-grid :open="listOpen" :session="s" @close="listOpen = false" @pick="showListWord" @dismiss="listWord = null" />
+      <WordListSheet inline kanji-grid :open="listOpen" :session="s" @close="listOpen = false" @pick="showListWord" @dismiss="listWord = null" :popup-open="listWord !== null" />
     </div>
-    <WordListSheet v-else kanji-grid :open="listOpen" :session="s" @close="listOpen = false" @pick="showListWord" @dismiss="listWord = null" />
+    <WordListSheet v-else kanji-grid :open="listOpen" :session="s" @close="listOpen = false" @pick="showListWord" @dismiss="listWord = null" :popup-open="listWord !== null" />
     <!-- phone: the two tabs sit at the bottom of the screen (hidden in focus mode, where the card takes the whole screen) -->
     <nav v-if="showTabs" class="tabbar" role="tablist">
       <button type="button" role="tab" class="tab " :class="{ on: !listOpen }" :aria-selected="!listOpen" @click="listOpen = false"><v-icon icon="mdi-cards-outline" size="22" /><span>{{ t('nav.study') }}</span></button>
       <button type="button" role="tab" class="tab " :class="{ on: listOpen }" :aria-selected="listOpen" @click="listOpen = true"><v-icon icon="mdi-format-list-bulleted" size="22" /><span>{{ t('list.short') }}</span></button>
     </nav>
     <KanjiSheet :kanji="card.kanji" :selected="kanjiSel" @close="kanjiSel = null" @select="(l: string) => (kanjiSel = l)" />
-    <RelatedDialog :headword="listWord?.headword ?? null" :reading="listWord?.reading ?? null" :fallback-meaning="listWord?.meaning ?? ''" :anchor="listWord?.anchor ?? null" :status-of="listWord ? s.status(listWord.id) : undefined" can-go @close="listWord = null" @mark="(r: StudyResult) => listWord && markWord(listWord.id, r)" @go="goToListWord" />
+    <RelatedDialog :headword="listWord?.headword ?? null" :reading="listWord?.reading ?? null" :fallback-meaning="listWord?.meaning ?? ''" :anchor="listWord?.anchor ?? null" :word-id="listWord?.id ?? null" :status-of="listWord ? s.status(listWord.id) : undefined" can-go @close="listWord = null" @mark="(r: StudyResult) => listWord && markWord(listWord.id, r)" @go="goToListWord" />
     <RelatedDialog :headword="related?.headword ?? null" :reading="related?.reading ?? null" :fallback-meaning="related?.meaning ?? ''" @close="related = null" />
   </template>
 </template>

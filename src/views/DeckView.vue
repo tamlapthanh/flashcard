@@ -54,11 +54,11 @@ const listSession = shallowRef<StudySession | null>(null);
 const listOpen = ref(false);
 /* A word picked in that list opens its dictionary popup on top of the list (the list stays open behind it). */
 /* With a mouse the popup hangs under the clicked square; on a touch screen it is a sheet from the bottom. */
-const wordPopup = shallowRef<{ headword: string; reading: string | null; meaning: string; anchor: HTMLElement | null } | null>(null);
+const wordPopup = shallowRef<{ id: string; headword: string; reading: string | null; meaning: string; anchor: HTMLElement | null } | null>(null);
 function showWord(id: string, el?: HTMLElement): void {
   const c = listSession.value?.cards.find((x) => x.id === id);
   const mouse = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
-  if (c) wordPopup.value = { headword: c.headword, reading: c.reading ?? null, meaning: c.meaning, anchor: mouse && el ? el : null };
+  if (c) wordPopup.value = { id: c.id, headword: c.headword, reading: c.reading ?? null, meaning: c.meaning, anchor: mouse && el ? el : null };
 }
 const listLoadingId = ref<string | null>(null);
 const listCache = new Map<string, StudySession>(); // a list already built on this screen opens at once the next time (the screen is rebuilt after studying, so it is never stale)
@@ -235,7 +235,8 @@ onMounted(load);
               <button v-if="d.total >= 4" type="button" class="tagbtn testc" :aria-label="t('tip.test')" :data-tip="t('tip.test')" @click.stop="openTest(d)">
                 <v-icon icon="mdi-school-outline" size="18" />
               </button>
-              <span class="play" aria-hidden="true">
+              <!-- the invisible button over the card already studies the deck (and is what a keyboard or a screen reader uses); this circle sits above it so it can react to the mouse, and does the same on a click -->
+              <span class="play" aria-hidden="true" @click.stop="startDeck(d)">
                 <v-icon icon="mdi-play" size="20" />
               </span>
               </div>
@@ -248,8 +249,8 @@ onMounted(load);
   </v-container>
 
   <!-- word list of a whole deck (opened from the tile of a deck); picking a word only closes it -->
-  <WordListSheet v-if="listSession" :open="listOpen" :session="listSession" @close="listOpen = false" @pick="showWord" @dismiss="wordPopup = null" kanji-grid />
-  <RelatedDialog :headword="wordPopup?.headword ?? null" :reading="wordPopup?.reading ?? null" :fallback-meaning="wordPopup?.meaning ?? ''" :anchor="wordPopup?.anchor ?? null" @close="wordPopup = null" />
+  <WordListSheet v-if="listSession" :open="listOpen" :session="listSession" @close="listOpen = false" @pick="showWord" @dismiss="wordPopup = null" :popup-open="wordPopup !== null" kanji-grid />
+  <RelatedDialog :headword="wordPopup?.headword ?? null" :reading="wordPopup?.reading ?? null" :fallback-meaning="wordPopup?.meaning ?? ''" :anchor="wordPopup?.anchor ?? null" :word-id="wordPopup?.id ?? null" @close="wordPopup = null" />
 
   <!-- the tags of one deck: several can be chosen (each deck keeps its own); the button studies the deck with them -->
   <v-bottom-sheet v-model="tagOpen" content-class="tagsheet-content">
@@ -565,6 +566,21 @@ onMounted(load);
   align-items: center;
   justify-content: center;
   box-shadow: 0 2px 0 #3f8a1f;
+  position: relative;
+  z-index: 2; /* above the invisible button that covers the card */
+  cursor: pointer;
+  transition: transform 0.1s, box-shadow 0.1s, background 0.12s;
+}
+.play:active {
+  box-shadow: 0 0 0 transparent; /* pressed in: the edge under it is gone and it moves down */
+  transform: translateY(2px);
+}
+@media (hover: hover) and (pointer: fine) {
+  .play:hover {
+    background: #9be35f; /* lighter, like the Learned button of the study screen under the mouse */
+    box-shadow: 0 1px 0 #3f8a1f;
+    transform: translateY(1px);
+  }
 }
 .filter {
   border-radius: 18px; /* the same as the deck cards */

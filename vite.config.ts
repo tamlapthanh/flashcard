@@ -14,8 +14,8 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       manifest: {
-        name: 'Flashcard',
-        short_name: 'Flashcard',
+        name: '単語帳',
+        short_name: '単語帳',
         description: 'Study your LCT flashcards on your phone',
         start_url: base,
         scope: base,

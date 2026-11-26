@@ -3,12 +3,14 @@ import { computed, ref, watch } from 'vue';
 import { VBottomSheet, VMenu } from 'vuetify/components';
 import { api, ApiError } from '../api';
 import { t } from '../i18n';
+import { parseNote } from '../lib/note';
 import { canSpeak, speakJapanese } from '../lib/speech';
 import { STATUS_COLOR, STATUS_ICON, statusStyle } from '../lib/status';
 import { cardTextVars } from '../cardText';
 import { settings } from '../settings';
 import type { LookupResult, StudyResult, StudyStatus } from '../types';
 import PitchLine from './PitchLine.vue';
+import ReadingText from './ReadingText.vue';
 import RubyWord from './RubyWord.vue';
 
 /* The popup is an overlay outside the study screen: it carries the card's text styles itself (furigana, Han-Viet, kanji block). */
@@ -19,7 +21,7 @@ const statusLabel = (s: StudyStatus): string => t(`status.${s}`);
 /* anchor: with a mouse the popup sits right under that element instead (centred on it, above it when there is no room below); without it, a sheet from the bottom. */
 /* statusOf: given (the word list of the study screen) the popup also carries the Again / Learned / Skip buttons of the word (a tap on the lit one takes it off)
    and, with canGo, a button that opens the word's card. */
-const props = defineProps<{ headword: string | null; reading: string | null; fallbackMeaning: string; anchor?: HTMLElement | null; statusOf?: 'again' | 'learned' | 'skipped' | 'todo'; canGo?: boolean }>();
+const props = defineProps<{ headword: string | null; reading: string | null; fallbackMeaning: string; anchor?: HTMLElement | null; statusOf?: 'again' | 'learned' | 'skipped' | 'todo'; canGo?: boolean; wordId?: string | null }>();
 const emit = defineEmits<{ close: []; mark: [result: StudyResult]; go: [] }>();
 const statusBtns: { result: StudyResult; status: 'again' | 'learned' | 'skipped'; label: () => string; icon: string; color: string }[] = [
   { result: 'again', status: 'again', label: () => t('btn.again'), icon: STATUS_ICON.learning, color: STATUS_COLOR.learning },
@@ -32,6 +34,25 @@ const wrapperProps = computed(() => {
   const base = { modelValue: props.headword !== null, 'onUpdate:modelValue': (v: boolean) => !v && emit('close') };
   return props.anchor ? { ...base, target: props.anchor, location: 'bottom center' as const, offset: 1, closeOnContentClick: false } : base;
 });
+/* The card's own note (compound words, related words, a memory hint), only for a word of the user's cards (wordId): the dictionary lookup does not carry it. */
+const note = ref<string | null>(null);
+watch(
+  () => [props.headword, props.wordId] as const,
+  async ([headword, id]) => {
+    note.value = null;
+    if (!headword || !id) return;
+    try {
+      const [d] = await api.cardDetails([id]);
+      if (props.wordId === id) note.value = d?.note ?? null;
+    } catch {
+      /* no note: the popup is complete without it */
+    }
+  },
+  { immediate: true }
+);
+const noteLines = computed(() => parseNote(note.value));
+const noteOpen = ref(false); // Notes start folded, for every word
+watch(() => props.headword, () => (noteOpen.value = false));
 const result = ref<LookupResult | null>(null);
 const failed = ref(false);
 const loading = ref(false);
@@ -85,7 +106,7 @@ const posText = computed(() => [...new Set(senses.value.map((s) => s.pos).filter
   <component :is="wrapper" v-bind="wrapperProps">
     <!-- the sheet is full width but the card is narrower: a click on the empty sides (the wrapper itself) closes it -->
     <div class="side" @click.self="emit('close')">
-    <v-card class="pa-4 rel" :class="statusOf ? `st-${statusOf}` : ''" :rounded="anchor ? 'lg' : 't-xl'" :style="textVars">
+    <v-card class="pa-4 rel relpop" :class="statusOf ? `st-${statusOf}` : ''" :rounded="anchor ? 'lg' : 't-xl'" :style="textVars">
       <div class="d-flex align-center hdr">
         <v-btn
           v-if="canSpeak()"
@@ -103,7 +124,8 @@ const posText = computed(() => [...new Set(senses.value.map((s) => s.pos).filter
             <div v-if="result?.hanviet" class="hv hwv">{{ result.hanviet.toUpperCase() }}</div>
           </div>
           <PitchLine v-if="result?.pitch?.morae?.length" :morae="result.pitch.morae" class="ml-2 rd" />
-          <span v-else class="rd ml-2">{{ result?.reading ?? reading }}</span>
+          <!-- "On: … / Kun: …" is broken into two lines (On over Kun), like on the card; any other reading stays as it is -->
+          <span v-else class="rd ml-2"><ReadingText :reading="result?.reading ?? reading ?? ''" /></span>
         </template>
         <!-- the pitch label ([0] bằng ...): behind an info icon, like the strokes and JLPT level -->
         <template v-if="pitchInfo">
@@ -148,11 +170,33 @@ const posText = computed(() => [...new Set(senses.value.map((s) => s.pos).filter
             <div v-if="result.exampleVi" class="exvi">{{ result.exampleVi }}</div>
           </div>
         </div>
-      </div>
 
-      <div v-if="result" class="meta">
-        <v-chip v-if="result.status" size="small" class="stchip" :style="statusStyle(result.status)" :prepend-icon="STATUS_ICON[result.status]">{{ statusLabel(result.status) }}</v-chip>
-        <span class="text-caption text-medium-emphasis">{{ result.source === 'user' ? t('related.mine') : t('related.dict') }}</span>
+        <!-- the card's note, as on its back: compound / related words in three aligned columns (word | reading | meaning), other lines across the width -->
+        <!-- Notes: folded at first (the icon beside the title shows / hides it); the status and where the word comes from are part of it -->
+        <div v-if="result" class="item">
+          <v-icon icon="mdi-note-text-outline" color="secondary" />
+          <div class="grow">
+            <button type="button" class="label notes-toggle" :aria-expanded="noteOpen" @click.stop="noteOpen = !noteOpen">
+              {{ t('detail.notes') }}<v-icon :icon="noteOpen ? 'mdi-chevron-up' : 'mdi-chevron-down'" size="16" />
+            </button>
+            <template v-if="noteOpen">
+              <div v-if="noteLines.length" class="notegrid">
+                <div v-for="(line, i) in noteLines" :key="i" class="noteline" :class="{ cmp: !!(line.compound ?? line.related) }">
+                  <template v-if="line.compound ?? line.related">
+                    <span class="related jp">{{ (line.compound ?? line.related)!.headword }}</span>
+                    <span class="nrd jp">{{ (line.compound ?? line.related)!.reading ?? '' }}</span>
+                    <span>{{ (line.compound ?? line.related)!.meaning }}</span>
+                  </template>
+                  <template v-else>{{ line.text }}</template>
+                </div>
+              </div>
+              <div class="meta">
+                <v-chip v-if="result.status" size="small" class="stchip" :style="statusStyle(result.status)" :prepend-icon="STATUS_ICON[result.status]">{{ statusLabel(result.status) }}</v-chip>
+                <span class="text-caption text-medium-emphasis">{{ result.source === 'user' ? t('related.mine') : t('related.dict') }}</span>
+              </div>
+            </template>
+          </div>
+        </div>
       </div>
 
       <div v-if="failed" class="text-caption text-error mt-1">{{ t('related.fail') }}</div>
@@ -191,6 +235,43 @@ const posText = computed(() => [...new Set(senses.value.map((s) => s.pos).filter
 }
 .rel.st-skipped {
   background: color-mix(in srgb, #ef8a17 22%, var(--paper));
+}
+.notegrid {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr); /* word | reading | meaning */
+  column-gap: 12px;
+  row-gap: 6px;
+  margin-left: 10px;
+}
+.notegrid > .noteline {
+  grid-column: 1 / -1;
+}
+.notegrid > .noteline.cmp {
+  display: grid;
+  grid-template-columns: subgrid;
+  align-items: baseline;
+}
+.notegrid .related {
+  display: block; /* the frame fills its column, like the Compounds of the kanji sheet */
+  padding: 1px 6px;
+  font-weight: 700;
+  line-height: 1.3;
+  background: rgb(var(--v-theme-surface));
+  border: 1px solid var(--paper-edge);
+  border-radius: 6px;
+}
+.nrd {
+  white-space: nowrap;
+}
+.notes-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: inherit;
+  cursor: pointer;
 }
 .items {
   display: grid;
