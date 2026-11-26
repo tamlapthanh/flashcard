@@ -10,7 +10,7 @@
  * Only the word itself is read: the kana reading when there is one, otherwise the headword.
  */
 import { ref } from 'vue';
-import { fetchSpeech, type ServerVoiceSource } from '../api';
+import { fetchSpeech, me, type ServerVoiceSource } from '../api';
 import { settings } from '../settings';
 
 const CACHE_PREFIX = 'flashmobile-speech-v4:'; // + the deck name; bump the number when the server's voice or speed changes, so old recordings are not replayed
@@ -85,7 +85,15 @@ async function remember(store: Cache | null, key: Request, blob: Blob, origin?: 
   await store?.put(key, new Response(blob, { headers })).catch(() => undefined);
 }
 
+/* The admin test option; the switch is only shown to an admin, and the server ignores it for anybody else, so it counts only for one. */
+const skipCache = (): boolean => settings.skipVoiceCache && me.admin;
+
 async function cachedSpeech(text: string, deck: string, save = true): Promise<{ blob: Blob; source: VoiceSource; origin?: VoiceOrigin }> {
+  // admin test option "no voice cache": no browser cache, no shipped file, no server cache or file; nothing is stored either
+  if (skipCache()) {
+    const served = await fetchSpeech(text, deck, false, true);
+    return { blob: served.blob, source: served.source };
+  }
   const hasCaches = typeof caches !== 'undefined';
   const key = new Request(entryUrl(text, deck));
   const store = hasCaches ? await caches.open(CACHE_PREFIX + (deck || '_')).catch(() => null) : null;
@@ -223,6 +231,7 @@ export function speakJapanese(text: string, onEnd?: () => void, deck = '', save 
 /** Gets a word ready (into the browser's cache) without playing it, so it starts at once when its turn comes. */
 export function prefetchSpeech(text: string, deck = '', save = true): void {
   if (!text || !settings.naturalVoice || typeof Audio === 'undefined') return;
+  if (skipCache()) return; // nothing is kept, so fetching ahead would only spend credits for a sound that is thrown away
   void cachedSpeech(text, deck, save).catch(() => undefined);
 }
 

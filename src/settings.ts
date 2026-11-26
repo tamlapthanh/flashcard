@@ -20,6 +20,7 @@ export interface Settings {
   autoSpeak: boolean; // auto play: read the word aloud
   autoSaveVoice: boolean; // auto play: let the server keep the spoken words as files (only a local run with SPEECH_SAVE_DIR saves anything)
   strokeStrictness: 'strict' | 'normal' | 'loose'; // handwriting practice: how strictly a stroke is checked (this device only, not synced)
+  skipVoiceCache: boolean; // admin test option: never use a cached voice (browser, shipped file, server), always ask ElevenLabs (this device only, not synced; costs credits)
   testInstantCheck: boolean; // test: true = each answer is marked right or wrong at once, false = nothing is shown until the test is finished (kept per user, synced)
 }
 
@@ -34,11 +35,11 @@ const KEY = 'flashmobile.settings';
 
 function defaults(): Settings {
   const vietnamese = typeof navigator !== 'undefined' && navigator.language?.toLowerCase().startsWith('vi');
-  return { cardText: defaultCardStyles(), showReading: false, dark: false, language: vietnamese ? 'vi' : 'en', showMeaning: true, showHanViet: true, showEnglish: false, showTooltips: true, naturalVoice: true, direction: 'forward', studyInOrder: false, autoFrontSec: 3, autoBackSec: 4, autoSpeak: true, autoSaveVoice: true, strokeStrictness: 'normal', testInstantCheck: true };
+  return { cardText: defaultCardStyles(), showReading: false, dark: false, language: vietnamese ? 'vi' : 'en', showMeaning: true, showHanViet: true, showEnglish: false, showTooltips: true, naturalVoice: true, direction: 'forward', studyInOrder: false, autoFrontSec: 3, autoBackSec: 4, autoSpeak: true, autoSaveVoice: true, strokeStrictness: 'normal', skipVoiceCache: false, testInstantCheck: true };
 }
 
 /* Any saved / received shape -> valid Settings (unknown keys dropped, bad values replaced by defaults). */
-export function normalizeSettings(input: unknown, tooltips = true, strictness: Settings['strokeStrictness'] = 'normal'): Settings {
+export function normalizeSettings(input: unknown, tooltips = true, strictness: Settings['strokeStrictness'] = 'normal', skipCache = false): Settings {
   const base = defaults();
   const raw = (input && typeof input === 'object' ? input : {}) as Partial<Settings> & { fontScale?: number };
   return {
@@ -58,6 +59,7 @@ export function normalizeSettings(input: unknown, tooltips = true, strictness: S
     autoSpeak: typeof raw.autoSpeak === 'boolean' ? raw.autoSpeak : base.autoSpeak,
     autoSaveVoice: typeof raw.autoSaveVoice === 'boolean' ? raw.autoSaveVoice : base.autoSaveVoice,
     strokeStrictness: raw.strokeStrictness === 'strict' || raw.strokeStrictness === 'normal' || raw.strokeStrictness === 'loose' ? raw.strokeStrictness : strictness,
+    skipVoiceCache: typeof raw.skipVoiceCache === 'boolean' ? raw.skipVoiceCache : skipCache,
     testInstantCheck: typeof raw.testInstantCheck === 'boolean' ? raw.testInstantCheck : base.testInstantCheck
   };
 }
@@ -84,13 +86,13 @@ watch(
   { deep: true }
 );
 
-/* What goes to the server: everything except the two per-device settings (the web-only tooltip switch and the stroke strictness). */
-export function syncPayload(value: Settings): Omit<Settings, 'showTooltips' | 'strokeStrictness'> {
-  const { showTooltips: _tooltips, strokeStrictness: _strictness, ...rest } = JSON.parse(JSON.stringify(value)) as Settings;
+/* What goes to the server: everything except the per-device settings (the web-only tooltip switch, the stroke strictness and the admin "no voice cache" test option). */
+export function syncPayload(value: Settings): Omit<Settings, 'showTooltips' | 'strokeStrictness' | 'skipVoiceCache'> {
+  const { showTooltips: _tooltips, strokeStrictness: _strictness, skipVoiceCache: _skip, ...rest } = JSON.parse(JSON.stringify(value)) as Settings;
   return rest;
 }
 
-/* Replace the settings with what the server holds (the local tooltip switch and stroke strictness are kept). */
+/* Replace the settings with what the server holds (the local tooltip switch, stroke strictness and "no voice cache" option are kept). */
 export function applyRemoteSettings(remote: unknown): void {
-  Object.assign(settings, normalizeSettings(remote, settings.showTooltips, settings.strokeStrictness));
+  Object.assign(settings, normalizeSettings(remote, settings.showTooltips, settings.strokeStrictness, settings.skipVoiceCache));
 }

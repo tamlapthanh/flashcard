@@ -533,6 +533,11 @@ const directionSummary = computed(() => (settings.direction === 'forward' ? t('d
       </button>
       <v-expand-transition>
       <div v-show="open.voice" class="soft-card pa-4 mb-3" data-testid="voice-usage">
+        <!-- admin test option, this device only: every read asks ElevenLabs, no cache of any kind -->
+        <v-list-item class="pa-0 mb-2" :title="t('set.skipVoiceCache')" :subtitle="t('set.skipVoiceCacheSub')" lines="three">
+          <template #append><v-switch v-model="settings.skipVoiceCache" color="primary" hide-details density="compact" :aria-label="t('set.skipVoiceCache')" data-testid="skip-voice-cache" /></template>
+        </v-list-item>
+        <v-divider class="mb-2" />
         <div class="usagehead">
           <v-btn icon="mdi-refresh" variant="text" size="small" :loading="usageState === 'loading'" :aria-label="t('set.voiceUsageRefresh')" @click="loadUsage" />
         </div>

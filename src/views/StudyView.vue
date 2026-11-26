@@ -216,10 +216,26 @@ function speak(): void {
   speakJapanese(c.reading || c.headword, () => (speaking.value = false), s.deckName);
 }
 
+/* The speaker beside the example in the details: reads the Japanese example (a second tap stops it). */
+const exSpeaking = ref(false);
+function speakExample(): void {
+  const text = card.value?.example;
+  if (!text) return;
+  if (exSpeaking.value) {
+    stopSpeaking();
+    exSpeaking.value = false;
+    return;
+  }
+  speaking.value = false; // it replaces the word that may be playing
+  exSpeaking.value = true;
+  speakJapanese(text, () => (exSpeaking.value = false), s.deckName);
+}
+
 function flip(): void {
   autoStop();
   stopSpeaking();
   speaking.value = false;
+  exSpeaking.value = false;
   s.flip();
 }
 
@@ -802,7 +818,7 @@ onUnmounted(() => {
           <div v-if="card.example" class="item">
             <v-icon icon="mdi-format-quote-open-outline" color="secondary" />
             <div class="grow">
-              <div class="label">{{ t('detail.example') }}</div>
+              <div class="label">{{ t('detail.example') }}<v-btn v-if="canSpeak() && card.lang === 'ja'" class="exspeak" variant="text" color="primary" size="x-small" density="comfortable" :icon="exSpeaking ? 'mdi-stop' : 'mdi-volume-high'" :aria-label="exSpeaking ? t('study.stop') : t('study.read')" :title="exSpeaking ? t('study.stop') : t('study.read')" @click.stop="speakExample" /></div>
               <div class="jp example">{{ card.example }}</div>
               <div v-if="card.exampleVi" class="exvi">{{ card.exampleVi }}</div>
             </div>
@@ -1604,6 +1620,10 @@ onUnmounted(() => {
   font-family: inherit;
   cursor: pointer;
 }
+.exspeak {
+  margin-left: 6px;
+  vertical-align: middle;
+}
 .example {
   font-size: var(--s-example);
   font-style: var(--i-example);
@@ -1634,6 +1654,15 @@ onUnmounted(() => {
   gap: 10px;
   font-size: 0.92rem;
   min-width: 0;
+}
+/* the Details can be selected and copied (the mouse rule on .stage above only stops dragging from selecting the front of the card) */
+.item,
+.bwcol,
+.bside {
+  user-select: text;
+}
+.exspeak {
+  user-select: none; /* the speaker is not copied along with the example */
 }
 .item .grow {
   flex: 1;

@@ -24,6 +24,8 @@ watch(
 
 watch(step, () => (done.value = false));
 
+// "1 / 10" is drawn as "01 / 10" with the leading zero invisible, so the counter keeps the same width.
+const stepPad = computed(() => '0'.repeat(Math.max(0, String(props.paths.length).length - String(step.value).length)));
 const starts = computed(() => props.paths.map(strokeStart));
 
 function stop(): void {
@@ -96,7 +98,7 @@ onUnmounted(stop);
 
     <div class="controls">
       <!-- order: counter, Prev, Play, Next, Pencil (the row is at most 210px wide, so it cannot run into the text beside the player) -->
-      <span class="count">{{ step }} / {{ paths.length }}</span>
+      <span class="count"><span class="pad" aria-hidden="true">{{ stepPad }}</span>{{ step }} / {{ paths.length }}</span>
       <v-btn class="ctl" icon="mdi-skip-previous" variant="text" size="small" :aria-label="t('strokes.prev')" @click="go(-1)" />
       <v-btn class="ctl" :icon="playing ? 'mdi-pause' : 'mdi-play'" variant="tonal" size="small" :aria-label="playing ? t('strokes.pause') : t('strokes.play')" @click="play" />
       <v-btn class="ctl" icon="mdi-skip-next" variant="text" size="small" :aria-label="t('strokes.next')" @click="go(1)" />
@@ -212,11 +214,15 @@ onUnmounted(stop);
 .count {
   flex: 0 0 auto;
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
   font-weight: 700;
   position: relative;
   top: 3px; /* the row has 3px padding below for the buttons' edge, which lifted the text above the buttons' middle */
   font-size: 0.6rem;
   opacity: 0.7;
+}
+.pad {
+  visibility: hidden; /* keeps the width of the leading zero without showing it */
 }
 .stripwrap {
   display: none;

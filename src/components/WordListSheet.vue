@@ -261,6 +261,13 @@ function onTileClick(id: string, e?: Event): void {
     placeLabel(id, (e?.currentTarget as HTMLElement | null) ?? null);
   }
 }
+/* the eye button: the Sino-Vietnamese reading stays under the kanji of every square */
+const showHv = ref(false);
+/* only the first letter is a capital ("Ngân hàng"); used for this label only */
+const firstUpper = (s: string): string => {
+  const low = s.toLowerCase();
+  return low.charAt(0).toUpperCase() + low.slice(1);
+};
 const searchBox = ref<{ focus: () => void } | null>(null);
 
 function toggleSearch(): void {
@@ -500,6 +507,8 @@ const currentId = computed(() => props.session.current?.id ?? null);
         <span v-if="session.tags.length" class="dcount">{{ t('list.tagsOf', { tags: session.tags.join(', ') }) }}</span>
       </div>
       <!-- the magnifier is pinned in the top right corner (next to the grip): it never moves, with the box shown or hidden -->
+      <!-- square grid only: shows the Sino-Vietnamese reading under the kanji of every square (left of the magnifier, same button) -->
+      <v-btn v-if="kanjiGrid" class="searchbtn hvbtn" :icon="showHv ? 'mdi-eye' : 'mdi-eye-off'" variant="text" size="x-small" density="comfortable" :aria-label="t('list.hanviet')" :aria-pressed="showHv" @click="showHv = !showHv" />
       <v-btn class="searchbtn" :icon="searchOpen ? 'mdi-magnify-close' : 'mdi-magnify'" variant="text" size="x-small" density="comfortable" :aria-label="t('list.search')" :aria-expanded="searchOpen" @click="toggleSearch" />
       <!-- the search box takes room only while it is shown (no empty space reserved for it) -->
       <div v-if="searchOpen" class="search mx-3 mb-1">
@@ -568,7 +577,7 @@ const currentId = computed(() => props.session.current?.id ?? null);
           @click="onTileClick(c.id, $event)"
           @keydown.enter.self.prevent="onTileClick(c.id, $event)"
           @keydown.space.self.prevent="onTileClick(c.id, $event)"
-        >{{ tileLayout(c.headword).text }}<span v-if="c.hanviet || c.meaning || tileLayout(c.headword).cut" class="khv"><span v-if="tileLayout(c.headword).cut" class="khw jp">{{ c.headword }}</span><b v-if="c.hanviet">{{ c.hanviet.toUpperCase() }}</b><span v-if="c.meaning" class="khm">{{ c.meaning }}</span></span></div>
+        >{{ tileLayout(c.headword).text }}<span v-if="showHv && c.hanviet" class="khh">{{ firstUpper(c.hanviet) }}</span><span v-if="c.hanviet ||c.meaning || tileLayout(c.headword).cut" class="khv"><span v-if="tileLayout(c.headword).cut" class="khw jp">{{ c.headword }}</span><b v-if="c.hanviet">{{ c.hanviet.toUpperCase() }}</b><span v-if="c.meaning" class="khm">{{ c.meaning }}</span></span></div>
         <div
           v-else
           role="button"
@@ -918,6 +927,31 @@ const currentId = computed(() => props.session.current?.id ?? null);
   box-shadow: 0 0 0 #3f8a1f !important;
   transform: translateY(2px);
 }
+.searchbtn.hvbtn {
+  right: 52px; /* just left of the magnifier */
+}
+.searchbtn.hvbtn[aria-pressed='true'] {
+  background: color-mix(in srgb, rgb(var(--v-theme-primary)) 80%, #000) !important; /* darker green while on, like the magnifier with its box open */
+}
+/* the Sino-Vietnamese reading, always shown under the kanji (eye button on) */
+.khh {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  bottom: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-body, inherit);
+  font-size: max(9px, calc(10px * var(--kf, 1)));
+  font-weight: 700;
+  line-height: 1.1;
+  color: #d32f2f; /* red: the green was hard to read on the squares */
+  pointer-events: none;
+}
+.v-theme--dark .khh {
+  color: #ff6b6b; /* lighter red on the dark paper */
+}
 .searchbtn[aria-expanded='true'] {
   background: color-mix(in srgb, rgb(var(--v-theme-primary)) 80%, #000) !important; /* a darker green while the box is open (no movement) */
 }
@@ -1024,6 +1058,9 @@ const currentId = computed(() => props.session.current?.id ?? null);
   min-width: 0;
   margin-bottom: 4px;
   padding-right: 44px;
+}
+.sheet:has(.hvbtn) .deckhead {
+  padding-right: 84px; /* room for the eye button too */
 }
 .dname {
   min-width: 0;

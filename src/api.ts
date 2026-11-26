@@ -108,6 +108,9 @@ export const api = {
   },
   decks: () => cached('decks', () => request<{ decks: Deck[] }>('/api/decks')).then((r) => r.decks),
   cards: (params: { deck: string; tags: string[]; status: string[] }) => cardsFor(params),
+  /** Puts the words of a deck that are in those statuses back to New. Online only (not queued): rejects when the server cannot be reached. */
+  resetDeck: (deck: string, statuses: string[]) =>
+    request<{ reset: number }>('/api/progress/reset', { method: 'POST', body: JSON.stringify({ deck, statuses }) }).then((r) => r.reset),
   /** The heavy part (furigana, pitch, kanji, note) of up to 30 cards. Each card is also kept on its own, so any mix of ids can be rebuilt offline. */
   cardDetails: async (ids: string[]): Promise<CardDetail[]> => {
     try {
@@ -199,11 +202,12 @@ export type ServerVoiceSource = 'elevenlabs' | 'server-memory' | 'server-file' |
 
 /* The spoken word as an MP3 (ElevenLabs through the server) and where the server got it from. Rejects when the server has no voice or fails. */
 /* `save` false asks the server not to keep a file of this word (it still plays files it already has). */
-export async function fetchSpeech(text: string, deck = '', save = true): Promise<{ blob: Blob; source: ServerVoiceSource }> {
+/* `fresh` true (admin only; the server ignores it for anybody else) skips the server's caches and the browser's HTTP cache: always a paid ElevenLabs call. */
+export async function fetchSpeech(text: string, deck = '', save = true, fresh = false): Promise<{ blob: Blob; source: ServerVoiceSource }> {
   let res: Response;
   try {
-    const query = `text=${encodeURIComponent(text)}${deck ? `&deck=${encodeURIComponent(deck)}` : ''}${save ? '' : '&save=0'}`;
-    res = await fetch(`${BASE}/api/speech?${query}`, { headers: authHeaders() });
+    const query = `text=${encodeURIComponent(text)}${deck ? `&deck=${encodeURIComponent(deck)}` : ''}${save ? '' : '&save=0'}${fresh ? '&fresh=1' : ''}`;
+    res = await fetch(`${BASE}/api/speech?${query}`, { headers: authHeaders(), ...(fresh ? { cache: 'no-store' as const } : {}) });
   } catch {
     throw new ApiError(t('api.conn'), 0);
   }

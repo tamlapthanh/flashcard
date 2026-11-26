@@ -169,6 +169,37 @@ function startDeck(d: Deck): void {
   void router.push('/study');
 }
 
+/* Puts the words of a deck in the ticked statuses back to New. Nothing is ticked at first, so a tap never resets by accident; the button says how many words it will change. */
+const RESETTABLE: StudyStatus[] = ['learning', 'learned', 'skipped'];
+const resetOpen = ref(false);
+const resetDeck = ref<Deck | null>(null);
+const resetStatuses = ref<StudyStatus[]>([]);
+const resetBusy = ref(false);
+const resetError = ref('');
+const resetCount = computed(() => (resetDeck.value ? resetStatuses.value.reduce((n, s) => n + resetDeck.value!.counts[s], 0) : 0));
+function openReset(d: Deck): void {
+  resetDeck.value = d;
+  resetStatuses.value = [];
+  resetError.value = '';
+  resetOpen.value = true;
+}
+async function doReset(): Promise<void> {
+  const d = resetDeck.value;
+  if (!d || resetBusy.value || resetCount.value === 0) return;
+  resetBusy.value = true;
+  resetError.value = '';
+  try {
+    await api.resetDeck(d.id, resetStatuses.value);
+    resetOpen.value = false;
+    listCache.delete(d.id); // its word list is rebuilt with the new statuses
+    await load();
+  } catch {
+    resetError.value = t('deck.resetFail');
+  } finally {
+    resetBusy.value = false;
+  }
+}
+
 /* The test sheet of one deck (TestSheet): the tags are the ones remembered for the deck. */
 const testOpen = ref(false);
 const testDeckId = ref<string | null>(null);
@@ -221,6 +252,8 @@ onMounted(load);
               <div class="text-subtitle-1 font-weight-medium deckname">{{ d.name }}<v-icon v-if="d.isDefault" icon="mdi-star" size="14" color="warning" class="ml-1 defstar" :title="t('deck.default')" :aria-label="t('deck.default')" /></div>
               <!-- the total, then every status the deck has words in (its own colour and icon; the name shows from a tablet up) -->
               <div class="deckcount text-caption text-medium-emphasis" :class="{ hastags: tagsOf(d).length }">
+                <!-- before the number of cards: puts words of chosen statuses back to New -->
+                <button v-if="d.counts.learning + d.counts.learned + d.counts.skipped > 0" type="button" class="resetmini" :aria-label="t('deck.reset')" :data-tip="t('deck.reset')" @click.stop="openReset(d)"><v-icon icon="mdi-restore" size="12" /><span class="rml">{{ t('deck.resetShort') }}</span></button>
                 <span>{{ t('deck.total', { total: d.total }) }}</span>
                 <span v-for="p in statusParts(d)" :key="p.s" class="stn" :style="statusStyle(p.s)" :title="statusLabel(p.s)"><v-icon :icon="STATUS_ICON[p.s]" size="13" />{{ p.n }}<span class="stl">{{ statusLabel(p.s) }}</span></span>
               </div>
@@ -229,15 +262,15 @@ onMounted(load);
               <!-- tags, test and play: in a row; on a phone they sit at the bottom right of the card -->
               <div class="deckbtns">
               <button v-if="d.tags.length" type="button" class="tagbtn tagc" :class="{ on: tagsOf(d).length }" :aria-label="t('deck.tagsOf', { name: d.name })" :data-tip="t('tip.tags')" @click.stop="openTags(d)">
-                <v-icon icon="mdi-tag-outline" size="18" />
+                <v-icon icon="mdi-tag-outline" size="18" /><span class="bl">{{ t('filter.tags') }}</span>
                 <span v-if="tagsOf(d).length" class="tagn">{{ tagsOf(d).length }}</span>
               </button>
               <button v-if="d.total >= 4" type="button" class="tagbtn testc" :aria-label="t('tip.test')" :data-tip="t('tip.test')" @click.stop="openTest(d)">
-                <v-icon icon="mdi-school-outline" size="18" />
+                <v-icon icon="mdi-school-outline" size="18" /><span class="bl">{{ t('deck.testShort') }}</span>
               </button>
               <!-- the invisible button over the card already studies the deck (and is what a keyboard or a screen reader uses); this circle sits above it so it can react to the mouse, and does the same on a click -->
               <span class="play" aria-hidden="true" @click.stop="startDeck(d)">
-                <v-icon icon="mdi-play" size="20" />
+                <v-icon icon="mdi-play" size="20" /><span class="bl">{{ t('deck.startBtn') }}</span>
               </span>
               </div>
             </div>
@@ -272,6 +305,23 @@ onMounted(load);
       </div>
     </v-card>
   </v-bottom-sheet>
+
+  <!-- put the words of one deck that are in some statuses back to New (asks first: it changes the saved progress) -->
+  <v-dialog v-model="resetOpen" max-width="420">
+    <v-card class="pa-4">
+      <div class="text-subtitle-1 font-weight-medium mb-1">{{ t('deck.resetTitle', { name: resetDeck?.name ?? '' }) }}</div>
+      <v-alert type="warning" variant="tonal" density="compact" icon="mdi-alert-outline" class="mb-2">{{ t('deck.resetWarn') }}</v-alert>
+      <div class="text-caption text-medium-emphasis mb-2">{{ t('deck.resetHint') }}</div>
+      <v-chip-group v-model="resetStatuses" multiple column>
+        <v-chip v-for="s in RESETTABLE" :key="s" :value="s" size="small" class="stchip" :style="statusStyle(s)" :prepend-icon="STATUS_ICON[s]">{{ statusLabel(s) }} ({{ resetDeck?.counts[s] ?? 0 }})</v-chip>
+      </v-chip-group>
+      <v-alert v-if="resetError" type="error" variant="tonal" density="compact" class="mt-2">{{ resetError }}</v-alert>
+      <div class="d-flex justify-end ga-2 mt-3">
+        <v-btn variant="text" :disabled="resetBusy" @click="resetOpen = false">{{ t('deck.cancel') }}</v-btn>
+        <v-btn color="error" variant="flat" :loading="resetBusy" :disabled="resetCount === 0" @click="doReset">{{ t('deck.resetDo', { n: resetCount }) }}</v-btn>
+      </div>
+    </v-card>
+  </v-dialog>
 
   <!-- the test of one deck: number of questions and, if wanted, only the words of some statuses -->
   <TestSheet v-model="testOpen" :deck="testDeck" :tags="testDeck ? tagsOf(testDeck) : []" />
@@ -439,24 +489,28 @@ onMounted(load);
 /* On a phone the info becomes one wrapping line of items: name, counts, every tag chip and the three buttons (at the right).
    No tags: the buttons sit on the counts line. Tags: the counts take a line of their own and the buttons follow the last tag if it fits,
    or drop to a line of their own when the tags are too long. */
+/* Every screen: the card ends right under its content, and the learned bar is a thin line on the bottom edge (it adds no height) */
+.deck {
+  padding-top: 8px;
+  padding-bottom: 10px;
+}
+.deckprog {
+  position: absolute !important;
+  top: auto !important; /* Vuetify sets top: 0 by itself: without this the line jumps to the top edge */
+  left: 16px;
+  right: 16px;
+  bottom: 2px;
+  margin: 0 !important;
+  width: auto !important;
+  height: 3px !important;
+}
 @media (max-width: 600px) {
   .deckpage {
     padding-inline: 6px; /* the cards (and the status filter) run almost to the edge of the screen: the same 6px as the gap between two cards */
   }
-  /* the card ends right under the buttons: less padding below, and the learned bar becomes a thin line on the bottom edge (it adds no height) */
   .deck {
     padding-top: 7px;
     padding-bottom: 9px;
-  }
-  .deckprog {
-    position: absolute !important;
-    top: auto !important; /* Vuetify sets top: 0 by itself: without this the line jumps to the top edge */
-    left: 16px;
-    right: 16px;
-    bottom: 2px;
-    margin: 0 !important;
-    width: auto !important;
-    height: 3px !important;
   }
   .deckrow .deckinfo {
     flex: 1 1 0; /* the info takes what the tile leaves: it never pushes itself onto a line of its own */
@@ -492,6 +546,24 @@ onMounted(load);
     height: 15px;
   }
 }
+.bl {
+  display: none; /* the button text: web only (a phone keeps the round icons) */
+  margin-left: 5px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+@media (min-width: 601px) {
+  .deckbtns .bl {
+    display: inline;
+  }
+  .deckbtns .tagbtn,
+  .deckbtns .play {
+    width: auto;
+    padding: 0 14px 0 11px;
+    border-radius: 17px;
+  }
+}
 .tagbtn {
   flex: 0 0 auto;
   width: 34px;
@@ -516,6 +588,50 @@ onMounted(load);
 }
 .tagbtn.testc {
   --bc: #1e88e5;
+}
+.resetmini {
+  position: relative;
+  z-index: 2; /* above the invisible button that covers the card */
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, #d32f2f 55%, var(--paper-edge));
+  background: color-mix(in srgb, #d32f2f 10%, var(--paper));
+  color: #d32f2f;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 2px 0 color-mix(in srgb, #d32f2f 45%, transparent);
+  transition: transform 0.1s, box-shadow 0.1s, background 0.12s;
+}
+.rml {
+  display: none; /* the text: web only, like the status names (a phone keeps the round icon) */
+  margin-left: 3px;
+  font-size: 0.66rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+@media (min-width: 601px) {
+  .resetmini {
+    width: auto;
+    padding: 0 7px 0 5px;
+    border-radius: 9px;
+  }
+  .rml {
+    display: inline;
+  }
+}
+.resetmini:active {
+  transform: translateY(2px);
+  box-shadow: 0 0 0 transparent;
+}
+@media (hover: hover) and (pointer: fine) {
+  .resetmini:hover {
+    background: color-mix(in srgb, #d32f2f 22%, var(--paper));
+    transform: translateY(1px);
+    box-shadow: 0 1px 0 color-mix(in srgb, #d32f2f 45%, transparent);
+  }
 }
 .tagbtn.tagc,
 .tagbtn.testc {
