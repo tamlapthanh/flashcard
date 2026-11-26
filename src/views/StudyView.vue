@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, shallowRef, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { api, pendingResults, serverInfo, submitResult } from '../api';
 import { auth } from '../auth';
@@ -61,9 +61,29 @@ async function openTest(): Promise<void> {
 
 const pending = ref(pendingResults());
 const related = ref<RelatedWord | null>(null);
+/* A word tapped in the word list: its popup (under the square with a mouse, a sheet on a touch screen) with the status buttons and a way to its card. */
+const listWord = shallowRef<{ id: string; headword: string; reading: string | null; meaning: string; anchor: HTMLElement | null } | null>(null);
+function showListWord(id: string, el?: HTMLElement): void {
+  const c = s.cards.find((x) => x.id === id);
+  const mouse = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+  if (c) listWord.value = { id, headword: c.headword, reading: c.reading ?? null, meaning: c.meaning, anchor: mouse && el ? el : null };
+}
+function goToListWord(): void {
+  const id = listWord.value?.id;
+  listWord.value = null;
+  if (id) pickWord(id);
+}
 const kanjiSel = ref<string | null>(null);
 const detailOpen = ref(false);
-const listOpen = ref(false); // the list of all words of this run (opened from the 1 / N counter)
+const listOpen = ref(false); // the list of all words of this run (opened from the 1 / N counter); on a phone it is the "Words" tab
+/* Phone (same width as the icon-only buttons): the bottom tab bar switches between Study and Words; wider screens keep the sheet. */
+const phoneQuery = typeof window !== 'undefined' ? window.matchMedia('(max-width: 560px)') : null;
+const isPhone = ref(phoneQuery?.matches ?? false);
+const onPhoneChange = (e: MediaQueryListEvent): void => void (isPhone.value = e.matches);
+phoneQuery?.addEventListener('change', onPhoneChange);
+onUnmounted(() => phoneQuery?.removeEventListener('change', onPhoneChange));
+const showTabs = computed(() => isPhone.value && !focusMode.value);
+const onListTab = computed(() => isPhone.value && listOpen.value);
 /* On a touch screen (phone, tablet) the Notes stay folded until tapped; with a mouse there is room, so they always show. */
 const touchOnly = typeof window !== 'undefined' && !window.matchMedia('(hover: hover) and (pointer: fine)').matches;
 const notesOpen = ref(false);
@@ -340,6 +360,25 @@ async function answer(result: StudyResult): Promise<void> {
   pending.value = pendingResults();
 }
 
+/* A status changed from the word list: the same rules as the three buttons, for any word. */
+async function markWord(id: string, result: StudyResult): Promise<void> {
+  autoStop();
+  if (stamping.value) return;
+  const wasCurrent = id === s.current?.id;
+  const side = s.flipped;
+  const card = s.mark(id, result);
+  if (!card) return;
+  if (wasCurrent) {
+    slide.value = 'slide-next';
+    if (!s.finished) s.flipped = side;
+    else detailOpen.value = false;
+    stopSpeaking();
+    speaking.value = false;
+  }
+  await submitResult(card.id, result);
+  pending.value = pendingResults();
+}
+
 function retryAgain(): void {
   const again = s.againCards;
   if (again.length === 0) return;
@@ -587,16 +626,16 @@ onUnmounted(() => {
       <!-- grading buttons live in the header, right of the counter; always usable (you may know the word without flipping).
            On narrow screens only the icons show (the names stay as accessible labels). -->
       <div class="acts">
+        <v-btn v-if="!onListTab" class="act act-again" prepend-icon="mdi-help-circle-outline" variant="flat" color="primary" :disabled="stamping" :aria-label="t('btn.again')" :data-tip="t('tip.again')" @click="answer('again')"><span class="lbl">{{ t('btn.again') }}</span></v-btn>
+        <v-btn v-if="!onListTab" class="act act-learned" prepend-icon="mdi-check" variant="flat" color="primary" :disabled="stamping" :aria-label="t('btn.learned')" :data-tip="t('tip.learned')" @click="answer('learned')"><span class="lbl">{{ t('btn.learned') }}</span></v-btn>
+        <v-btn v-if="!onListTab" class="act act-skip" prepend-icon="mdi-skip-next-outline" variant="flat" color="primary" :disabled="stamping" :aria-label="t('btn.skip')" :data-tip="t('tip.skip')" @click="answer('skip')"><span class="lbl">{{ t('btn.skip') }}</span></v-btn>
         <v-btn v-if="canTest" class="act act-test" prepend-icon="mdi-school-outline" variant="flat" color="primary" :aria-label="t('study.testShort')" :data-tip="t('tip.test')" @click="openTest"><span class="lbl">{{ t('study.testShort') }}</span></v-btn>
-        <v-btn class="act act-again" prepend-icon="mdi-help-circle-outline" variant="flat" color="primary" :disabled="stamping" :aria-label="t('btn.again')" :data-tip="t('tip.again')" @click="answer('again')"><span class="lbl">{{ t('btn.again') }}</span></v-btn>
-        <v-btn class="act act-learned" prepend-icon="mdi-check" variant="flat" color="primary" :disabled="stamping" :aria-label="t('btn.learned')" :data-tip="t('tip.learned')" @click="answer('learned')"><span class="lbl">{{ t('btn.learned') }}</span></v-btn>
-        <v-btn class="act act-skip" prepend-icon="mdi-skip-next-outline" variant="flat" color="primary" :disabled="stamping" :aria-label="t('btn.skip')" :data-tip="t('tip.skip')" @click="answer('skip')"><span class="lbl">{{ t('btn.skip') }}</span></v-btn>
-        <v-btn class="act act-list" prepend-icon="mdi-book-open-page-variant-outline" variant="flat" color="primary" :aria-label="t('list.open')" @click="listOpen = true"><span class="lbl">{{ t('list.short') }}</span></v-btn>
+        <v-btn v-if="!isPhone" class="act act-list" prepend-icon="mdi-book-open-page-variant-outline" variant="flat" color="primary" :aria-label="t('list.open')" @click="listOpen = true"><span class="lbl">{{ t('list.short') }}</span></v-btn>
       </div>
     </TopBar>
     <TestSheet v-model="testOpen" :deck="testDeck" :tags="[...s.tags]" />
 
-    <div class="stage":class="{ focus: focusMode }" :style="textVars" @touchstart.passive="touchStart" @touchend.passive="touchEnd" @mousedown="mouseDown" @mouseup="mouseUp">
+    <div v-show="!onListTab" class="stage" :class="{ focus: focusMode, tabs: showTabs }" :style="textVars" @touchstart.passive="touchStart" @touchend.passive="touchEnd" @mousedown="mouseDown" @mouseup="mouseUp">
       <div class="paper-card card">
         <!-- focus mode: hides the top bar so the card gets the whole screen; the same corner button brings the bar back -->
         <button type="button" class="focusbtn" :aria-label="focusMode ? t('study.focusOff') : t('study.focusOn')" :data-tip="focusMode ? t('study.focusOff') : t('study.focusOn')" @click.stop="setFocusMode(!focusMode)"><v-icon :icon="focusMode ? 'mdi-fullscreen-exit' : 'mdi-fullscreen'" size="22" /></button>
@@ -695,7 +734,9 @@ onUnmounted(() => {
         </div>
         <!-- back of the card: the details (tap, or swipe down, to turn back) -->
         <div class="face back-face" @pointerdown.capture="onPress" @click="closeDetail"@touchstart.passive="detailSwipe.onTouchstart" @touchend.passive="detailSwipe.onTouchend">
-        <div ref="detailEl" class="px-4 pt-3 pb-2 detail">
+        <!-- another word slides in from the side like the front does (the same direction as the front) -->
+        <Transition :name="slide" mode="out-in">
+        <div ref="detailEl" :key="card.id" class="px-4 pt-3 pb-2 detail">
           <!-- the word and its meaning stay visible on the back (the meaning follows the Settings switch) -->
           <div class="back-head">
             <div class="bline">
@@ -784,15 +825,17 @@ onUnmounted(() => {
                 {{ t('detail.notes') }}<v-icon :icon="notesOpen ? 'mdi-chevron-up' : 'mdi-chevron-down'" size="16" />
               </button>
               <div v-else class="label">{{ t('detail.notes') }}</div>
-              <template v-if="!touchOnly || notesOpen">
-                <div v-for="(line, i) in plainNotes" :key="i" class="noteline">
+              <div v-if="!touchOnly || notesOpen" class="notegrid">
+                <!-- compound words in three aligned columns: word | reading | meaning; the other lines run across the whole width -->
+                <div v-for="(line, i) in plainNotes" :key="i" class="noteline" :class="{ cmp: !!line.compound }">
                   <template v-if="line.compound">
-                    <a class="related" href="#" @click.prevent.stop="openRelated(line.compound)">{{ line.compound.headword }} ({{ line.compound.reading }})</a>
-                    {{ line.compound.meaning }}
+                    <a class="related jp" href="#" @click.prevent.stop="openRelated(line.compound)">{{ line.compound.headword }}</a>
+                    <span class="nrd jp">{{ line.compound.reading }}</span>
+                    <span class="nmean">{{ line.compound.meaning }}</span>
                   </template>
                   <template v-else>{{ line.text }}</template>
                 </div>
-              </template>
+              </div>
             </div>
           </div>
 
@@ -800,13 +843,18 @@ onUnmounted(() => {
             <v-icon icon="mdi-link-variant" color="primary" />
             <div class="grow">
               <div class="label">{{ t('detail.related') }}</div>
-              <div v-for="(line, i) in relatedLines" :key="i" class="noteline">
-                <a class="related" href="#" @click.prevent.stop="openRelated(line.related!)">{{ line.related!.headword }}{{ line.related!.reading ? `(${line.related!.reading})` : '' }}</a>
-                = {{ line.related!.meaning }}
+              <!-- the same three aligned columns as the compound words of Notes: word | reading | meaning -->
+              <div class="notegrid">
+                <div v-for="(line, i) in relatedLines" :key="i" class="noteline cmp">
+                  <a class="related jp" href="#" @click.prevent.stop="openRelated(line.related!)">{{ line.related!.headword }}</a>
+                  <span class="nrd jp">{{ line.related!.reading ?? '' }}</span>
+                  <span class="nmean">{{ line.related!.meaning }}</span>
+                </div>
               </div>
             </div>
           </div>
         </div>
+        </Transition>
         </div>
         </div>
       </div>
@@ -818,8 +866,17 @@ onUnmounted(() => {
 
 
     <v-snackbar v-model="autoDone" :timeout="4000" color="primary">{{ t('auto.done') }}</v-snackbar>
-    <WordListSheet :open="listOpen" :session="s" @close="listOpen = false" @pick="pickWord" />
+    <div v-if="isPhone" v-show="listOpen" class="listpane" :class="{ tabs: showTabs }">
+      <WordListSheet inline kanji-grid :open="listOpen" :session="s" @close="listOpen = false" @pick="showListWord" @dismiss="listWord = null" />
+    </div>
+    <WordListSheet v-else kanji-grid :open="listOpen" :session="s" @close="listOpen = false" @pick="showListWord" @dismiss="listWord = null" />
+    <!-- phone: the two tabs sit at the bottom of the screen (hidden in focus mode, where the card takes the whole screen) -->
+    <nav v-if="showTabs" class="tabbar" role="tablist">
+      <button type="button" role="tab" class="tab " :class="{ on: !listOpen }" :aria-selected="!listOpen" @click="listOpen = false"><v-icon icon="mdi-cards-outline" size="22" /><span>{{ t('nav.study') }}</span></button>
+      <button type="button" role="tab" class="tab " :class="{ on: listOpen }" :aria-selected="listOpen" @click="listOpen = true"><v-icon icon="mdi-format-list-bulleted" size="22" /><span>{{ t('list.short') }}</span></button>
+    </nav>
     <KanjiSheet :kanji="card.kanji" :selected="kanjiSel" @close="kanjiSel = null" @select="(l: string) => (kanjiSel = l)" />
+    <RelatedDialog :headword="listWord?.headword ?? null" :reading="listWord?.reading ?? null" :fallback-meaning="listWord?.meaning ?? ''" :anchor="listWord?.anchor ?? null" :status-of="listWord ? s.status(listWord.id) : undefined" can-go @close="listWord = null" @mark="(r: StudyResult) => listWord && markWord(listWord.id, r)" @go="goToListWord" />
     <RelatedDialog :headword="related?.headword ?? null" :reading="related?.reading ?? null" :fallback-meaning="related?.meaning ?? ''" @close="related = null" />
   </template>
 </template>
@@ -833,6 +890,74 @@ onUnmounted(() => {
   flex-direction: column;
   overflow: hidden; /* nothing ever sticks out of the screen while swiping */
 }
+/* phone: the bottom tab bar (56px + the home-indicator inset) takes the room under the card */
+.stage,
+.listpane,
+.tabbar {
+  --tabbar-h: calc(56px + env(safe-area-inset-bottom, 0px));
+}
+.stage.tabs {
+  height: calc(100dvh - 48px - var(--tabbar-h));
+}
+.listpane {
+  height: calc(100dvh - 48px);
+}
+.listpane.tabs {
+  height: calc(100dvh - 48px - var(--tabbar-h));
+}
+.tabbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  height: var(--tabbar-h);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  display: flex;
+  background: #d6efae; /* the top bar's colour (the top of the page gradient) */
+}
+.v-theme--dark .tabbar {
+  background: #123619;
+}
+.tab {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border: 0;
+  background: none;
+  color: #3b2a1a; /* dark brown */
+  opacity: 0.65;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+  position: relative;
+}
+.v-theme--dark .tab {
+  color: #eef8e4; /* dark mode: the bar is dark green, so light text */
+}
+.tab.on {
+  opacity: 1;
+  color: #556b2f; /* the open tab is olive green (dark enough to show on the pale bar) */
+}
+.v-theme--dark .tab.on {
+  color: rgb(var(--v-theme-primary));
+}
+.tab.on::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 25%;
+  right: 25%;
+  height: 3px;
+  border-radius: 0 0 3px 3px;
+  background: currentColor;
+}
+.tab:active {
+  filter: brightness(0.9);
+}
 .stage.focus {
   height: 100dvh;
   padding: 1px 2px 2px; /* top 1px; left, right and bottom 2px */
@@ -841,6 +966,7 @@ onUnmounted(() => {
   padding-top: 6px !important; /* and the details start a little higher inside it */
 }
 .card {
+  background: #fff; /* the study card is white (dark mode keeps the paper colour, below) */
   position: relative;
   flex: 1;
   min-height: 0;
@@ -848,6 +974,9 @@ onUnmounted(() => {
   flex-direction: column;
   overflow: hidden;
   border-radius: 10px; /* slightly rounded corners (the other cards stay 24px) */
+}
+.v-theme--dark .card {
+  background: var(--paper);
 }
 /* The card slides out and the next one slides in from the side you swiped towards. */
 .slide-next-enter-active,
@@ -975,9 +1104,9 @@ onUnmounted(() => {
   }
 }
 /* each button of the top bar has its own colour (--bc fill, --bd edge, --bh when the mouse is over): Again orange, Learned green, Skip blue, Words purple */
-.act-again { --bc: #ef8a17; --bd: #b8600f; --bh: #f7a94d; }
+.act-again { --bc: #2f80d1; --bd: #1f5a99; --bh: #5aa0e6; }
 .act-learned { --bc: #5db82f; --bd: #3f8a1f; --bh: #9be35f; }
-.act-skip { --bc: #2f80d1; --bd: #1f5a99; --bh: #5aa0e6; }
+.act-skip { --bc: #ef8a17; --bd: #b8600f; --bh: #f7a94d; }
 .act-test { --bc: #1e88e5; --bd: #1565a8; --bh: #4aa3f0; } /* same blue as the Test button of the deck list */
 .act-list { --bc: #8e4ec6; --bd: #6a3499; --bh: #aa75d8; }
 .act.v-btn.bg-primary:not(.v-btn--disabled) {
@@ -1386,31 +1515,38 @@ onUnmounted(() => {
   padding-bottom: 0;
   margin-bottom: -5px; /* the line under the head is gone: pull everything under it up (the 12px gap between sections becomes 7px: the word column has empty space of its own) */
 }
+/* Left aligned: speaker | word (its reading under it) | Sino-Vietnamese. Row 1 is the word, row 2 its reading: the speaker and the Sino-Vietnamese sound sit in row 1, so they are level with the word and not with the whole column. */
 .bline {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: auto minmax(0, max-content) minmax(60px, 1fr);
+  grid-template-rows: auto auto;
   align-items: center;
-  gap: 2px 8px;
+  column-gap: 8px;
 }
 .bspeak {
-  flex: 0 0 auto;
+  grid-column: 1;
+  grid-row: 1;
   margin-left: -6px;
 }
 .bwcol {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  display: grid;
+  grid-template-rows: subgrid; /* its word and its reading line up with rows 1 and 2 of the line */
+  justify-items: start;
   min-width: 0;
   max-width: 100%; /* never wider than the line: a long word is zoomed out to fit, not wrapped */
 }
-.bwcol.spk {
-  max-width: calc(100% - 40px); /* room for the speaker button to its left */
+.bwcol:not(.spk) {
+  grid-column: 1 / 3; /* no speaker: the word starts at the left edge, as before */
 }
 .bw {
   display: inline-block; /* zoom (v-fit-line) needs a box */
 }
 .bside {
-  flex: 1 1 140px;
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: start;
   min-width: 0;
 }
 .bw {
@@ -1425,6 +1561,12 @@ onUnmounted(() => {
   font-style: var(--i-backReading);
   color: var(--c-backReading, var(--rd));
   opacity: 0.9;
+}
+/* The reading (On / Kun, pitch line) adds nothing to the width of the word's column: the Sino-Vietnamese sound sits right beside the kanji, whatever the length of the reading under it, which just runs on to the right. */
+.bwcol > .br {
+  width: 0;
+  overflow: visible;
+  white-space: nowrap;
 }
 .bhv {
   margin-top: 4px;
@@ -1505,6 +1647,29 @@ onUnmounted(() => {
 .noteline + .noteline {
   margin-top: 3px;
 }
+.notegrid {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr); /* word | reading | meaning */
+  column-gap: 12px;
+  row-gap: 6px; /* the same spacing as the Compounds list of the kanji sheet */
+}
+.notegrid > .noteline {
+  grid-column: 1 / -1;
+  margin-top: 0 !important;
+}
+.notegrid > .noteline.cmp {
+  display: grid;
+  grid-template-columns: subgrid;
+  align-items: baseline;
+}
+.nrd {
+  white-space: nowrap;
+}
+/* the frames fill their column, so they line up in one tidy column like the Compounds of the kanji sheet */
+.noteline.cmp > .related {
+  display: block;
+  text-align: start;
+}
 .hv {
   color: var(--hv);
   letter-spacing: 0.06em;
@@ -1554,13 +1719,22 @@ onUnmounted(() => {
   font-style: var(--i-kanjiSound);
   color: var(--c-kanjiSound, var(--hv));
 }
+/* A word you can tap is framed like the kanji tiles of Sino-Viet (a thin border, rounded corners): an underline runs through kanji strokes and is hard to read. */
 .related {
+  display: inline-block;
+  padding: 1px 6px;
   font-size: var(--s-related);
   font-style: var(--i-related);
   color: var(--c-related, var(--forest));
   font-weight: 700;
-  text-decoration: underline;
-  text-decoration-color: var(--leaf);
+  text-decoration: none;
+  line-height: 1.3;
+  background: rgb(var(--v-theme-surface));
+  border: 1px solid var(--paper-edge);
+  border-radius: 6px;
+}
+.related:hover {
+  border-color: var(--leaf);
 }
 .stat {
   border-radius: 8px;

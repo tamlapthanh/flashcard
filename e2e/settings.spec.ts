@@ -273,7 +273,7 @@ test.describe('test: marking right away or at the end', () => {
   test('a setting of the user: on by default, switched off in Settings, saved on the server, kept after a reload', async ({ page, request }) => {
     await openSignedIn(page, request, 'bob');
     await page.goto('/#/settings');
-    await page.locator('.sechead').filter({ hasText: 'View' }).click();
+    await page.locator('.sechead').filter({ hasText: 'Display' }).click();
     await expect(sw(page)).toBeChecked(); // the default: marked at once
     // a settings pull that is still on its way would put the old value back: switch off again until it holds
     await expect(async () => {
@@ -285,7 +285,7 @@ test.describe('test: marking right away or at the end', () => {
     await expect.poll(async () => (await apiSettings(request, 'bob')).settings?.testInstantCheck, { timeout: 10_000 }).toBe(false);
 
     await page.reload();
-    await page.locator('.sechead').filter({ hasText: 'View' }).click();
+    await page.locator('.sechead').filter({ hasText: 'Display' }).click();
     await expect(sw(page)).not.toBeChecked();
   });
 });

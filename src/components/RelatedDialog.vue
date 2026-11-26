@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import { VBottomSheet, VMenu } from 'vuetify/components';
 import { api, ApiError } from '../api';
 import { t } from '../i18n';
 import { canSpeak, speakJapanese } from '../lib/speech';
-import { STATUS_ICON, statusStyle } from '../lib/status';
+import { STATUS_COLOR, STATUS_ICON, statusStyle } from '../lib/status';
 import { cardTextVars } from '../cardText';
 import { settings } from '../settings';
-import type { LookupResult, StudyStatus } from '../types';
+import type { LookupResult, StudyResult, StudyStatus } from '../types';
 import PitchLine from './PitchLine.vue';
 import RubyWord from './RubyWord.vue';
 
@@ -15,9 +16,22 @@ const textVars = computed(() => cardTextVars(settings.cardText));
 
 const statusLabel = (s: StudyStatus): string => t(`status.${s}`);
 
-const props = defineProps<{ headword: string | null; reading: string | null; fallbackMeaning: string }>();
-const emit = defineEmits<{ close: [] }>();
+/* anchor: with a mouse the popup sits right under that element instead (centred on it, above it when there is no room below); without it, a sheet from the bottom. */
+/* statusOf: given (the word list of the study screen) the popup also carries the Again / Learned / Skip buttons of the word (a tap on the lit one takes it off)
+   and, with canGo, a button that opens the word's card. */
+const props = defineProps<{ headword: string | null; reading: string | null; fallbackMeaning: string; anchor?: HTMLElement | null; statusOf?: 'again' | 'learned' | 'skipped' | 'todo'; canGo?: boolean }>();
+const emit = defineEmits<{ close: []; mark: [result: StudyResult]; go: [] }>();
+const statusBtns: { result: StudyResult; status: 'again' | 'learned' | 'skipped'; label: () => string; icon: string; color: string }[] = [
+  { result: 'again', status: 'again', label: () => t('btn.again'), icon: STATUS_ICON.learning, color: STATUS_COLOR.learning },
+  { result: 'learned', status: 'learned', label: () => t('btn.learned'), icon: STATUS_ICON.learned, color: STATUS_COLOR.learned },
+  { result: 'skip', status: 'skipped', label: () => t('btn.skip'), icon: STATUS_ICON.skipped, color: STATUS_COLOR.skipped }
+];
 
+const wrapper = computed(() => (props.anchor ? VMenu : VBottomSheet));
+const wrapperProps = computed(() => {
+  const base = { modelValue: props.headword !== null, 'onUpdate:modelValue': (v: boolean) => !v && emit('close') };
+  return props.anchor ? { ...base, target: props.anchor, location: 'bottom center' as const, offset: 1, closeOnContentClick: false } : base;
+});
 const result = ref<LookupResult | null>(null);
 const failed = ref(false);
 const loading = ref(false);
@@ -68,10 +82,10 @@ const posText = computed(() => [...new Set(senses.value.map((s) => s.pos).filter
 </script>
 
 <template>
-  <v-bottom-sheet :model-value="headword !== null" @update:model-value="(v: boolean) => !v && emit('close')">
+  <component :is="wrapper" v-bind="wrapperProps">
     <!-- the sheet is full width but the card is narrower: a click on the empty sides (the wrapper itself) closes it -->
     <div class="side" @click.self="emit('close')">
-    <v-card class="pa-4 rel" rounded="t-xl" :style="textVars">
+    <v-card class="pa-4 rel" :class="statusOf ? `st-${statusOf}` : ''" :rounded="anchor ? 'lg' : 't-xl'" :style="textVars">
       <div class="d-flex align-center hdr">
         <v-btn
           v-if="canSpeak()"
@@ -98,6 +112,8 @@ const posText = computed(() => [...new Set(senses.value.map((s) => s.pos).filter
           </button>
           <span v-if="pitchOpen" class="ml-1 text-medium-emphasis pitchv">{{ pitchInfo }}</span>
         </template>
+        <!-- word list of the study screen: the way to this word's card, at the top right level with the word -->
+        <v-btn v-if="canGo" size="small" variant="tonal" color="primary" prepend-icon="mdi-cards-outline" class="ml-auto gobtn" @click="emit('go')">{{ t('related.go') }}</v-btn>
       </div>
       <v-progress-linear v-if="loading" indeterminate class="my-2" />
 
@@ -140,10 +156,17 @@ const posText = computed(() => [...new Set(senses.value.map((s) => s.pos).filter
       </div>
 
       <div v-if="failed" class="text-caption text-error mt-1">{{ t('related.fail') }}</div>
-      <v-btn block variant="tonal" prepend-icon="mdi-close" class="mt-3" :data-tip="t('related.close')" @click="emit('close')">{{ t('related.close') }}</v-btn>
+      <div v-if="statusOf" class="stbar">
+        <button v-for="b in statusBtns" :key="b.result" type="button" class="stb2" :class="{ on: statusOf === b.status }" :style="{ '--sc': b.color }" :aria-pressed="statusOf === b.status" @click="emit('mark', statusOf === b.status ? 'new' : b.result)">
+          <v-icon :icon="b.icon" size="16" />{{ b.label() }}
+        </button>
+      </div>
+      <div class="d-flex justify-end ga-2 mt-3">
+        <v-btn size="small" variant="tonal" color="error" prepend-icon="mdi-close" :data-tip="t('related.close')" @click="emit('close')">{{ t('related.close') }}</v-btn>
+      </div>
     </v-card>
     </div>
-  </v-bottom-sheet>
+  </component>
 </template>
 
 <style scoped>
@@ -158,6 +181,16 @@ const posText = computed(() => [...new Set(senses.value.map((s) => s.pos).filter
   max-width: min(860px, 96vw);
   max-height: 85vh;
   overflow-y: auto;
+}
+/* the word's current status tints the popup (same colours as its tile in the list) */
+.rel.st-learned {
+  background: color-mix(in srgb, #3f9b1f 20%, var(--paper));
+}
+.rel.st-again {
+  background: color-mix(in srgb, #2f80d1 20%, var(--paper));
+}
+.rel.st-skipped {
+  background: color-mix(in srgb, #ef8a17 22%, var(--paper));
 }
 .items {
   display: grid;
@@ -225,6 +258,44 @@ const posText = computed(() => [...new Set(senses.value.map((s) => s.pos).filter
   background: none;
   color: var(--leaf);
   cursor: pointer;
+}
+/* the three status buttons of the word (the lit one is the word's status), same colours as the deck screen */
+.gobtn {
+  flex: none;
+}
+.stbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+.stb2 {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 11px 0 8px;
+  border: 1.5px solid color-mix(in srgb, var(--sc) 55%, transparent);
+  border-radius: 999px;
+  background: none;
+  color: var(--sc);
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.stb2.on {
+  background: var(--sc);
+  border-color: var(--sc);
+  color: #fff;
+}
+.stb2:not(.on):active {
+  background: color-mix(in srgb, var(--sc) 30%, transparent);
+}
+@media (hover: hover) and (pointer: fine) {
+  .stb2:not(.on):hover {
+    background: color-mix(in srgb, var(--sc) 8%, transparent);
+    border-color: var(--sc);
+  }
 }
 .meta {
   display: flex;

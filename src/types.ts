@@ -1,6 +1,6 @@
 /* Shapes returned by flashmobile-server. */
 export type StudyStatus = 'new' | 'learning' | 'learned' | 'skipped';
-export type StudyResult = 'again' | 'learned' | 'skip';
+export type StudyResult = 'again' | 'learned' | 'skip' | 'new';
 
 export interface Progress {
   status: StudyStatus;

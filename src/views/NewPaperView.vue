@@ -39,17 +39,15 @@ const deckChips = computed<string[]>({
   }
 });
 const picks = ref<string[]>([]); // the lessons picked, each as pickKey(deck, tag)
-const count = ref(20);
-const kinds = ref<QuizKind[]>([...ALL_KINDS]); // any choice of the three kinds; "All" stands for the three
+const count = ref(10);
+const kinds = ref<QuizKind[]>([...ALL_KINDS]); // any choice of the three kinds
 
-/* The chips: "All" first, then the three kinds. Tapping "All" picks the three; tapping a kind toggles it, and at least one stays picked. */
-const allKinds = computed(() => ALL_KINDS.every((k) => kinds.value.includes(k)));
+/* The chips: the three kinds. Tapping one toggles it, and at least one stays picked. */
 const kindChips = computed<string[]>({
-  get: () => (allKinds.value ? ['all', ...kinds.value] : kinds.value),
+  get: () => kinds.value,
   set: (v) => {
     const picked = ALL_KINDS.filter((k) => v.includes(k));
-    if (v.includes('all') && !allKinds.value) kinds.value = [...ALL_KINDS];
-    else if (picked.length > 0) kinds.value = picked;
+    if (picked.length > 0) kinds.value = picked;
   }
 });
 
@@ -226,7 +224,6 @@ onMounted(() => void loadDecks());
         <section class="step">
           <div class="shead"><span class="num n4">3</span>{{ t('newpaper.step4') }}</div>
           <v-chip-group v-model="kindChips" multiple filter column color="primary">
-            <v-chip value="all" size="small">{{ t('test.kindMixed') }}</v-chip>
             <v-chip value="meaning" size="small" prepend-icon="mdi-translate">{{ t('test.kindMeaning') }}</v-chip>
             <v-chip value="listen" size="small" prepend-icon="mdi-volume-high">{{ t('test.kindListen') }}</v-chip>
             <v-chip value="reading" size="small" prepend-icon="mdi-syllabary-hiragana">{{ t('test.kindReading') }}</v-chip>

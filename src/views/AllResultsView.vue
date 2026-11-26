@@ -27,7 +27,7 @@ async function load(): Promise<void> {
   try {
     papers.value = await api.papers();
     for (const p of papers.value) {
-      const list = p.attempts > 0 ? await api.paperResults(p.paperId) : [];
+      const list = await api.paperResults(p.paperId); // p.attempts counts only the admin's own attempts, not everybody's
       results.value = new Map(results.value).set(p.paperId, list);
       fetched.value++;
     }

@@ -7,6 +7,7 @@ import { t } from '../i18n';
 import TagChips from '../components/TagChips.vue';
 import TestSheet from '../components/TestSheet.vue';
 import TopBar from '../components/TopBar.vue';
+import RelatedDialog from '../components/RelatedDialog.vue';
 import WordListSheet from '../components/WordListSheet.vue';
 import { tileColor, tileMark } from '../lib/deckMark';
 import { STATUS_ICON, STATUS_ORDER, statusStyle } from '../lib/status';
@@ -51,9 +52,24 @@ function countFor(d: Deck, tags: string[]): number {
 /* Tapping a deck's tile opens the word list of that whole deck (every card, whatever its status), like the list button of the study screen. */
 const listSession = shallowRef<StudySession | null>(null);
 const listOpen = ref(false);
+/* A word picked in that list opens its dictionary popup on top of the list (the list stays open behind it). */
+/* With a mouse the popup hangs under the clicked square; on a touch screen it is a sheet from the bottom. */
+const wordPopup = shallowRef<{ headword: string; reading: string | null; meaning: string; anchor: HTMLElement | null } | null>(null);
+function showWord(id: string, el?: HTMLElement): void {
+  const c = listSession.value?.cards.find((x) => x.id === id);
+  const mouse = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+  if (c) wordPopup.value = { headword: c.headword, reading: c.reading ?? null, meaning: c.meaning, anchor: mouse && el ? el : null };
+}
 const listLoadingId = ref<string | null>(null);
+const listCache = new Map<string, StudySession>(); // a list already built on this screen opens at once the next time (the screen is rebuilt after studying, so it is never stale)
 async function openList(d: Deck): Promise<void> {
   if (listLoadingId.value) return;
+  const cached = listCache.get(d.id);
+  if (cached) {
+    listSession.value = cached;
+    listOpen.value = true;
+    return;
+  }
   listLoadingId.value = d.id;
   error.value = '';
   try {
@@ -63,6 +79,7 @@ async function openList(d: Deck): Promise<void> {
       if (c.progress.status === 'learned') list.learnedIds.add(c.id);
       else if (c.progress.status === 'skipped') list.skippedIds.add(c.id);
     }
+    listCache.set(d.id, list);
     listSession.value = list;
     listOpen.value = true;
   } catch {
@@ -197,7 +214,8 @@ onMounted(load);
           <button type="button" class="deckhit" :aria-label="`${d.name}. ${t('deck.count', { total: d.total, fresh: d.counts.new })}${statusParts(d).filter((p) => p.s !== 'new').map((p) => ', ' + p.n + ' ' + statusLabel(p.s)).join('')}`" :data-tip="t('tip.deck')" @click="startDeck(d)" />
           <div class="d-flex align-center ga-3 deckrow">
             <div class="deck-tile jp" :style="{ background: tileColor(d.name) }" :class="{ two: tileMark(d.name).length > 1, busy: listLoadingId === d.id }" role="button" tabindex="0" :aria-label="t('list.open')" :data-tip="t('list.open')" @click.stop="openList(d)" @keydown.enter.self.prevent="openList(d)" @keydown.space.self.prevent="openList(d)">
-              {{ tileMark(d.name) }}<span class="tilelist" aria-hidden="true"><v-icon icon="mdi-format-list-bulleted" size="11" /></span>
+              <v-progress-circular v-if="listLoadingId === d.id" indeterminate size="22" width="3" color="white" />
+              <template v-else>{{ tileMark(d.name) }}</template><span class="tilelist" aria-hidden="true"><v-icon icon="mdi-format-list-bulleted" size="11" /></span>
             </div>
             <div class="flex-grow-1 text-start deckinfo">
               <div class="text-subtitle-1 font-weight-medium deckname">{{ d.name }}<v-icon v-if="d.isDefault" icon="mdi-star" size="14" color="warning" class="ml-1 defstar" :title="t('deck.default')" :aria-label="t('deck.default')" /></div>
@@ -230,7 +248,8 @@ onMounted(load);
   </v-container>
 
   <!-- word list of a whole deck (opened from the tile of a deck); picking a word only closes it -->
-  <WordListSheet v-if="listSession" :open="listOpen" :session="listSession" @close="listOpen = false" @pick="listOpen = false" />
+  <WordListSheet v-if="listSession" :open="listOpen" :session="listSession" @close="listOpen = false" @pick="showWord" @dismiss="wordPopup = null" kanji-grid />
+  <RelatedDialog :headword="wordPopup?.headword ?? null" :reading="wordPopup?.reading ?? null" :fallback-meaning="wordPopup?.meaning ?? ''" :anchor="wordPopup?.anchor ?? null" @close="wordPopup = null" />
 
   <!-- the tags of one deck: several can be chosen (each deck keeps its own); the button studies the deck with them -->
   <v-bottom-sheet v-model="tagOpen" content-class="tagsheet-content">
@@ -309,6 +328,7 @@ onMounted(load);
   }
 }
 .deck {
+  background: #fff; /* white (dark mode keeps the paper colour, below) */
   position: relative;
   display: block;
   width: 100%;
@@ -318,6 +338,13 @@ onMounted(load);
   text-align: start;
   color: inherit;
   transition: border-color 0.15s, transform 0.1s, opacity 0.15s;
+}
+.v-theme--dark .deck,
+.v-theme--dark .filter {
+  background: var(--paper);
+}
+.filter {
+  background: #fff; /* the status bar on top is white too */
 }
 /* the button that covers the whole card: a tap on the card studies the deck; the tile and the tag button are above it */
 .deckhit {
@@ -380,7 +407,8 @@ onMounted(load);
   cursor: pointer;
 }
 .deck-tile.busy {
-  opacity: 0.6;
+  opacity: 0.85;
+  pointer-events: none; /* a second tap while the list is loading does nothing */
 }
 .deck-tile.two {
   font-size: 1.1rem;

@@ -55,7 +55,7 @@ function filterCopy(all: { total: number; cards: LightCard[] }, p: { tags: strin
   const cards = all.cards
     .map((c) => {
       const r = pending.get(c.id);
-      return r ? { ...c, progress: { ...c.progress, status: (r === 'learned' ? 'learned' : r === 'skip' ? 'skipped' : 'learning') as LightCard['progress']['status'] } } : c;
+      return r ? { ...c, progress: { ...c.progress, status: (r === 'learned' ? 'learned' : r === 'skip' ? 'skipped' : r === 'new' ? 'new' : 'learning') as LightCard['progress']['status'] } } : c;
     })
     .filter((c) => (!p.tags.length || c.tags.some((tag) => p.tags.includes(tag))) && (!p.status.length || p.status.includes(c.progress.status)));
   return { total: cards.length, cards };

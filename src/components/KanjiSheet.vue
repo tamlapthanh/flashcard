@@ -68,12 +68,20 @@ watch(current, (k) => k && (shown.value = k), { immediate: true });
 
 // Each time the sheet opens its content is rebuilt, so the stroke order plays from the start again.
 const opened = ref(0);
+/* The sheet is wide only while Memory hint or Compounds is unfolded (KanjiBlock tells); folded, the content is narrow and so is the sheet. */
+const expanded = ref(false);
+/* With a mouse the sheet itself is only as wide as its content (centred at the bottom); on a touch screen it spans the screen. */
+const sheetWidth = computed(() => {
+  if (!mouse) return undefined;
+  const px = practicing.value || drilled.value ? 520 : multi.value ? cols.value * 700 : alone.value && expanded.value && shown.value && hintBesideCompounds(shown.value) ? 780 : 520;
+  return `min(${px + 32}px, 100%)`;
+});
 watch(open, (isOpen) => isOpen && opened.value++, { immediate: true });
 </script>
 
 <!-- Slides up from the card: one kanji with its stroke order, sized to fit without scrolling. Swipe down to close. -->
 <template>
-  <v-bottom-sheet :model-value="open" @update:model-value="(v: boolean) => !v && emit('close')">
+  <v-bottom-sheet :model-value="open" :width="sheetWidth" @update:model-value="(v: boolean) => !v && emit('close')">
     <v-card ref="sheetRef" class="sheet" rounded="t-xl" :style="textVars" @touchstart.passive="swipe.onTouchstart" @touchend.passive="swipe.onTouchend">
       <div class="grip" />
       <div class="px-4 pb-4">
@@ -89,11 +97,11 @@ watch(open, (isOpen) => isOpen && opened.value++, { immediate: true });
         <div v-else-if="multi" ref="multiRef" :key="opened" class="multi" :style="{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, maxWidth: `${cols * 700}px`, margin: '0 auto' }">
           <KanjiBlock v-for="(k, i) in kanji" :key="k.Literal" :kanji="k" class="cell" :class="{ divided: i % cols !== 0, rowdiv: i >= cols }" @open="openPart" @practice="startPractice" />
         </div>
-        <div v-else class="stage" :class="{ wide: alone && !!shown && hintBesideCompounds(shown) }">
+        <div v-else class="stage" :class="{ wide: alone && expanded && !!shown && hintBesideCompounds(shown) }">
         <v-chip-group v-if="kanji.length > 1" :model-value="selected" mandatory color="primary" class="mb-1" @update:model-value="(v: string | null) => v && emit('select', v)">
           <v-chip v-for="k in kanji" :key="k.Literal" :value="k.Literal"><span class="jp">{{ k.Literal }}</span></v-chip>
         </v-chip-group>
-        <KanjiBlock v-if="shown" :key="`${shown.Literal}-${opened}`" :kanji="shown" :side-by-side="alone" @open="openPart" @practice="startPractice" />
+        <KanjiBlock v-if="shown" :key="`${shown.Literal}-${opened}`" :kanji="shown" :side-by-side="alone" @expanded="(v: boolean) => (expanded = v)" @open="openPart" @practice="startPractice" />
         </div>
       </div>
     </v-card>
@@ -127,6 +135,7 @@ watch(open, (isOpen) => isOpen && opened.value++, { immediate: true });
 }
 .stage {
   max-width: 520px;
+  transition: max-width 0.2s ease;
   margin: 0 auto; /* one kanji sits in the middle of the sheet, whether it is the card's own or a component opened from the graph */
 }
 .back {

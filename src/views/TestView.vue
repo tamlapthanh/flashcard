@@ -177,7 +177,7 @@ async function load(): Promise<void> {
       phase.value = 'known';
       return;
     }
-    const questions = buildQuiz(source, pool, { count: j.count, mode: j.kinds });
+    const questions = buildQuiz(source, pool, { count: j.count, mode: j.kinds, kinds: j.kindList });
     if (questions.length === 0) {
       phase.value = j.kinds === 'listen' || j.kinds === 'reading' ? 'empty' : 'few'; // listening leaves out single kanji, reading the words with no reading of their own: nothing may be left
       return;

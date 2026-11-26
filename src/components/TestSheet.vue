@@ -6,7 +6,7 @@ import { useRouter } from 'vue-router';
 import { api } from '../api';
 import TagChips from './TagChips.vue';
 import { t } from '../i18n';
-import { MAX_QUESTIONS, type QuizMode } from '../lib/quiz';
+import { ALL_KINDS, MAX_QUESTIONS, modeOf, type QuizKind } from '../lib/quiz';
 import { STATUS_ICON, STATUS_ORDER, statusStyle } from '../lib/status';
 import { pendingTest } from '../store';
 import type { Deck, StudyStatus } from '../types';
@@ -17,7 +17,15 @@ const open = defineModel<boolean>({ required: true });
 const router = useRouter();
 
 const count = ref(ALL); // the default: every word that matches (up to MAX_QUESTIONS)
-const kinds = ref<QuizMode>('mixed');
+const kinds = ref<QuizKind[]>([...ALL_KINDS]); // any choice of the three kinds
+/* Tapping a kind toggles it; at least one stays picked. */
+const kindChips = computed<string[]>({
+  get: () => kinds.value,
+  set: (v) => {
+    const picked = ALL_KINDS.filter((k) => v.includes(k));
+    if (picked.length > 0) kinds.value = picked;
+  }
+});
 const statuses = ref<StudyStatus[]>([]); // none ticked: every word of the deck
 const COUNTS = [10, 20, 50, ALL];
 const statusLabel = (s: StudyStatus): string => t(`status.${s}`);
@@ -61,7 +69,7 @@ function start(): void {
   const d = props.deck;
   if (!d) return;
   open.value = false;
-  pendingTest.value = { deckId: d.id, deckName: d.name, tags: [...props.tags], statuses: [...statuses.value], count: count.value === ALL ? Math.min(matching.value ?? MAX_QUESTIONS, MAX_QUESTIONS) : count.value, kinds: kinds.value };
+  pendingTest.value = { deckId: d.id, deckName: d.name, tags: [...props.tags], statuses: [...statuses.value], count: count.value === ALL ? Math.min(matching.value ?? MAX_QUESTIONS, MAX_QUESTIONS) : count.value, kinds: modeOf(kinds.value), kindList: [...kinds.value] };
   void router.push('/test');
 }
 </script>
@@ -80,8 +88,7 @@ function start(): void {
           <v-chip v-for="n in COUNTS" :key="n" :value="n" size="small">{{ n === ALL ? t('test.countAll') : n }}</v-chip>
         </v-chip-group>
         <div class="sub s-kind mb-1"><v-icon icon="mdi-shape-outline" size="16" />{{ t('test.kinds') }}</div>
-        <v-chip-group v-model="kinds" mandatory filter color="primary" class="ind mb-2">
-          <v-chip value="mixed" size="small">{{ t('test.kindMixed') }}</v-chip>
+        <v-chip-group v-model="kindChips" multiple filter color="primary" class="ind mb-2">
           <v-chip value="meaning" size="small" prepend-icon="mdi-translate">{{ t('test.kindMeaning') }}</v-chip>
           <v-chip value="listen" size="small" prepend-icon="mdi-volume-high">{{ t('test.kindListen') }}</v-chip>
           <v-chip value="reading" size="small" prepend-icon="mdi-syllabary-hiragana">{{ t('test.kindReading') }}</v-chip>

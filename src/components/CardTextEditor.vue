@@ -632,7 +632,12 @@ function resetAll(): void {
   letter-spacing: 0.1em;
 }
 .ul {
-  text-decoration: underline;
+  /* the sample of a tappable related word: framed like on the card (no underline) */
+  display: inline-block;
+  padding: 1px 6px;
+  background: rgb(var(--v-theme-surface));
+  border: 1px solid var(--paper-edge);
+  border-radius: 6px;
 }
 .lh {
   line-height: 1.2;

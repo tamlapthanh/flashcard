@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { t } from '../i18n';
 import type { KanjiInfo } from '../types';
 import { compoundsOf, hintBesideCompounds, mnemonicOf } from '../lib/kanjiNotes';
@@ -10,7 +10,7 @@ import StrokePlayer from './StrokePlayer.vue';
 
 /* sideBySide: Compounds may sit to the right of the Memory hint, when the block is wide enough (only a lone kanji on a wide sheet asks for it). */
 const props = defineProps<{ kanji: KanjiInfo; sideBySide?: boolean }>();
-const emit = defineEmits<{ open: [literal: string]; practice: [kanji: KanjiInfo] }>();
+const emit = defineEmits<{ open: [literal: string]; practice: [kanji: KanjiInfo]; expanded: [open: boolean] }>();
 
 /* Memory hint, Compounds (and Components, in KanjiTree) start folded, on the web and on a phone alike: the user opens what they want. */
 const hintOpen = ref(false);
@@ -46,6 +46,9 @@ function openWord(c: { Word: string; Reading?: string | null; Vi?: string | null
 
 /* A part tapped in Components opens its own kanji in a small popup (it appears like the word popup of a compound). */
 const partLit = ref<string | null>(null);
+
+/* Tell the sheet whether Memory hint or Compounds is unfolded: the sheet is only as wide as the content needs. */
+watch([hintOpen, compOpen], ([h, c]) => emit('expanded', h || c), { immediate: true });
 
 function toggleComp(): void {
   compOpen.value = !compOpen.value;
@@ -101,7 +104,7 @@ function toggleHint(): void {
       </div>
     </div>
 
-    <div class="pair" :class="{ sbs: sideBySide && hintBesideCompounds(kanji) }">
+    <div class="pair" :class="{ sbs: sideBySide && hintBesideCompounds(kanji), hopen: hintOpen }">
     <!-- Memory hint: the kanji as the sum of its parts. Every part is a same-size tile holding only the character; its sound
          and meaning sit beside it, so the rows line up: whole | = / + | part | what it is. -->
     <div v-if="parts.length || mnemonic.length" class="hint">
@@ -164,6 +167,10 @@ function toggleHint(): void {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     column-gap: 28px;
     align-items: start;
+  }
+  /* Memory hint folded: it is only its title, so Compounds gets the rest of the width (the Vietnamese meanings stop wrapping word by word). */
+  .pair.sbs:not(.hopen) {
+    grid-template-columns: max-content minmax(0, 1fr);
   }
 }
 .top {

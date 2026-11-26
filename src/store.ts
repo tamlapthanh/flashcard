@@ -2,7 +2,7 @@
 import { ref, shallowRef } from 'vue';
 import { auth } from './auth';
 import { StudySession, type RunSnapshot } from './session';
-import type { QuizMode } from './lib/quiz';
+import type { QuizKind, QuizMode } from './lib/quiz';
 import type { StudyStatus } from './types';
 
 /*
@@ -58,6 +58,7 @@ export interface PendingTest {
   statuses: StudyStatus[]; // empty: every word of the deck
   count: number;
   kinds?: QuizMode; // default: both kinds
+  kindList?: QuizKind[]; // a choice of kinds (any of the three); wins over `kinds` when the questions are drawn, `kinds` is then what is stored
   /** Continue this unfinished test (the rest of the fields only say which deck it is). */
   resumeId?: string;
   wordIds?: string[];

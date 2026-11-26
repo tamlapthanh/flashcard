@@ -158,10 +158,13 @@ interface Group {
   title: string;
   items: TestSessionInfo[]; // empty for the assigned tests: they are in `papers`
 }
+/* A user has one unfinished attempt at an assigned test at a time: it shows on the assigned test's own card (Continue), not twice. */
+const paperIds = computed(() => new Set(papers.value.map((p) => p.paperId)));
+const openOf = (p: PaperInfo): TestSessionInfo | undefined => sessions.value.find((s) => s.status === 'open' && s.paperId === p.paperId);
 const groups = computed<Group[]>(() =>
   (
     [
-      { key: 'open', icon: 'mdi-play-circle-outline', title: t('tests.secOpen'), items: sessions.value.filter((s) => s.status === 'open') },
+      { key: 'open', icon: 'mdi-play-circle-outline', title: t('tests.secOpen'), items: sessions.value.filter((s) => s.status === 'open' && !(s.paperId && paperIds.value.has(s.paperId))) },
       { key: 'papers', icon: 'mdi-clipboard-text-outline', title: t('tests.secAssigned'), items: [] },
       { key: 'done', icon: 'mdi-history', title: t('tests.secDone'), items: sessions.value.filter((s) => s.status === 'done') }
     ] as Group[]
@@ -234,12 +237,13 @@ onMounted(() => {
 
       <!-- the tests an admin assigned -->
       <div v-if="g.key === 'papers'" class="grid">
-        <div v-for="p in papers" :key="p.paperId" class="paper-card row paperrow" :class="{ open: p.attempts === 0 }">
+        <div v-for="p in papers" :key="p.paperId" class="paper-card row paperrow" :class="{ open: !!openOf(p), fresh: p.attempts === 0 && !openOf(p) }">
           <div class="info">
             <div class="decktop">
               <div class="deck jp">{{ p.title }}</div>
-              <span v-if="p.bestCorrect !== null" class="scoreline doneline" :class="{ perfect: p.bestCorrect === p.total }">{{ p.bestCorrect }}/{{ p.total }}</span>
-              <span v-else class="scoreline openline">{{ p.total }}</span>
+              <span v-if="openOf(p)" class="scoreline openline">{{ openOf(p)!.answered }}/{{ openOf(p)!.total }}</span>
+              <span v-else-if="p.bestCorrect !== null" class="scoreline doneline" :class="{ perfect: p.bestCorrect === p.total }">{{ p.bestCorrect }}/{{ p.total }}</span>
+              <span v-else class="scoreline freshline">{{ p.total }}</span>
             </div>
             <div class="text-caption text-medium-emphasis srcline">{{ paperSourceText(p) }}</div>
             <div class="text-caption text-medium-emphasis">{{ when(p.at) }} · {{ t('papers.by', { user: p.createdBy }) }}</div>
@@ -265,7 +269,8 @@ onMounted(() => {
             </div>
             <v-progress-linear :model-value="paperPercent(p)" height="4" rounded color="primary" bg-color="surface-variant" class="mt-1" />
             <div class="btns">
-              <v-btn size="small" color="primary" prepend-icon="mdi-play" :loading="starting === p.paperId" :disabled="!!starting" @click="takePaper(p)">{{ t('papers.start') }}</v-btn>
+              <v-btn v-if="openOf(p)" size="small" variant="flat" color="primary" class="act3d act3d-orange" prepend-icon="mdi-play" @click="resume(openOf(p)!)">{{ t('test.resume') }}</v-btn>
+              <v-btn v-else size="small" variant="flat" color="primary" class="act3d act3d-green" prepend-icon="mdi-play" :loading="starting === p.paperId" :disabled="!!starting" @click="takePaper(p)">{{ t('papers.start') }}</v-btn>
               <template v-if="me.admin">
                 <v-btn size="small" variant="flat" color="primary" class="act3d act3d-blue" prepend-icon="mdi-chart-box-outline" @click="router.push('/tests/results/' + encodeURIComponent(p.paperId))">{{ t('papers.results') }}</v-btn>
                 <v-btn size="small" variant="flat" color="primary" class="act3d act3d-red" prepend-icon="mdi-delete-outline" @click="paperDelete = p">{{ t('test.deleteBtn') }}</v-btn>
@@ -467,6 +472,16 @@ onMounted(() => {
 }
 .row.open .decktop {
   background: color-mix(in srgb, #ef8a17 20%, transparent); /* unfinished: the orange of its left edge */
+}
+/* an assigned test not taken yet: blue, the colour of the "Assigned tests" heading */
+.row.fresh {
+  border-left: 4px solid #1e88e5;
+}
+.row.fresh .decktop {
+  background: color-mix(in srgb, #1e88e5 18%, transparent);
+}
+.freshline {
+  color: #1e88e5;
 }
 .decktop .deck {
   flex: 1;

@@ -152,6 +152,34 @@ export class StudySession {
     return true;
   }
 
+  /* Set the status of any card of the run from the word list (Learned / Skip leave the deck, Again puts it back at the end).
+     Returns the card so the caller can send the result; the card on screen changes when it was the current one. */
+  mark(id: string, result: StudyResult): Card | undefined {
+    const card = this.byId.get(id);
+    if (!card) return undefined;
+    if (this.learnedIds.delete(id)) this.learned = Math.max(0, this.learned - 1);
+    if (this.skippedIds.delete(id)) this.skipped = Math.max(0, this.skipped - 1);
+    this.againIds.delete(id);
+    const wasCurrent = this.queue[0]?.id === id;
+    const i = this.queue.findIndex((c) => c.id === id);
+    if (i >= 0) this.queue.splice(i, 1);
+    if (wasCurrent) this.flipped = false;
+    if (result === 'again') {
+      this.again++;
+      this.againIds.add(id);
+      this.queue.push(card);
+    } else if (result === 'learned') {
+      this.learned++;
+      this.learnedIds.add(id);
+    } else if (result === 'skip') {
+      this.skipped++;
+      this.skippedIds.add(id);
+    } else {
+      this.queue.splice(i >= 0 ? i : this.queue.length, 0, card); // back to New: it stays where it is, or (it had left the deck) is studied again at the end
+    }
+    return card;
+  }
+
   /* Returns the answered card so the caller can send the result. */
   answer(result: StudyResult): Card | undefined {
     const card = this.queue.shift();
