@@ -3,7 +3,6 @@ import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { t } from '../i18n';
 import { listOrder } from '../lib/cardOrder';
 import { readingRows } from '../lib/readingLines';
-import { canSpeak, prefetchSpeech, speakJapanese, stopSpeaking } from '../lib/speech';
 import { swipeDown } from '../lib/swipeDown';
 import { markOf } from '../lib/listMark';
 import { STATUS_COLOR, STATUS_ICON, STATUS_ORDER } from '../lib/status';
@@ -162,7 +161,9 @@ const pickedId = ref<string | null>(null);
 /* Text can be selected and copied: a click that only ended a text selection, or that only cleared one (the browser clears it already on
    press, before the click), must not jump to the word. */
 let hadSelection = false;
+let autoAtPress = false; // auto play was running when the list was pressed: the popup it left must go when a word is picked
 function onRowsDown(): void {
+  autoAtPress = autoOn.value; // the press stops auto play before the click; remember it was running
   autoStop();
   hadSelection = !!window.getSelection()?.toString();
 }
@@ -261,16 +262,23 @@ onBeforeUnmount(() => {
   cancelDismiss();
 });
 function onTileClick(id: string, e?: Event): void {
+  const wasShowing = labelId.value === id;
+  const fromAuto = autoAtPress || autoOn.value; // a pointer press has stopped auto play already; a keyboard click has not
+  autoAtPress = false;
   autoStop();
+  if (fromAuto) {
+    labelId.value = null; // the popup auto play left on its word goes away when the user picks a word to look at
+    upId.value = null;
+  }
   seenId.value = id;
-  if (withMouse || labelId.value === id) onRowClick(id, (e?.currentTarget as HTMLElement | null) ?? undefined);
+  if (withMouse || wasShowing) onRowClick(id, (e?.currentTarget as HTMLElement | null) ?? undefined);
   else {
     labelId.value = id;
     placeLabel(id, (e?.currentTarget as HTMLElement | null) ?? null);
   }
 }
-/* the eye button: the Sino-Vietnamese reading stays under the kanji of every square */
-const showHv = ref(false);
+/* the eye button: the Sino-Vietnamese reading stays under the kanji of every square (on by default) */
+const showHv = ref(true);
 /* only the first letter is a capital ("Ngân hàng"); used for this label only */
 const firstUpper = (s: string): string => {
   const low = s.toLowerCase();
@@ -281,9 +289,11 @@ const firstUpper = (s: string): string => {
 const popupReading = (reading: string | null): string | null => (reading && !readingRows(reading) ? reading : null);
 
 /*
- * Auto play in the square grid: the popup opens on one word at a time, the word is read aloud (the same settings as the study
- * screen's auto play), and the list moves on by itself through the words on screen; one pass, then it stops. Nothing is marked or
- * graded. A tap, a scroll, the search, a filter or closing the sheet stops it, and the popup stays on the word it reached.
+ * Auto play in the square grid: the popup opens on one word at a time and the list moves on by itself through the words on
+ * screen; it only moves on, no sound is played (even with "read aloud" on). After the last word it starts again at the
+ * first one (and carries on from the word on screen when started again). Nothing is marked or graded. Tapping another word
+ * stops it and closes the popup auto play left (the picked word's own details open instead); a scroll, the search, a filter
+ * or closing the sheet stops it too, and then the popup stays on the word it reached.
  */
 const autoOn = ref(false);
 let autoToken = 0;
@@ -317,19 +327,6 @@ function stopAutoWait(): void {
   autoResolve = undefined;
 }
 
-/* Reads the word and resolves when the voice has finished (never waits for ever on a voice that does not answer). */
-function autoSpeak(c: LightCard): Promise<void> {
-  if (!settings.autoSpeak || c.lang !== 'ja' || !canSpeak()) return Promise.resolve();
-  return new Promise((resolve) => {
-    const guard = setTimeout(finish, 10_000); // a voice that never answers must not stop the run
-    function finish(): void {
-      clearTimeout(guard);
-      resolve();
-    }
-    speakJapanese(c.reading || c.headword, finish, props.session.deckName, settings.autoSaveVoice);
-  });
-}
-
 /* Brings the square into the middle of the list, with room under it for the popup, then lets the popup pick its side. */
 function autoScroll(id: string): void {
   const root = rowsEl.value;
@@ -347,15 +344,16 @@ function autoScroll(id: string): void {
 async function autoRun(token: number): Promise<void> {
   try {
     const list = visibleCards.value.map(({ c }) => c);
+    if (list.length === 0) return;
     const from = labelId.value ? list.findIndex((c) => c.id === labelId.value) : -1; // carries on from the word on screen
-    for (let i = Math.max(0, from); i < list.length; i++) {
+    const start = Math.max(0, from);
+    // never ends by itself: after the last word it goes round to the first one (a stop changes the token and leaves the loop)
+    for (let step = 0; ; step++) {
       if (token !== autoToken) return;
-      const c = list[i]!;
-      const next = list[i + 1];
-      if (settings.autoSpeak && next?.lang === 'ja') prefetchSpeech(next.reading || next.headword, props.session.deckName, settings.autoSaveVoice);
+      const c = list[(start + step) % list.length]!;
       labelId.value = c.id;
       autoScroll(c.id);
-      await Promise.all([autoWait(), autoSpeak(c)]);
+      await autoWait(); // only the wait on the word: no voice, nothing to read
     }
   } finally {
     // a finished run (or a step that threw) never leaves the button stuck on pause
@@ -390,7 +388,6 @@ function autoStop(): void {
   autoToken++; // the running loop notices and quits
   stopAutoWait();
   autoOn.value = false;
-  stopSpeaking();
   releaseAutoWake();
 }
 const autoToggle = (): void => (autoOn.value ? autoStop() : autoStart());

@@ -388,7 +388,7 @@ void load();
           <!-- show / hide the reading of this word (hiragana, or On / Kun for a kanji): the same switch as the あ option of the study screen, bottom left -->
           <button v-if="question.kind === 'meaning' && question.card.reading" type="button" class="kanabtn" :class="{ on: settings.showReading }" :aria-pressed="settings.showReading" :aria-label="t('show.reading')" :data-tip="t('show.reading')" @click="settings.showReading = !settings.showReading">あ</button>
         </template>
-        <button v-else type="button" class="speak" :class="speaking && voiceBadge ? 'src-' + voiceBadge.source : ''" :title="speaking && voiceBadge ? voiceBadgeText : undefined" :aria-label="t('test.replay')" :data-tip="t('test.replay')" @click="play">
+        <button v-else type="button" class="speak" :class="[speaking && voiceBadge ? 'src-' + voiceBadge.source : '', { 'spk-playing': speaking }]" :title="speaking && voiceBadge ? voiceBadgeText : undefined" :aria-label="t('test.replay')" :data-tip="t('test.replay')" @click="play">
           <v-icon icon="mdi-volume-high" size="30" />
         </button>
         <span v-if="question.kind === 'listen' && voiceNote" class="voicenote" role="status">{{ voiceNote }}</span>
@@ -627,6 +627,18 @@ void load();
 }
 .speak.src-device {
   background: #7a7a7a; /* the device's own voice */
+}
+/* While the word is being read the speaker pulses: the button reads as "playing" (a tap reads it again). */
+@keyframes speak-pulse {
+  0%, 100% { transform: scale(1); }
+  35% { transform: scale(1.16); }
+  70% { transform: scale(0.97); }
+}
+.speak.spk-playing .v-icon {
+  animation: speak-pulse 0.9s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .speak.spk-playing .v-icon { animation: none; }
 }
 .voicenote {
   position: absolute;
