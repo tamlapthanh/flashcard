@@ -61,8 +61,43 @@ export function tileMark(name: string): string {
   return (Array.from(name.trim())[0] ?? '札').toUpperCase();
 }
 
-/** The deck card on the deck screen (found by its text; a tap on it studies the deck, the tile and the tag button inside it have their own). */
-export const deckCard = (page: Page, deck: DeckInfo) => page.locator('.deck').filter({ hasText: new RegExp(`${escapeRegex(deck.name)}\\s*\\d+ cards`) });
+/** The e2e server has no voice key, so it answers "device" and the app reads with the phone's own voice, never asking
+    /api/speech. Tests about the server voice call this before opening the app: ElevenLabs, no voice change yet (the browser
+    cache is then `flashmobile-speech-v5:elevenlabs:0:<deck>`). */
+export async function serverVoice(page: Page): Promise<void> {
+  await page.route('**/api/voice', (route) =>
+    route.request().method() === 'GET'
+      ? route.fulfill({ json: { provider: 'elevenlabs', updatedAt: '', available: ['elevenlabs', 'device'] } })
+      : route.continue()
+  );
+}
+
+/** The e2e server makes nobody an admin: tests of admin-only parts of Settings (Choose Voice, Handwriting) answer /api/me. */
+export async function asAdmin(page: Page, user = 'bob'): Promise<void> {
+  // on the browser context, not the page: a test may open Settings in a second tab
+  await page.context().route('**/api/me', (route) => route.fulfill({ json: { user, admin: true } }));
+}
+
+/** The word list is a grid of squares (.ktile in .rows.kgrid). Checks it: as many column tracks as --kcols (chosen by the script),
+    and the squares square, of one size, at least 76px (MIN_TILE of WordListSheet). */
+export async function gridIsSquare(page: Page): Promise<void> {
+  const grid = page.locator('.rows.kgrid');
+  await expect(grid.locator('.ktile').first()).toBeVisible();
+  const kcols = () => grid.evaluate((el) => Number(getComputedStyle(el).getPropertyValue('--kcols')));
+  await expect.poll(kcols).toBeGreaterThan(0);
+  const tracks = await grid.evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(' ').length);
+  expect(tracks).toBe(await kcols());
+  const tiles = grid.locator('.ktile');
+  const first = (await tiles.first().boundingBox())!;
+  expect(Math.abs(first.width - first.height)).toBeLessThan(2); // square
+  expect(first.width).toBeGreaterThanOrEqual(75);
+  if ((await tiles.count()) > 1) expect(Math.abs((await tiles.nth(1).boundingBox())!.width - first.width)).toBeLessThan(1); // one size for all
+}
+
+/** The deck card on the deck screen (found by its text; a tap on it studies the deck, the tile and the tag button inside it have their own).
+    A deck with progress has a "Reset" button between its name and its card count (DeckView .resetmini). */
+export const deckCard = (page: Page, deck: DeckInfo) =>
+  page.locator('.deck').filter({ hasText: new RegExp(`${escapeRegex(deck.name)}\\s*(?:Reset\\s*)?\\d+ cards`) });
 
 /** The user's saved settings on the server (what the Google Sheet holds in production). */
 export async function apiSettings(request: APIRequestContext, user: User): Promise<{ settings: Record<string, unknown> | null; updatedAt: string | null }> {

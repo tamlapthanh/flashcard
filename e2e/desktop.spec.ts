@@ -1,4 +1,4 @@
-import { expect, openSignedIn, richestDeck, startStudy, test, counter, type DeckInfo } from './fixtures';
+import { expect, gridIsSquare, openSignedIn, richestDeck, startStudy, test, counter, type DeckInfo } from './fixtures';
 import type { Page } from '@playwright/test';
 
 /* Desktop only (project "desktop-chromium": a real mouse, hover, a wide window). The phone project skips this file. */
@@ -50,48 +50,50 @@ test.describe('word list on a wide window', () => {
     await startStudy(page, deck);
   });
 
+  /* The word list is a grid of squares (.ktile in .rows.kgrid), one per word. */
   const open = async (page: Page): Promise<void> => {
     await counter(page).click();
-    await expect(page.locator('.row').first()).toBeVisible();
+    await expect(page.locator('.rows.kgrid .ktile').first()).toBeVisible();
   };
 
-  test('the number of columns follows the width: 1 below 1200px, then 2 / 3 / 4 as they fit', async ({ page }) => {
+  test('at every window width the squares stay square, of one size, and fill the width of the list', async ({ page }) => {
     await open(page);
-    const rows = page.locator('.rows');
-    for (const [width, cols] of [
-      [1000, '1'],
-      [1250, '2'],
-      [1700, '3'],
-      [2300, '4']
-    ] as const) {
+    const grid = page.locator('.rows.kgrid');
+    for (const width of [1000, 1250, 1700, 2300]) {
       await page.setViewportSize({ width, height: 900 });
-      await expect(rows).toHaveCSS('--cols', cols);
-      if (width >= 1200) {
-        const tracks = await rows.evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(' ').length);
-        expect(tracks).toBe(Number(cols));
-      }
+      await gridIsSquare(page);
+      // one row of squares (and the 1px gaps) spans the inner width of the list: no empty band on the right
+      const { inner, used } = await grid.evaluate((el) => {
+        const cs = getComputedStyle(el);
+        const cols = Number(cs.getPropertyValue('--kcols'));
+        const size = (el.querySelector('.ktile') as HTMLElement).getBoundingClientRect().width;
+        return { inner: el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight), used: cols * size + (cols - 1) };
+      });
+      expect(Math.abs(inner - used)).toBeLessThan(2); // the square size is rounded down to 0.01px
     }
   });
 
-  test('the colour changes line by line, not column by column', async ({ page }) => {
+  test('a click on a square marks it as the one looked at last (another background)', async ({ page }) => {
     await open(page);
-    const rows = page.locator('.row');
-    test.skip((await rows.count()) < 7, 'needs 7 rows');
-    // 3 columns at 1700px: rows 1-3 light, rows 4-6 darker
-    for (const i of [0, 1, 2]) await expect(rows.nth(i)).not.toHaveClass(/\balt\b/);
-    for (const i of [3, 4, 5]) await expect(rows.nth(i)).toHaveClass(/\balt\b/);
-    await expect(rows.nth(6)).not.toHaveClass(/\balt\b/);
+    const tiles = page.locator('.ktile');
+    test.skip((await tiles.count()) < 2, 'needs two words');
+    await tiles.nth(1).click();
+    await expect(tiles.nth(1)).toHaveClass(/\bseen\b/);
+    await expect(tiles.nth(0)).not.toHaveClass(/\bseen\b/);
   });
 
-  test('the deck name and "x / N learned" are on the top line, the search box and the options gear show at once', async ({ page }) => {
+  test('the deck name and "N cards" are on the top line; the magnifier shows the search box and the options gear', async ({ page }) => {
     await open(page);
     const sheet = await page.locator('.sheet').boundingBox();
     const head = page.locator('.deckhead');
-    await expect(head).toContainText(deck.name);
-    await expect(head).toContainText(/\d+ \/ \d+ learned/);
+    await expect(head.locator('.dname')).toHaveText(deck.name);
+    await expect(head.locator('.dcount').first()).toHaveText(/^\d+ cards$/);
     const box = await head.boundingBox();
     expect(box!.y - sheet!.y).toBeLessThan(20); // level with the grip and the magnifier
-    await expect(page.getByPlaceholder('Search a word')).toBeVisible();
+    const search = page.getByPlaceholder('Search a word');
+    await expect(search).toHaveCount(0); // hidden from the start, on the web too
+    await page.getByRole('button', { name: 'Search a word', exact: true }).click();
+    await expect(search).toBeVisible();
     await expect(page.getByRole('button', { name: 'Search options' })).toBeVisible();
   });
 });
@@ -127,11 +129,10 @@ test.describe('kanji of a word side by side', () => {
 
   test('on a low window the sheet stays inside the screen and scrolls (the kanji are not shrunk)', async ({ page }) => {
     // The details of a kanji are long now (stroke strip, memory hint, component graph): the sheet scrolls instead of the kanji shrinking.
+    // the low window first, then the card: closing and opening the details again could land on another card (with one kanji)
+    await page.setViewportSize({ width: 1700, height: 360 }); // the compact sheet fits in 520px now, so use a window it cannot fit in
     const n = await findCardWithKanji(page, 2);
     test.skip(n < 2, 'no card with two kanji in the first 40 cards of the local data');
-    await page.keyboard.press('Escape');
-    await page.setViewportSize({ width: 1700, height: 360 }); // the compact sheet fits in 520px now, so use a window it cannot fit in
-    await page.keyboard.press('ArrowUp');
     await page.locator('.hvp button.k').first().click();
     const sheet = page.locator('.sheet');
     await expect(page.locator('.multi')).toBeVisible();
@@ -143,11 +144,10 @@ test.describe('kanji of a word side by side', () => {
   });
 
   test('a narrow window (under 800px) goes back to one kanji at a time with chips', async ({ page }) => {
+    // the narrow window first, then the card: closing and opening the details again can land on another card (with one kanji: no chips)
+    await page.setViewportSize({ width: 700, height: 900 });
     const n = await findCardWithKanji(page, 2);
     test.skip(n < 2, 'no card with two kanji in the first 40 cards of the local data');
-    await page.keyboard.press('Escape');
-    await page.setViewportSize({ width: 700, height: 900 });
-    await page.keyboard.press('ArrowUp');
     await page.locator('.hvp button.k').first().click();
     await expect(page.locator('.sheet .v-chip-group')).toBeVisible();
     await expect(page.locator('.multi')).toHaveCount(0);

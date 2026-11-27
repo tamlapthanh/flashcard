@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { apiDeck, apiPutSettings, apiSettings, counter, expect, openSignedIn, resetSettings, richestDeck, startStudy, test, type DeckInfo } from './fixtures';
+import { apiDeck, apiPutSettings, apiSettings, counter, expect, openSignedIn, resetSettings, richestDeck, serverVoice, startStudy, test, type DeckInfo } from './fixtures';
 
 /* Auto play: front for N seconds, answer side for M seconds, next card; browsing only, nothing is graded. bob is used, with short
    times and the voice off so the tests are quick and quiet; every test leaves bob with nothing saved. */
@@ -62,6 +62,9 @@ test.describe('auto play', () => {
     await counter(page).click(); // opens the word list
     await expect(play(page)).toBeVisible();
     await page.keyboard.press('Escape');
+    // on a phone the word list is a tab of its own (bottom bar): Escape does not leave it, the Study tab does
+    const studyTab = page.getByRole('tab', { name: 'Study' });
+    if (await studyTab.isVisible()) await studyTab.click();
 
     await tapPlay(page);
     await expect(pause(page)).toBeVisible();
@@ -73,7 +76,8 @@ test.describe('auto play', () => {
     const before = (await apiDeck(request, 'bob', deck.id)).counts;
     const position = (await counter(page).innerText()).trim();
     await tapPlay(page);
-    await page.waitForTimeout(4500); // two or three cards go by
+    // until at least one card has gone by (a fixed wait could end before the first on a busy machine)
+    await expect.poll(async () => (await counter(page).innerText()).trim(), { timeout: 15_000 }).not.toBe(position);
     await pause(page).click();
     expect((await apiDeck(request, 'bob', deck.id)).counts).toEqual(before);
     const after = (await counter(page).innerText()).trim();
@@ -162,6 +166,7 @@ test.describe('auto play: save voice files', () => {
       speechUrls.push(route.request().url());
       await route.fulfill({ status: 404, json: { error: 'speech is not enabled' } }); // the device voice takes over
     });
+    await serverVoice(page); // otherwise the app is on the device voice and never asks /api/speech
   });
 
   test.afterEach(async ({ request }) => {

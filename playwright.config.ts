@@ -55,7 +55,8 @@ export default defineConfig({
       url: `http://localhost:${WEB_PORT}`,
       reuseExistingServer: false,
       timeout: 60_000,
-      env: { VITE_API_URL: API_URL, VITE_LOGIN: 'true', VITE_API_KEY: '' }
+      // Voice files live on their own host in production; the tests keep them on this dev server, where the route mocks are.
+      env: { VITE_API_URL: API_URL, VITE_LOGIN: 'true', VITE_API_KEY: '', VITE_VOICES_URL: '/voices/' }
     }
   ]
 });

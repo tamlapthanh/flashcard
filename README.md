@@ -41,7 +41,7 @@ Step-by-step guide (local run, build, deploy) in Vietnamese: [`../HUONG-DAN.md`]
 
 ```bash
 npm install
-cp .env.example .env.development.local   # VITE_API_URL=http://localhost:8787  VITE_LOGIN=true|false
+cp .env.example .env.development.local   # VITE_API_URL=http://localhost:8787  VITE_LOGIN=true|false  VITE_VOICES_URL=...
 npm run dev                      # http://localhost:5173  (start the server first)
 npm test
 npm run build                    # reads .env.production.local (the Render URL); needs VITE_BASE=/<repo>/ for Pages
@@ -49,6 +49,10 @@ npm run build                    # reads .env.production.local (the Render URL);
 
 Env files: `npm run dev` reads `.env`, `.env.local`, `.env.development*`; `npm run build` reads `.env`, `.env.local`,
 `.env.production*`; later files win. `.env.example` is never read. Values are baked in at build time.
+
+`VITE_VOICES_URL` is the host of the MP3 voice files: the sibling [`../voices`](../voices) folder, deployed as the separate
+`tango-voices` Worker (see `../voices/README.md`). It is baked in at build time; when it is empty or unset the app looks in
+its own `public/voices` instead. The voice files are not part of this build.
 
 `VITE_LOGIN=false` runs against a server with `AUTH=off` (then `VITE_API_KEY` must match its `API_KEY`). With the
 default `true` the app asks for a username and password (users are rows of the `users` tab of the server's Google Sheet;
@@ -61,12 +65,13 @@ with `CORS_ORIGIN='*'`.
 
 Option A, build on your PC (no Actions storage quota involved):
 
-1. `.env.production.local`: `VITE_API_URL=https://<service>.onrender.com` and `VITE_LOGIN=true`.
+1. `.env.production.local`: `VITE_API_URL=https://<service>.onrender.com`, `VITE_LOGIN=true` and
+   `VITE_VOICES_URL=https://tango-voices.<subdomain>.workers.dev/`.
 2. `$env:VITE_BASE = "/<repo>/"; npm run build; npx gh-pages -d dist`
 3. Repo settings > Pages > Source: **Deploy from a branch** > `gh-pages` / root.
 
 Option B, GitHub Actions: Pages > Source: **GitHub Actions**; Settings > Secrets and variables > Actions > **Variables**:
-`VITE_API_URL` (and `VITE_API_KEY` only for a server without login). Push to `main`; `.github/workflows/pages.yml` builds
+`VITE_API_URL`, `VITE_VOICES_URL` (and `VITE_API_KEY` only for a server without login). Push to `main`; `.github/workflows/pages.yml` builds
 with `VITE_BASE=/<repo>/` and publishes. (Fails with "Artifact storage quota" when the account's Actions storage is full: use A.)
 
 Then on the server set `CORS_ORIGIN=https://<user>.github.io` and on Android Chrome open the site > menu >
@@ -83,5 +88,7 @@ Then on the server set `CORS_ORIGIN=https://<user>.github.io` and on Android Chr
   out. Results still queued from another user are dropped on a different login. Nothing else talks to the server.
 - Speech: the speaker reads only the word (kana reading if any). `src/lib/speech.ts` asks the server for an ElevenLabs
   MP3, keeps each one in Cache Storage (so a word is paid for once, and plays offline), and falls back to the device
-  voice when the server has none or the Settings switch is off.
+  voice when the server has none or the Settings switch is off. While a word plays the speaker takes the colour of its
+  source and a short note names it (`src/lib/voiceBadge.ts`). A cached word keeps `x-voice-origin` and `x-voice-url`
+  headers, so DevTools > Application > Cache Storage shows where it was fetched from.
 - Web (mouse): arrow buttons at the card's sides and mouse drag change the word; keys: arrows, Space, 1, 2, P.

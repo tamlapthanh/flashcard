@@ -1,5 +1,5 @@
 import type { APIRequestContext, Page } from '@playwright/test';
-import { expect, openSignedIn, richestDeck, startStudy, test } from './fixtures';
+import { asAdmin, expect, openSignedIn, richestDeck, startStudy, test } from './fixtures';
 
 /*
  * Handwriting practice: the pencil button of the kanji sheet opens a screen of its own (like a component opened from the graph) with
@@ -60,7 +60,10 @@ async function drawStroke(page: Page, d: string, backwards = false): Promise<voi
 }
 
 test.describe('kanji handwriting practice', () => {
-  test.describe.configure({ timeout: 60_000 }); // the first page load of a run (the dev server compiling) can take half a minute
+  /* 3 minutes: several tests draw EVERY stroke of the kanji (30 mouse moves a stroke). Which kanji depends on what the tests before
+     have learned on the shared in-memory server (openPractice takes alice's first new card), so a full run can meet a 12-stroke
+     kanji where a run of one test meets a 3-stroke one. The first page load of a run (Vite compiling) adds half a minute. */
+  test.describe.configure({ timeout: 180_000 });
   test('the pencil opens a screen of its own: the question is there, the kanji is not, and Back returns to the same kanji', async ({ page, request }) => {
     const { literal, paths } = await openPractice(page, request);
     const screen = page.locator('.kp');
@@ -210,6 +213,7 @@ test.describe('kanji handwriting practice', () => {
   });
 
   test('"my stroke was right": a refused stroke can be accepted, it is kept on this device, and Settings shows it', async ({ page, request }) => {
+    await asAdmin(page, 'alice'); // the samples are shown in Settings > Handwriting, which admins only see
     const { paths } = await openPractice(page, request);
     const agree = page.getByRole('button', { name: 'My stroke was right' });
     await expect(agree).toHaveCount(0); // nothing refused yet

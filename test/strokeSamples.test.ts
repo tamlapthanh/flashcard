@@ -31,7 +31,9 @@ async function load() {
   return import('../src/lib/strokeSamples');
 }
 
-describe('strokeSamples', () => {
+/* Every test imports the module afresh (vi.resetModules): on a busy machine (a local model running, the other test files in
+   parallel) that import alone can pass the default 5 s. */
+describe('strokeSamples', { timeout: 30_000 }, () => {
   beforeEach(() => vi.unstubAllGlobals());
 
   it('keeps a sample, counts it, and gives it back as JSON', async () => {

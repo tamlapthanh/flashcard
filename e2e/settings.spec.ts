@@ -1,4 +1,4 @@
-import { apiSettings, apiPutSettings, expect, openSignedIn, resetSettings, test } from './fixtures';
+import { apiSettings, apiPutSettings, asAdmin, expect, openSignedIn, resetSettings, test } from './fixtures';
 
 /* Settings are kept per user on the server (the "settings" tab of the Google Sheet in production). bob is used for everything
    that writes, and every test leaves bob with nothing saved. */
@@ -131,6 +131,7 @@ test.describe('voice: Google characters at the monthly limit', () => {
 
 test.describe('handwriting: how strictly strokes are checked', () => {
   test('a setting of this device: chosen in Settings, kept after a reload, and not sent to the server', async ({ page, request }) => {
+    await asAdmin(page); // Handwriting is shown to admins only
     await openSignedIn(page, request, 'bob');
     await page.goto('/#/settings');
     await page.locator('.sechead').filter({ hasText: 'Handwriting' }).click();

@@ -5,6 +5,7 @@ import { api, pendingResults, serverInfo, submitResult } from '../api';
 import { auth } from '../auth';
 import { t } from '../i18n';
 import Hanko from '../components/Hanko.vue';
+import ContextButton from '../components/ContextButton.vue';
 import KanjiSheet from '../components/KanjiSheet.vue';
 import PitchLine from '../components/PitchLine.vue';
 import RelatedDialog from '../components/RelatedDialog.vue';
@@ -24,7 +25,7 @@ import { vFitLine } from '../lib/fitLine';
 import { STATUS_ICON, STATUS_ORDER, statusStyle } from '../lib/status';
 import { StudySession } from '../session';
 import { settings } from '../settings';
-import { activeSession, focusMode, menuOpen, saveRun, setActiveSession, setFocusMode } from '../store';
+import { activeSession, focusMode, saveRun, setActiveSession, setFocusMode } from '../store';
 import type { Card, Deck, KanjiInfo, StudyResult } from '../types';
 
 const router = useRouter();
@@ -99,8 +100,8 @@ const fanOptions = computed(() => [
 const foldFan = (): void => {
   fanOpen.value = false;
   audioOpen.value = false;
-  ctxOpen.value = false; // the one window click closes whichever is open
 };
+const ctxRef = ref<{ close: () => void } | null>(null); // the floating context button (ContextButton.vue)
 /* The bottom-right button fans out three options: auto play, read aloud while auto playing, keep the voice files
    (the last one only when the server can save files: a local run with SPEECH_SAVE_DIR; elsewhere it is hidden). */
 const audioOpen = ref(false);
@@ -117,30 +118,18 @@ watch(fanOpen, (isOpen) => isOpen && (audioOpen.value = false));
 watch(audioOpen, (isOpen) => isOpen && (fanOpen.value = false));
 watch([fanOpen, audioOpen], ([eye, audio]) => {
   if (eye || audio) {
-    ctxOpen.value = false;
+    ctxRef.value?.close();
     setTimeout(() => window.addEventListener('click', foldFan, { once: true }), 0);
   } else window.removeEventListener('click', foldFan);
 });
 
 /*
- * The context button: a round orange button floating over the study screen. A tap fans out its actions exactly like the
- * show / hide and auto play buttons in the bottom corners (the same .fan / .fanopt, with their staggered opening):
- * Again / Learned / Skip, Test (when the run has enough cards, like the button of the top bar), the app menu and the
- * word list. Dragging moves the button anywhere inside the viewport; the position is not saved: every visit starts at
- * the same place. It is not shown on a phone (the screen is too small); the actions stay beside the button, on the side
- * with more room, inside the viewport.
+ * The context button (ContextButton.vue): floats over the study screen. A tap fans out the actions of the run exactly
+ * like the buttons of the top bar (Again / Learned / Skip, Test when the run has enough cards, the word list), then
+ * the way to the other screens: Decks, Tests and Settings, the items of the ☰ drawer (this screen is left out).
+ * It is not shown on a phone (the screen is too small); those actions stay in the top bar and the bottom tab bar.
  */
-const CTX_SIZE = 40;
-const ctxOpen = ref(false);
-const ctx = reactive({ x: typeof window === 'undefined' ? 0 : window.innerWidth - CTX_SIZE - 12, y: 72 });
-const vp = reactive({ w: typeof window === 'undefined' ? 0 : window.innerWidth, h: typeof window === 'undefined' ? 0 : window.innerHeight });
-const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
-/* The phone tab bar covers the bottom of the screen: the button and its options stay above it. */
-const ctxBottom = (): number => (showTabs.value ? 64 : 10);
-const CTX_OPT_W = 116; // one pill
-const CTX_OPT_H = 32;
-const CTX_OPT_GAP = 6;
-type CtxItem = { key: string; icon: string; label: string; disabled: boolean; run: () => void };
+type CtxItem = { key: string; icon: string; label: string; disabled?: boolean; run: () => void };
 const ctxItems = computed<CtxItem[]>(() => {
   const items: CtxItem[] = [
     { key: 'again', icon: 'mdi-help-circle-outline', label: t('btn.again'), disabled: stamping.value, run: () => void answer('again') },
@@ -150,77 +139,15 @@ const ctxItems = computed<CtxItem[]>(() => {
   if (canTest.value) items.push({ key: 'test', icon: 'mdi-school-outline', label: t('study.testShort'), disabled: false, run: () => void openTest() });
   items.push(
     { key: 'list', icon: 'mdi-book-open-page-variant-outline', label: t('list.short'), disabled: false, run: () => (listOpen.value = true) },
-    { key: 'menu', icon: 'mdi-menu', label: t('nav.menu'), disabled: false, run: () => (menuOpen.value = true) } // the last one
+    // the other screens, as in the ☰ drawer; the last three, after the actions of the run
+    { key: 'decks', icon: 'mdi-cards-outline', label: t('nav.decks'), disabled: false, run: () => void router.push('/') },
+    { key: 'tests', icon: 'mdi-clipboard-text-outline', label: t('nav.tests'), disabled: false, run: () => void router.push('/tests') },
+    { key: 'settings', icon: 'mdi-cog-outline', label: t('nav.settings'), disabled: false, run: () => void router.push('/settings') }
   );
   return items;
 });
-/* The actions come out as a column of pills (an icon and the action's name) beside the button; the CSS opens them with
-   the staggered effect of the show / hide fan. */
-const ctxOptions = computed(() => {
-  const items = ctxItems.value;
-  const w = CTX_OPT_W;
-  const h = CTX_OPT_H;
-  const stack = items.length * h + (items.length - 1) * CTX_OPT_GAP;
-  const cx = ctx.x + CTX_SIZE / 2;
-  const cy = ctx.y + CTX_SIZE / 2;
-  const left = clamp(cx < vp.w / 2 ? ctx.x + CTX_SIZE + 8 : ctx.x - 8 - w, 8, Math.max(8, vp.w - 8 - w));
-  const dx = left + w / 2 - cx; // the option's centre, measured from the button's centre (the CSS starts it there)
-  /* The column starts level with the button and runs down; near the bottom of the screen it moves up instead. */
-  const top = clamp(ctx.y + stack <= vp.h - ctxBottom() ? ctx.y : ctx.y + CTX_SIZE - stack, 8, Math.max(8, vp.h - ctxBottom() - stack));
-  return items.map((it, i) => ({ ...it, dx, dy: top + i * (h + CTX_OPT_GAP) + h / 2 - cy }));
-});
-let ctxDrag: { id: number; sx: number; sy: number; ox: number; oy: number; moved: boolean } | null = null;
-let ctxSwallow = 0; // the click that ends a drag must not also open the fan
-function ctxDown(e: PointerEvent): void {
-  if (e.pointerType === 'mouse' && e.button !== 0) return;
-  ctxDrag = { id: e.pointerId, sx: e.clientX, sy: e.clientY, ox: ctx.x, oy: ctx.y, moved: false };
-  (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-}
-function ctxMove(e: PointerEvent): void {
-  const d = ctxDrag;
-  if (!d || d.id !== e.pointerId) return;
-  const dx = e.clientX - d.sx;
-  const dy = e.clientY - d.sy;
-  if (!d.moved && Math.hypot(dx, dy) < 5) return; // still a tap: the fan opens on release
-  d.moved = true;
-  ctxOpen.value = false;
-  ctx.x = clamp(d.ox + dx, 8, vp.w - CTX_SIZE - 8);
-  ctx.y = clamp(d.oy + dy, 8, vp.h - CTX_SIZE - ctxBottom());
-}
-function ctxUp(e: PointerEvent): void {
-  const d = ctxDrag;
-  if (!d || d.id !== e.pointerId) return;
-  if (d.moved) ctxSwallow = performance.now() + 350;
-  ctxDrag = null;
-}
-function ctxClick(): void {
-  if (performance.now() < ctxSwallow) return;
-  if (!ctxOpen.value) foldFan();
-  ctxOpen.value = !ctxOpen.value;
-}
-function ctxPick(item: CtxItem): void {
-  if (item.disabled) return; // the seal is landing: the three grades are off
-  ctxOpen.value = false;
-  item.run();
-}
-function closeCtx(): void {
-  ctxOpen.value = false;
-}
-function ctxOnResize(): void {
-  vp.w = window.innerWidth;
-  vp.h = window.innerHeight;
-  ctx.x = clamp(ctx.x, 8, vp.w - CTX_SIZE - 8);
-  ctx.y = clamp(ctx.y, 8, vp.h - CTX_SIZE - ctxBottom());
-  ctxOpen.value = false;
-}
-onMounted(() => window.addEventListener('resize', ctxOnResize));
-onUnmounted(() => window.removeEventListener('resize', ctxOnResize));
-watch(ctxOpen, (open) => {
-  if (open) setTimeout(() => window.addEventListener('click', closeCtx, { once: true }), 0);
-  else window.removeEventListener('click', closeCtx);
-});
-watch(() => s.current?.id, () => (ctxOpen.value = false)); // a new word: the panel goes away
-watch(listOpen, (open) => open && (ctxOpen.value = false));
+watch(() => s.current?.id, () => ctxRef.value?.close()); // a new word: the panel goes away
+watch(listOpen, (open) => open && ctxRef.value?.close());
 const stamping = ref(false); // the "習" seal is being pressed onto the card
 
 /* The card = what came with the deck + its heavy part (furigana, pitch, kanji, note) once that has been fetched. */
@@ -995,36 +922,8 @@ onUnmounted(() => {
       <button type="button" role="tab" class="tab " :class="{ on: !listOpen }" :aria-selected="!listOpen" @click="listOpen = false"><v-icon icon="mdi-cards-outline" size="22" /><span>{{ t('nav.study') }}</span></button>
       <button type="button" role="tab" class="tab " :class="{ on: listOpen }" :aria-selected="listOpen" @click="listOpen = true"><v-icon icon="mdi-format-list-bulleted" size="22" /><span>{{ t('list.short') }}</span></button>
     </nav>
-    <!-- the context button: drag it anywhere on the screen; a tap (not a drag) fans out the three grading actions, like the show / hide button in the bottom-left corner -->
-    <div v-if="!isPhone" class="fan ctxfan" :class="{ open: ctxOpen }" :style="{ left: ctx.x + 'px', top: ctx.y + 'px' }">
-      <button
-        v-for="(o, idx) in ctxOptions"
-        :key="o.key"
-        type="button"
-        class="fanopt ctxopt on"
-        :class="'o-' + o.key"
-        :style="{ '--dx': o.dx + 'px', '--dy': o.dy + 'px', '--i': idx, '--n': ctxOptions.length }"
-        :title="o.label"
-        :aria-label="o.label"
-        :disabled="o.disabled"
-        @click.stop="ctxPick(o)"
-      ><v-icon :icon="o.icon" /><span class="ctxopt-lbl">{{ o.label }}</span></button>
-      <v-btn
-        class="tool3d ctxbtn"
-        icon="mdi-dots-vertical"
-        variant="text"
-        color="primary"
-        :aria-label="t('study.actions')"
-        :aria-expanded="ctxOpen"
-        aria-haspopup="menu"
-        :data-tip="t('study.actions')"
-        @pointerdown.stop="ctxDown"
-        @pointermove.stop="ctxMove"
-        @pointerup.stop="ctxUp"
-        @pointercancel.stop="ctxUp"
-        @click.stop="ctxClick"
-      />
-    </div>
+    <!-- the context button: drag it anywhere on the screen; a tap (not a drag) fans out the grading actions, like the show / hide button in the bottom-left corner -->
+    <ContextButton ref="ctxRef" :items="ctxItems" @open="foldFan" @pick="(it) => it.run()" />
     <KanjiSheet :kanji="card.kanji" :selected="kanjiSel" @close="kanjiSel = null" @select="(l: string) => (kanjiSel = l)" />
     <RelatedDialog :headword="listWord?.headword ?? null" :reading="listWord?.reading ?? null" :fallback-meaning="listWord?.meaning ?? ''" :anchor="listWord?.anchor ?? null" :word-id="listWord?.id ?? null" :status-of="listWord ? s.status(listWord.id) : undefined" can-go @close="listWord = null" @mark="(r: StudyResult) => listWord && markWord(listWord.id, r)" @go="goToListWord" />
     <RelatedDialog :headword="related?.headword ?? null" :reading="related?.reading ?? null" :fallback-meaning="related?.meaning ?? ''" @close="related = null" />
@@ -1520,101 +1419,6 @@ onUnmounted(() => {
 }
 @media (prefers-reduced-motion: reduce) {
   .spk-playing :deep(.v-icon) { animation: none; }
-}
-/*
- * The context button: floats over the study screen, drag it anywhere inside the viewport (the position is not saved).
- * Its three actions open with the staggered effect of the show / hide fan (the same .fan rules): a wide screen shows a
- * column of pills with an icon and the action's name, a phone shows round icon-only discs. The script places them
- * beside the button, on the side with more room, so they stay inside the viewport.
- */
-.fan.ctxfan {
-  position: fixed;
-  z-index: 1100;
-  width: 40px; /* the .fan media rule would make it 46 x 38 on a mouse screen: this button stays 40 x 40 */
-  height: 40px;
-  --k: 1; /* the pills are placed in pixels by the script: no extra scaling on a mouse screen */
-}
-.ctxfan .ctxopt {
-  left: calc((40px - 116px) / 2); /* the pill starts centred on the 40px button, behind it */
-  top: calc((40px - 32px) / 2);
-  width: 116px;
-  height: 32px;
-  padding: 0 10px;
-  border-radius: 999px;
-  justify-content: flex-start;
-  gap: 6px;
-  text-transform: none;
-  line-height: 1;
-  font-family: inherit; /* an action's name is not Japanese: the fan's Japanese font would change it */
-  font-size: 0.78rem;
-  font-weight: 700;
-  white-space: nowrap;
-}
-.ctxfan .ctxopt .v-icon {
-  font-size: 17px;
-}
-.ctxfan .ctxopt-lbl {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.ctxfan .tool3d.v-btn {
-  position: relative;
-  z-index: 2; /* the button stays above the pills while they fold back behind it */
-}
-.ctxbtn.v-btn {
-  width: 40px !important;
-  height: 40px !important;
-  min-width: 0 !important;
-  border-radius: 999px !important;
-  touch-action: none; /* dragging it must not scroll the page or swipe the card */
-  user-select: none;
-  cursor: grab;
-}
-.ctxbtn.v-btn:not(.v-btn--disabled) {
-  background: #ef8a17 !important; /* orange, like Skip and the resume button of the top bar */
-  color: #fff !important;
-  box-shadow: 0 3px 0 #b8600f;
-}
-@media (hover: hover) and (pointer: fine) {
-  .ctxbtn.v-btn:not(.v-btn--disabled):hover {
-    background-color: #f7a94d !important;
-    box-shadow: 0 1px 0 #b8600f;
-    transform: translateY(2px);
-  }
-}
-.ctxbtn.v-btn:not(.v-btn--disabled):active {
-  box-shadow: 0 0 0 #b8600f;
-  transform: translateY(3px);
-  cursor: grabbing;
-}
-.ctxbtn.v-btn :deep(.v-icon) {
-  font-size: 22px;
-}
-/* the three grading actions, in the colours of the buttons of the top bar (filled, like a fan option that is on) */
-.fanopt.o-again {
-  --oc: #2f80d1;
-  --od: #1f5a99;
-}
-.fanopt.o-learned {
-  --oc: #5db82f;
-  --od: #3f8a1f;
-}
-.fanopt.o-skip {
-  --oc: #ef8a17;
-  --od: #b8600f;
-}
-/* Test, the app menu and the word list: the colours of their buttons in the top bar */
-.fanopt.o-test {
-  --oc: #1e88e5;
-  --od: #1565a8;
-}
-.fanopt.o-menu {
-  --oc: #5db82f;
-  --od: #3f8a1f;
-}
-.fanopt.o-list {
-  --oc: #8e4ec6;
-  --od: #6a3499;
 }
 .fanopt .v-icon {
   font-size: 16px; /* icons inside the fanned-out options: phone */

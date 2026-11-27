@@ -5,7 +5,7 @@
 import { settings } from './settings';
 
 const en = {
-  'nav.menu': 'Menu',
+  'nav.actions': 'Actions',
   'nav.decks': 'Decks',
   'nav.study': 'Study',
   'nav.settings': 'Settings',
@@ -59,7 +59,6 @@ const en = {
   'show.english': 'English meaning',
   'study.stop': 'Stop',
   'study.read': 'Read aloud',
-  'study.actions': 'Study actions',
   'list.open': 'Show the word list',
   'voice.browser': 'Browser cache',
   'voice.browser-other': 'Browser cache (other deck)',
@@ -426,7 +425,7 @@ const en = {
 };
 
 const vi: Record<keyof typeof en, string> = {
-  'nav.menu': 'Menu',
+  'nav.actions': 'Thao tác',
   'nav.decks': 'Bộ thẻ',
   'nav.study': 'Học',
   'nav.settings': 'Cài đặt',
@@ -480,7 +479,6 @@ const vi: Record<keyof typeof en, string> = {
   'show.english': 'Nghĩa tiếng Anh',
   'study.stop': 'Dừng đọc',
   'study.read': 'Đọc',
-  'study.actions': 'Thao tác học',
   'list.open': 'Xem danh sách từ',
   'voice.browser': 'Bộ nhớ trình duyệt',
   'voice.browser-other': 'Bộ nhớ trình duyệt (deck khác)',

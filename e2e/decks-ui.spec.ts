@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { apiDecks, deckCard, escapeRegex, expect, openSignedIn, richestDeck, startStudy, tagButton, test, tileMark } from './fixtures';
+import { apiDecks, deckCard, escapeRegex, expect, gridIsSquare, openSignedIn, richestDeck, startStudy, tagButton, test, tileMark } from './fixtures';
 
 
 const pickKey = 'flashmobile.deckPick.alice';
@@ -160,31 +160,31 @@ test.describe('tags of a deck', () => {
   });
 });
 
+/* The word list is a grid of squares (.ktile, one per word, its status as a class: todo / again / learned / skipped), in .rows.kgrid. */
 test.describe('word list of a whole deck (tile of the deck screen)', () => {
-  test('tapping the tile opens the list with the deck name and "x / N learned" on the top line', async ({ page, request }) => {
+  test('tapping the tile opens the grid with the deck name and "N cards" on the top line', async ({ page, request }) => {
     const decks = await apiDecks(request, 'alice');
     const deck = decks.find((d) => d.total > 0);
     test.skip(!deck, 'no deck with cards');
     await openSignedIn(page, request, 'alice');
     await deckCard(page, deck!).locator('.deck-tile').click();
     const head = page.locator('.deckhead');
-    await expect(head).toContainText(deck!.name);
-    await expect(head).toContainText(new RegExp(`\\d+ / ${deck!.total} learned`));
+    await expect(head.locator('.dname')).toHaveText(deck!.name);
+    await expect(head.locator('.dcount').first()).toHaveText(`${deck!.total} cards`);
     await expect(head.locator('.dmark')).toHaveCount(0); // no letter tile in the heading
-    await expect(page.locator('.row').first()).toBeVisible();
+    await expect(page.locator('.rows.kgrid .ktile').first()).toBeVisible();
     // the tile did not start the deck behind it
     await expect(page).not.toHaveURL(/#\/study/);
     await page.keyboard.press('Escape');
   });
 
-  test('the first rows are drawn in chunks of 40 and the rest follow while scrolling', async ({ page, request }) => {
+  test('the grid draws every word at once: one square per card of the deck, no loading while scrolling', async ({ page, request }) => {
     const deck = (await apiDecks(request, 'alice')).find((d) => d.total > 45);
     test.skip(!deck, 'no deck with more than 45 cards');
     await openSignedIn(page, request, 'alice');
     await deckCard(page, deck!).locator('.deck-tile').click();
-    await expect(page.locator('.row')).toHaveCount(40);
-    await page.locator('.rows').evaluate((el) => (el.scrollTop = el.scrollHeight));
-    await expect.poll(() => page.locator('.row').count()).toBeGreaterThan(40);
+    await expect(page.locator('.deckhead .dcount').first()).toHaveText(`${deck!.total} cards`);
+    await expect(page.locator('.ktile')).toHaveCount(deck!.total);
   });
 
   test('the options gear fans out learned / skipped / not learned, each can be switched off', async ({ page, request }) => {
@@ -213,23 +213,23 @@ test.describe('word list of a whole deck (tile of the deck screen)', () => {
     await learned.click();
     await expect(learned).toHaveAttribute('aria-pressed', 'false');
     await expect(gear).toHaveClass(/filtered/); // an option is off: the gear turns pale
-    await expect(page.locator('.row.learned')).toHaveCount(0);
+    await expect(page.locator('.ktile.learned')).toHaveCount(0);
 
     // skipped off too: only the rest (not seen / again) stays
     await skipped.click();
     await expect(skipped).toHaveAttribute('aria-pressed', 'false');
-    await expect(page.locator('.row.learned, .row.skipped')).toHaveCount(0);
+    await expect(page.locator('.ktile.learned, .ktile.skipped')).toHaveCount(0);
 
     // every option may be off: then nothing is listed
     await todo.click();
     await expect(todo).toHaveAttribute('aria-pressed', 'false');
-    await expect(page.locator('.row')).toHaveCount(0);
+    await expect(page.locator('.ktile')).toHaveCount(0);
     await expect(page.getByText('No word matches')).toBeVisible();
 
     // skipped alone: nothing but skipped words
     await skipped.click();
     await expect(skipped).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.locator('.row:not(.skipped)')).toHaveCount(0);
+    await expect(page.locator('.ktile:not(.skipped)')).toHaveCount(0);
 
     // a tap elsewhere folds the options
     await page.locator('.sheet .grip').click({ force: true });
@@ -255,15 +255,11 @@ test.describe('word list of a whole deck (tile of the deck screen)', () => {
     await expect(page.locator('.sopt[title="Learned"]')).toHaveAttribute('aria-pressed', 'true');
   });
 
-  test('every second line is a little darker', async ({ page, request }) => {
+  test('the squares are square, of one size, and the columns are the ones the script chose (--kcols)', async ({ page, request }) => {
     const deck = (await apiDecks(request, 'alice')).find((d) => d.total > 3);
     test.skip(!deck, 'no deck with more than 3 cards');
     await openSignedIn(page, request, 'alice');
     await deckCard(page, deck!).locator('.deck-tile').click();
-    const rows = page.locator('.row');
-    await expect(rows.nth(1)).toHaveClass(/\balt\b/);
-    await expect(rows.nth(0)).not.toHaveClass(/\balt\b/);
-    await expect(rows.nth(2)).not.toHaveClass(/\balt\b/);
-    await expect(rows.nth(3)).toHaveClass(/\balt\b/);
+    await gridIsSquare(page);
   });
 });

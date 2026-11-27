@@ -42,7 +42,8 @@ async function answerOne(page: Page, how: 'first' | 'skip' = 'first'): Promise<v
   else await page.locator('.options .opt').first().click();
   const feedback = page.locator('.feedback');
   // The verdict card is drawn at once; with a right answer there is none and the next question comes after ~1.2 s.
-  if (await feedback.isVisible({ timeout: 800 }).catch(() => false)) await feedback.getByRole('button').last().click();
+  // isVisible() does not wait (its timeout is ignored): on a busy machine the card could come a moment later and be missed
+  if (await feedback.waitFor({ state: 'visible', timeout: 1500 }).then(() => true, () => false)) await feedback.getByRole('button').last().click();
 }
 
 /** Waits until the test being taken is saved on the server with `answered` answers (the client's queue may still be sending it). */

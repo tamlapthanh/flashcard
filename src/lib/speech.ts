@@ -3,7 +3,8 @@
  * picked. Where a word's MP3 comes from, in this order:
  *   1. this deck's cache in the browser (Cache Storage: one cache per provider, choice and deck) - instant, works offline;
  *   2. the cache of ANOTHER deck that already has the same word (copied into this deck) - never fetched twice;
- *   3. a voice file shipped with the app (public/voices/<deck>/<word>.mp3, listed in voices/index.json) - ElevenLabs only;
+ *   3. a voice file published for the app (VITE_VOICES_URL, the `voices/` folder: <deck>/<word>.mp3 listed in index.json) - one recording
+ *      per word for every server voice (ElevenLabs or Google, whichever made it);
  *   4. the server, which uses its own memory, a file on its disk, or finally the provider (the only paid step).
  * Whatever is found is kept in this deck's cache. When there is no natural voice (no server voice, asleep, out of credits, the
  * Settings switch is off) the device's own Japanese voice (Web Speech API) reads it.
@@ -33,6 +34,9 @@ const originOf = (response: Response): VoiceOrigin | undefined => {
   const value = response.headers.get('x-voice-origin');
   return value && ORIGINS.includes(value) ? (value as VoiceOrigin) : undefined;
 };
+/* The MP3 a cached word was fetched from (a shipped file only: server recordings have no URL). It is kept as a plain header in the
+   cache entry, so DevTools (Application > Cache Storage > the entry > Headers) says which host a word came from, even long after. */
+const voiceUrlOf = (response: Response): string | undefined => response.headers.get('x-voice-url') ?? undefined;
 
 /** The source of the word that was spoken last (a new object every time, so the same source twice is still noticed). `origin` is
     set when the word came out of the browser's cache: where it was fetched from in the first place (e.g. fetched ahead by auto play). */
@@ -57,35 +61,40 @@ function release(): void {
   audioUrl = null;
 }
 
-/* ---- the voice files shipped with the app ---- */
+/* ---- the voice files published for the app ---- */
 
-type VoiceIndex = Record<string, Record<string, string>>; // deck -> word -> path under voices/
-const voiceIndexes = new Map<string, Promise<VoiceIndex>>();
-const siteBase = (): string => import.meta.env.BASE_URL ?? '/';
-/** ElevenLabs files keep the old place (voices/); another provider has its own folder (voices/google/, voices/<provider>/). */
-const voiceFolder = (provider: VoiceProvider): string => (provider === 'elevenlabs' ? '' : `${provider}/`);
-
-function loadVoiceIndex(provider: VoiceProvider): Promise<VoiceIndex> {
-  let pending = voiceIndexes.get(provider);
+type VoiceIndex = Record<string, Record<string, string>>; // deck -> word -> path under the voices base
+let voiceIndex: Promise<VoiceIndex> | null = null;
+/* Where the MP3s are published: a host of their own (VITE_VOICES_URL, the `voices/` folder deployed as the `tango-voices`
+   Worker) or, when it is not set, the app's own public/voices. The value is baked in at build time. */
+const voicesBase = (): string => {
+  const url = String(import.meta.env.VITE_VOICES_URL ?? '').trim();
+  return url ? `${url.replace(/\/+$/, '')}/` : `${import.meta.env.BASE_URL ?? '/'}voices/`;
+};
+/* One folder and one index.json for every server voice: a word recorded by ElevenLabs is what the Google voice plays too. */
+function loadVoiceIndex(): Promise<VoiceIndex> {
+  let pending = voiceIndex;
   if (!pending) {
-    pending = fetch(`${siteBase()}voices/${voiceFolder(provider)}index.json`)
+    pending = fetch(`${voicesBase()}index.json`)
       .then((res) => (res.ok ? (res.json() as Promise<{ decks?: VoiceIndex }>) : { decks: {} }))
       .then((json) => (json && typeof json.decks === 'object' && json.decks ? json.decks : {}))
       .catch(() => ({})); // no index (not deployed, offline, or the dev server answered with a page): nothing is shipped
-    voiceIndexes.set(provider, pending);
+    voiceIndex = pending;
   }
   return pending;
 }
 
-async function shippedFile(text: string, deck: string): Promise<Blob | null> {
-  const provider = me.voiceProvider;
-  if (provider === 'device') return null; // no server voice, no shipped file
-  const decks = await loadVoiceIndex(provider);
+async function shippedFile(text: string, deck: string): Promise<{ blob: Blob; url: string } | null> {
+  if (me.voiceProvider === 'device') return null; // the phone's own voice: no MP3 at all
+  const decks = await loadVoiceIndex();
   const rel = decks[deck]?.[text] ?? Object.values(decks).map((words) => words[text]).find(Boolean); // the same word of another deck will do
   if (!rel) return null;
+  const source = `${voicesBase()}${rel.split('/').map(encodeURIComponent).join('/')}`;
+  // Absolute, so the cache entry names the host even when the relative fallback (the app's own public/voices) is used.
+  const url = typeof location === 'undefined' ? source : new URL(source, location.href).href;
   try {
-    const res = await fetch(`${siteBase()}voices/${voiceFolder(provider)}${rel.split('/').map(encodeURIComponent).join('/')}`);
-    return res.ok ? await res.blob() : null;
+    const res = await fetch(source);
+    return res.ok ? { blob: await res.blob(), url } : null;
   } catch {
     return null;
   }
@@ -95,9 +104,10 @@ async function shippedFile(text: string, deck: string): Promise<Blob | null> {
 
 const entryUrl = (text: string, deck?: string): string => `/speech/${encodeURIComponent(text)}${deck === undefined ? '' : `?deck=${encodeURIComponent(deck)}`}`;
 
-async function remember(store: Cache | null, key: Request, blob: Blob, origin?: VoiceOrigin): Promise<void> {
+async function remember(store: Cache | null, key: Request, blob: Blob, origin?: VoiceOrigin, url?: string): Promise<void> {
   const headers: Record<string, string> = { 'content-type': 'audio/mpeg' };
   if (origin) headers['x-voice-origin'] = origin;
+  if (url) headers['x-voice-url'] = url;
   await store?.put(key, new Response(blob, { headers })).catch(() => undefined);
 }
 
@@ -165,7 +175,7 @@ async function cachedSpeech(text: string, deck: string, save = true): Promise<{ 
   if (legacy) {
     const blob = await legacy.hit.blob();
     const origin = originOf(legacy.hit);
-    await remember(store, key, blob, origin);
+    await remember(store, key, blob, origin, voiceUrlOf(legacy.hit));
     return { blob, source: legacy.own ? 'browser' : 'browser-other', origin };
   }
 
@@ -173,14 +183,14 @@ async function cachedSpeech(text: string, deck: string, save = true): Promise<{ 
   if (other) {
     const blob = await other.blob();
     const origin = originOf(other);
-    await remember(store, key, blob, origin);
+    await remember(store, key, blob, origin, voiceUrlOf(other));
     return { blob, source: 'browser-other', origin };
   }
 
   const file = await shippedFile(text, deck);
   if (file) {
-    await remember(store, key, file, 'file');
-    return { blob: file, source: 'file' };
+    await remember(store, key, file.blob, 'file', file.url);
+    return { blob: file.blob, source: 'file' };
   }
 
   const served = await fetchSpeech(text, deck, save);

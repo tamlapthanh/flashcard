@@ -1,13 +1,16 @@
 import type { Page } from '@playwright/test';
-import { expect, openSignedIn, richestDeck, startStudy, test, type DeckInfo } from './fixtures';
+import { expect, openSignedIn, richestDeck, serverVoice, startStudy, test, type DeckInfo } from './fixtures';
 
 /*
  * Where a spoken word comes from, and the badge that says so: this deck's browser cache -> another deck's cache -> a voice file
- * shipped with the app -> the server (its memory, its disk, or a paid ElevenLabs call) -> the device's own voice.
- * The server's answers are stubbed: no real ElevenLabs call, and a tiny silent WAV is the "audio".
+ * of the voices host -> the server (its memory, its disk, or a paid ElevenLabs call) -> the device's own voice.
+ * The server's answers are stubbed: no real ElevenLabs call, and a silent WAV is the "audio".
+ * The badge (data-voice) is on the button only WHILE the word plays, so the WAV lasts 2 s: with 0.1 s it was often over before
+ * the check looked (passed alone, failed in the full run on a busy machine). 2 s is still well under the 6 s the tests wait for
+ * the badge to go.
  */
 function silentWav(): Buffer {
-  const data = Buffer.alloc(800 * 2);
+  const data = Buffer.alloc(8000 * 2 * 2); // 2 s, 8 kHz, 16-bit mono
   const head = Buffer.alloc(44);
   head.write('RIFF', 0);
   head.writeUInt32LE(36 + data.length, 4);
@@ -41,6 +44,7 @@ test.beforeEach(async ({ page, request }) => {
     if (serverSource) headers['x-voice-source'] = serverSource;
     await route.fulfill({ status: 200, headers, body: WAV });
   });
+  await serverVoice(page);
   await openSignedIn(page, request, 'bob');
   await startStudy(page, deck);
 });
@@ -117,7 +121,7 @@ test.describe('where a spoken word comes from', () => {
     expect(own).toBe(1);
   });
 
-  test('a voice file shipped with the app (voices/index.json) is played without any server request', async ({ page }) => {
+  test('a voice file of the voices host (voices/index.json) is played without any server request', async ({ page }) => {
     const text = await spokenText(page);
     await page.route('**/voices/index.json', (route) =>
       route.fulfill({ json: { version: 1, decks: { [deck.name]: { [text]: `${deck.name}/word.mp3` } } } })
@@ -134,6 +138,14 @@ test.describe('where a spoken word comes from', () => {
     await expect(badge(page)).toBeHidden({ timeout: 6000 });
     await play(page);
     await expect(badge(page)).toHaveAttribute('data-voice', 'Browser cache · Saved file'); // kept in the cache after the first play, with its origin
+    // The cache entry also keeps the address it was fetched from (x-voice-url), so DevTools says which host a word came from.
+    const kept = await page.evaluate(async ({ name, word }) => {
+      const store = await caches.open(`flashmobile-speech-v5:elevenlabs:0:${name}`);
+      const hit = await store.match(new Request(`/speech/${encodeURIComponent(word)}?deck=${encodeURIComponent(name)}`));
+      return { origin: hit?.headers.get('x-voice-origin'), url: hit?.headers.get('x-voice-url') };
+    }, { name: deck.name, word: text });
+    expect(kept.origin).toBe('file');
+    expect(kept.url).toContain('/voices/');
   });
 
   test('the server says where its audio came from: its memory, its disk, or unknown', async ({ page }) => {
