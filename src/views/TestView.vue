@@ -622,6 +622,9 @@ void load();
 .speak.src-elevenlabs {
   background: #ef8a17; /* a paid ElevenLabs call */
 }
+.speak.src-google {
+  background: #4285f4; /* a paid Google Cloud TTS call */
+}
 .speak.src-device {
   background: #7a7a7a; /* the device's own voice */
 }

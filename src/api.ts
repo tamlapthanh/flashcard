@@ -163,6 +163,17 @@ export const api = {
   deletePaper: (paperId: string) => request<{ ok: boolean }>(`/api/papers/${encodeURIComponent(paperId)}`, { method: 'DELETE' }),
   /** Admin: how much of the ElevenLabs credits this period is used (the server reads the account; it costs no credits). */
   speechUsage: () => request<{ used: number; limit: number; percent: number; resetAt: string | null; tier: string | null }>('/api/speech/usage'),
+  /** Which voice provider is active, which ones the server has a key for, and when the choice last changed (the browser cache is keyed by these). */
+  voice: () => request<{ provider: VoiceProvider; updatedAt: string; available: VoiceProvider[] }>('/api/voice'),
+  /** Admin: the voices and models each provider offers, plus the settings in use (metadata only: no characters spent). */
+  voiceOptions: () => request<VoiceOptions>('/api/voice/options'),
+  /** Admin: picks the voice for everybody, or one provider's voice/model/speed. Returns the whole settings. */
+  updateVoice: (patch: { provider?: VoiceProvider; elevenlabs?: Partial<VoiceConfig['elevenlabs']>; google?: Partial<VoiceConfig['google']> }) =>
+    request<VoiceConfig>('/api/voice', { method: 'PUT', body: JSON.stringify(patch) }),
+  /** Admin: Google characters counted by the server this month (`month` is YYYY-MM); it stops Google at the limit. */
+  voiceUsage: () => request<{ used: number; limit: number; percent: number; month: string }>('/api/voice/usage'),
+  /** Admin: picks the voice for everybody. */
+  setVoiceProvider: (provider: VoiceProvider) => request<VoiceConfig>('/api/voice', { method: 'PUT', body: JSON.stringify({ provider }) }),
   /** Free servers sleep: ping /health first so the UI can say "waking up". */
   health: () => request<{ ok: boolean; saveVoice?: boolean }>('/health')
 };
@@ -180,8 +191,16 @@ export async function loadServerInfo(): Promise<void> {
 
 /* Whether the signed-in user is an admin (makes papers, sees everyone's results). Only decides what the app shows: the server decides what is allowed.
    False until the server has answered, and again when it cannot be reached. */
-/* `ready`: the server has answered (or there is nobody signed in): a screen that is only for admins waits for it, so a reload does not take the admin for somebody else. */
-export const me = reactive({ admin: false, ready: false });
+/* `ready`: the server has answered (or there is nobody signed in): a screen that is only for admins waits for it, so a reload does not take the admin for somebody else.
+   The voice fields say which provider the server uses; the browser keeps a separate voice cache per provider and per `voiceVersion`
+   (the time the admin last changed the choice), so switching never replays the old voice. Defaults to ElevenLabs until the server answers. */
+export const me = reactive({
+  admin: false,
+  ready: false,
+  voiceProvider: 'elevenlabs' as VoiceProvider,
+  voiceVersion: '',
+  voiceAvailable: ['elevenlabs'] as VoiceProvider[]
+});
 export async function loadMe(): Promise<void> {
   if (!auth.token && import.meta.env.VITE_LOGIN !== 'false') {
     me.admin = false;
@@ -189,7 +208,13 @@ export async function loadMe(): Promise<void> {
     return;
   }
   try {
-    me.admin = (await api.me()).admin === true;
+    const [who, voice] = await Promise.all([api.me(), api.voice().catch(() => null)]);
+    me.admin = who.admin === true;
+    if (voice) {
+      me.voiceProvider = voice.provider;
+      me.voiceVersion = voice.updatedAt;
+      me.voiceAvailable = voice.available;
+    }
   } catch {
     /* asleep or offline: not an admin until it answers */
   } finally {
@@ -197,13 +222,34 @@ export async function loadMe(): Promise<void> {
   }
 }
 
-/* Where the server got a spoken word from (its x-voice-source header): a paid ElevenLabs call, its memory, or a file on its disk. */
-export type ServerVoiceSource = 'elevenlabs' | 'server-memory' | 'server-file' | 'server';
+/* Where the server got a spoken word from (its x-voice-source header): a paid call to ElevenLabs or Google, its memory, or a file on its disk. */
+export type VoiceProvider = 'elevenlabs' | 'google';
+export type ServerVoiceSource = VoiceProvider | 'server-memory' | 'server-file' | 'server';
 
-/* The spoken word as an MP3 (ElevenLabs through the server) and where the server got it from. Rejects when the server has no voice or fails. */
+/* The admin's voice settings (what the server keeps in app_config) and the voices each provider offers. */
+export interface VoiceConfig {
+  provider: VoiceProvider;
+  elevenlabs: { voice: string; model: string; speed: number };
+  google: { voice: string };
+  updatedAt: string;
+}
+export interface VoiceOption {
+  id: string;
+  name: string;
+  detail?: string;
+  previewUrl?: string | null;
+}
+export interface VoiceOptions {
+  current: VoiceConfig;
+  elevenlabs: { voices: VoiceOption[]; models: VoiceOption[] };
+  google: { voices: VoiceOption[] };
+}
+
+/* The spoken word as an MP3 (the voice the server picked) and where it came from. `provider`/`version` say which voice really
+   answered: the server may switch from Google to ElevenLabs at Google's monthly limit, and the app files the audio under that one. */
 /* `save` false asks the server not to keep a file of this word (it still plays files it already has). */
-/* `fresh` true (admin only; the server ignores it for anybody else) skips the server's caches and the browser's HTTP cache: always a paid ElevenLabs call. */
-export async function fetchSpeech(text: string, deck = '', save = true, fresh = false): Promise<{ blob: Blob; source: ServerVoiceSource }> {
+/* `fresh` true (admin only; the server ignores it for anybody else) skips the server's caches and the browser's HTTP cache: always a paid call. */
+export async function fetchSpeech(text: string, deck = '', save = true, fresh = false): Promise<{ blob: Blob; source: ServerVoiceSource; provider?: VoiceProvider; version?: string }> {
   let res: Response;
   try {
     const query = `text=${encodeURIComponent(text)}${deck ? `&deck=${encodeURIComponent(deck)}` : ''}${save ? '' : '&save=0'}${fresh ? '&fresh=1' : ''}`;
@@ -214,8 +260,24 @@ export async function fetchSpeech(text: string, deck = '', save = true, fresh = 
   if (res.status === 401) clearSession();
   if (!res.ok) throw new ApiError(t('api.server', { status: res.status }), res.status);
   const header = res.headers.get('x-voice-source');
-  const source: ServerVoiceSource = header === 'elevenlabs' || header === 'server-memory' || header === 'server-file' ? header : 'server'; // an older server sends none
-  return { blob: await res.blob(), source };
+  const source: ServerVoiceSource = header === 'elevenlabs' || header === 'google' || header === 'server-memory' || header === 'server-file' ? header : 'server'; // an older server sends none
+  const providerHeader = res.headers.get('x-voice-provider');
+  const provider: VoiceProvider | undefined = providerHeader === 'elevenlabs' || providerHeader === 'google' ? providerHeader : undefined;
+  const version = res.headers.get('x-voice-version') ?? undefined;
+  return { blob: await res.blob(), source, provider, version };
+}
+
+/* A short sample with the active voice settings (admin only). The server caches it, so the same settings twice are free. */
+export async function fetchVoicePreview(text = 'こんにちは'): Promise<Blob> {
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}/api/voice/preview?text=${encodeURIComponent(text)}`, { headers: authHeaders(), cache: 'no-store' });
+  } catch {
+    throw new ApiError(t('api.conn'), 0);
+  }
+  if (res.status === 401) clearSession();
+  if (!res.ok) throw new ApiError(t('api.server', { status: res.status }), res.status);
+  return res.blob();
 }
 
 /* ---- result queue ---- */

@@ -1210,6 +1210,9 @@ onUnmounted(() => {
 .speakc.src-elevenlabs.v-btn:not(.v-btn--disabled) {
   background: #ef8a17 !important; /* a paid ElevenLabs call */
 }
+.speakc.src-google.v-btn:not(.v-btn--disabled) {
+  background: #4285f4 !important; /* a paid Google Cloud TTS call */
+}
 .speakc.src-device.v-btn:not(.v-btn--disabled) {
   background: #7a7a7a !important; /* the phone's own voice */
 }

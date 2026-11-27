@@ -1,26 +1,34 @@
 /*
- * Reads a word aloud. First choice: the natural ElevenLabs voice (an MP3). Where a word's MP3 comes from, in this order:
- *   1. this deck's cache in the browser (Cache Storage: one cache per deck, one entry per word) - instant, works offline;
+ * Reads a word aloud. First choice: the natural voice the server uses (an MP3) - ElevenLabs or Google, whichever the admin
+ * picked. Where a word's MP3 comes from, in this order:
+ *   1. this deck's cache in the browser (Cache Storage: one cache per provider, choice and deck) - instant, works offline;
  *   2. the cache of ANOTHER deck that already has the same word (copied into this deck) - never fetched twice;
- *   3. a voice file shipped with the app (public/voices/<deck>/<word>.mp3, listed in voices/index.json) - no server needed;
- *   4. the server, which uses its own memory, a file on its disk, or finally ElevenLabs (the only paid step).
+ *   3. a voice file shipped with the app (public/voices/<deck>/<word>.mp3, listed in voices/index.json) - ElevenLabs only;
+ *   4. the server, which uses its own memory, a file on its disk, or finally the provider (the only paid step).
  * Whatever is found is kept in this deck's cache. When there is no natural voice (no server voice, asleep, out of credits, the
  * Settings switch is off) the device's own Japanese voice (Web Speech API) reads it.
  * `voiceSource` always says where the last word came from, so the screen can show it.
  * Only the word itself is read: the kana reading when there is one, otherwise the headword.
  */
 import { ref } from 'vue';
-import { fetchSpeech, me, type ServerVoiceSource } from '../api';
+import { fetchSpeech, loadMe, me, type ServerVoiceSource, type VoiceProvider } from '../api';
 import { settings } from '../settings';
 
-const CACHE_PREFIX = 'flashmobile-speech-v4:'; // + the deck name; bump the number when the server's voice or speed changes, so old recordings are not replayed
+const CACHE_PREFIX = 'flashmobile-speech-v5:'; // + <provider>:<voice version>:<deck>; bump the number when the cache layout changes, so old recordings are not replayed
+const LEGACY_PREFIX = 'flashmobile-speech-v4:'; // the layout before the provider/version key: every entry there is an ElevenLabs recording
+
+/** The cache space of the voice the server uses now: a different provider (or a new admin choice) never sees the old files. */
+const voiceScope = (): string => `${me.voiceProvider}:${me.voiceVersion || '0'}`;
+const cacheName = (deck: string): string => `${CACHE_PREFIX}${voiceScope()}:${deck || '_'}`;
+/** The same word in an older choice of voice is useless: only the caches of the current provider/version are searched. */
+const otherDeckPrefix = (): string => `${CACHE_PREFIX}${voiceScope()}:`;
 
 /** browser = this deck's cache, browser-other = another deck's cache, file = shipped with the app, the rest = what the server said, device = the phone's own voice. */
 export type VoiceSource = 'browser' | 'browser-other' | 'file' | ServerVoiceSource | 'device';
 
 /** Where a word first came from, kept with its entry in the browser's cache (a word got there from a saved file, the server, ...). */
 export type VoiceOrigin = 'file' | ServerVoiceSource;
-const ORIGINS: readonly string[] = ['file', 'elevenlabs', 'server-memory', 'server-file', 'server'];
+const ORIGINS: readonly string[] = ['file', 'elevenlabs', 'google', 'server-memory', 'server-file', 'server'];
 const originOf = (response: Response): VoiceOrigin | undefined => {
   const value = response.headers.get('x-voice-origin');
   return value && ORIGINS.includes(value) ? (value as VoiceOrigin) : undefined;
@@ -52,23 +60,30 @@ function release(): void {
 /* ---- the voice files shipped with the app ---- */
 
 type VoiceIndex = Record<string, Record<string, string>>; // deck -> word -> path under voices/
-let voiceIndex: Promise<VoiceIndex> | null = null;
+const voiceIndexes = new Map<string, Promise<VoiceIndex>>();
 const siteBase = (): string => import.meta.env.BASE_URL ?? '/';
+/** ElevenLabs files keep the old place (voices/); another provider has its own folder (voices/google/, voices/<provider>/). */
+const voiceFolder = (provider: VoiceProvider): string => (provider === 'elevenlabs' ? '' : `${provider}/`);
 
-function loadVoiceIndex(): Promise<VoiceIndex> {
-  voiceIndex ??= fetch(`${siteBase()}voices/index.json`)
-    .then((res) => (res.ok ? (res.json() as Promise<{ decks?: VoiceIndex }>) : { decks: {} }))
-    .then((json) => (json && typeof json.decks === 'object' && json.decks ? json.decks : {}))
-    .catch(() => ({})); // no index (not deployed, offline, or the dev server answered with a page): nothing is shipped
-  return voiceIndex;
+function loadVoiceIndex(provider: VoiceProvider): Promise<VoiceIndex> {
+  let pending = voiceIndexes.get(provider);
+  if (!pending) {
+    pending = fetch(`${siteBase()}voices/${voiceFolder(provider)}index.json`)
+      .then((res) => (res.ok ? (res.json() as Promise<{ decks?: VoiceIndex }>) : { decks: {} }))
+      .then((json) => (json && typeof json.decks === 'object' && json.decks ? json.decks : {}))
+      .catch(() => ({})); // no index (not deployed, offline, or the dev server answered with a page): nothing is shipped
+    voiceIndexes.set(provider, pending);
+  }
+  return pending;
 }
 
 async function shippedFile(text: string, deck: string): Promise<Blob | null> {
-  const decks = await loadVoiceIndex();
+  const provider = me.voiceProvider;
+  const decks = await loadVoiceIndex(provider);
   const rel = decks[deck]?.[text] ?? Object.values(decks).map((words) => words[text]).find(Boolean); // the same word of another deck will do
   if (!rel) return null;
   try {
-    const res = await fetch(`${siteBase()}voices/${rel.split('/').map(encodeURIComponent).join('/')}`);
+    const res = await fetch(`${siteBase()}voices/${voiceFolder(provider)}${rel.split('/').map(encodeURIComponent).join('/')}`);
     return res.ok ? await res.blob() : null;
   } catch {
     return null;
@@ -88,21 +103,71 @@ async function remember(store: Cache | null, key: Request, blob: Blob, origin?: 
 /* The admin test option; the switch is only shown to an admin, and the server ignores it for anybody else, so it counts only for one. */
 const skipCache = (): boolean => settings.skipVoiceCache && me.admin;
 
+/* The same word in another deck's cache of the CURRENT voice (a search by address only, whatever the deck): a few milliseconds, no download.
+   Only the caches of this provider and this choice are searched; an old voice's files are ignored. */
+async function otherDeck(text: string): Promise<Response | undefined> {
+  if (typeof caches === 'undefined') return undefined;
+  const request = new Request(entryUrl(text));
+  const prefix = otherDeckPrefix();
+  for (const name of await caches.keys()) {
+    if (!name.startsWith(prefix)) continue;
+    const hit = await (await caches.open(name)).match(request, { ignoreSearch: true });
+    if (hit) return hit;
+  }
+  return undefined;
+}
+
+/* Upgrading from the old cache (v4): those files are ElevenLabs recordings, made before a provider could be chosen. They are
+   copied into the new cache instead of being paid for again. Only used while ElevenLabs is the active voice. */
+async function legacySpeech(text: string, deck: string): Promise<{ hit: Response; own: boolean } | null> {
+  if (me.voiceProvider !== 'elevenlabs' || typeof caches === 'undefined') return null;
+  const own = `${LEGACY_PREFIX}${deck || '_'}`;
+  const names = (await caches.keys()).filter((name) => name.startsWith(LEGACY_PREFIX));
+  const ordered = names.includes(own) ? [own, ...names.filter((name) => name !== own)] : names;
+  const request = new Request(entryUrl(text));
+  for (const name of ordered) {
+    const hit = await (await caches.open(name)).match(request, { ignoreSearch: true });
+    if (hit) return { hit, own: name === own };
+  }
+  return null;
+}
+
+/* The server may answer with another voice than the one the app thought was active (Google's monthly limit moves it to
+   ElevenLabs). Take the one that really answered, so the audio is filed under the right provider/version. */
+function applyServedVoice(served: { provider?: VoiceProvider; version?: string }): boolean {
+  if (!served.provider) return false;
+  const changed = served.provider !== me.voiceProvider || (served.version !== undefined && served.version !== me.voiceVersion);
+  if (changed) {
+    me.voiceProvider = served.provider;
+    if (served.version !== undefined) me.voiceVersion = served.version;
+  }
+  return changed;
+}
+
 async function cachedSpeech(text: string, deck: string, save = true): Promise<{ blob: Blob; source: VoiceSource; origin?: VoiceOrigin }> {
   // admin test option "no voice cache": no browser cache, no shipped file, no server cache or file; nothing is stored either
   if (skipCache()) {
     const served = await fetchSpeech(text, deck, false, true);
+    applyServedVoice(served);
     return { blob: served.blob, source: served.source };
   }
+  if (!me.ready) await loadMe(); // which voice (and which cache) before anything is looked up
   const hasCaches = typeof caches !== 'undefined';
   const key = new Request(entryUrl(text, deck));
-  const store = hasCaches ? await caches.open(CACHE_PREFIX + (deck || '_')).catch(() => null) : null;
+  const store = hasCaches ? await caches.open(cacheName(deck)).catch(() => null) : null;
 
   const own = await store?.match(key);
   if (own) return { blob: await own.blob(), source: 'browser', origin: originOf(own) };
 
-  // the same word in another deck's cache (a search by address only, whatever the deck): a few milliseconds, no download
-  const other = hasCaches ? await caches.match(new Request(entryUrl(text)), { ignoreSearch: true }).catch(() => undefined) : undefined;
+  const legacy = await legacySpeech(text, deck);
+  if (legacy) {
+    const blob = await legacy.hit.blob();
+    const origin = originOf(legacy.hit);
+    await remember(store, key, blob, origin);
+    return { blob, source: legacy.own ? 'browser' : 'browser-other', origin };
+  }
+
+  const other = await otherDeck(text);
   if (other) {
     const blob = await other.blob();
     const origin = originOf(other);
@@ -117,7 +182,10 @@ async function cachedSpeech(text: string, deck: string, save = true): Promise<{ 
   }
 
   const served = await fetchSpeech(text, deck, save);
-  await remember(store, key, served.blob, served.source);
+  // another voice may have answered (Google's limit): file it under that one, never under the one the app expected
+  const moved = applyServedVoice(served);
+  const target = moved && hasCaches ? await caches.open(cacheName(deck)).catch(() => null) : store;
+  await remember(target, key, served.blob, served.source);
   return { blob: served.blob, source: served.source };
 }
 
@@ -243,4 +311,11 @@ function stopOutput(): void {
 export function stopSpeaking(): void {
   current++;
   stopOutput();
+}
+
+/** Deletes every voice kept in this browser (all providers and versions). Used when the admin switches voice: the old recordings must not play again. */
+export async function clearSpeechCaches(): Promise<void> {
+  if (typeof caches === 'undefined') return;
+  const names = await caches.keys();
+  await Promise.all(names.filter((name) => name.startsWith('flashmobile-speech-')).map((name) => caches.delete(name)));
 }

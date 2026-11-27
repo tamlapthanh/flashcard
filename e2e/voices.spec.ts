@@ -89,7 +89,7 @@ test.describe('where a spoken word comes from', () => {
   test('the browser cache is organised by deck: one cache per deck, one entry per word', async ({ page }) => {
     await play(page);
     const entries = await page.evaluate(async (name) => {
-      const store = await caches.open(`flashmobile-speech-v4:${name}`);
+      const store = await caches.open(`flashmobile-speech-v5:elevenlabs:0:${name}`);
       return (await store.keys()).map((k) => decodeURIComponent(k.url));
     }, deck.name);
     const text = await spokenText(page);
@@ -102,7 +102,7 @@ test.describe('where a spoken word comes from', () => {
     const text = await spokenText(page);
     await page.evaluate(
       async ([word, wav]) => {
-        const store = await caches.open('flashmobile-speech-v4:Some other deck');
+        const store = await caches.open('flashmobile-speech-v5:elevenlabs:0:Some other deck');
         await store.put(new Request(`/speech/${encodeURIComponent(word!)}?deck=${encodeURIComponent('Some other deck')}`), new Response(new Uint8Array(JSON.parse(wav!) as number[]), { headers: { 'content-type': 'audio/mpeg' } }));
       },
       [text, JSON.stringify([...WAV])]
@@ -113,7 +113,7 @@ test.describe('where a spoken word comes from', () => {
     await expect(badge(page)).toBeHidden({ timeout: 6000 });
     await play(page);
     await expect(badge(page)).toHaveAttribute('data-voice', 'Browser cache'); // copied into this deck's own cache
-    const own = await page.evaluate(async (name) => (await (await caches.open(`flashmobile-speech-v4:${name}`)).keys()).length, deck.name);
+    const own = await page.evaluate(async (name) => (await (await caches.open(`flashmobile-speech-v5:elevenlabs:0:${name}`)).keys()).length, deck.name);
     expect(own).toBe(1);
   });
 

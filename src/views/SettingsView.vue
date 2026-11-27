@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue';
-import { api, me, pendingResults, serverInfo } from '../api';
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
+import { api, fetchVoicePreview, me, pendingResults, serverInfo, type VoiceConfig, type VoiceOption, type VoiceOptions, type VoiceProvider } from '../api';
 import Flag from '../components/Flag.vue';
 import TopBar from '../components/TopBar.vue';
 import { t } from '../i18n';
 import CardTextEditor from '../components/CardTextEditor.vue';
+import { clearSpeechCaches } from '../lib/speech';
 import { clearSamples, samplesJson, sampleStats } from '../lib/strokeSamples';
 import { AUTO_MAX_SEC, AUTO_MIN_SEC, settings } from '../settings';
 
@@ -30,6 +31,146 @@ async function copySamples(): Promise<void> {
 type VoiceUsage = { used: number; limit: number; percent: number; resetAt: string | null; tier: string | null };
 const usage = ref<VoiceUsage | null>(null);
 const usageState = ref<'idle' | 'loading' | 'error'>('idle');
+
+/* Admin only: the Google characters counted by the server this month (Google itself has no usage API). */
+type GoogleUsage = { used: number; limit: number; percent: number; month: string };
+const googleUsage = ref<GoogleUsage | null>(null);
+const googleState = ref<'idle' | 'loading' | 'error'>('idle');
+async function loadGoogleUsage(): Promise<void> {
+  googleState.value = 'loading';
+  try {
+    googleUsage.value = await api.voiceUsage();
+    googleState.value = 'idle';
+  } catch {
+    googleState.value = 'error';
+  }
+}
+
+/* Admin only: which provider reads the words. Changing it makes the server keep a new cache version, so the browser drops its copies. */
+const switching = ref<VoiceProvider | null>(null);
+const voiceError = ref('');
+const voiceName = (p: VoiceProvider): string => (p === 'google' ? t('set.voiceGoogle') : t('set.voiceElevenlabs'));
+async function switchVoice(provider: unknown): Promise<void> {
+  if (typeof provider !== 'string' || switching.value || provider === me.voiceProvider) return;
+  const picked = provider as VoiceProvider;
+  switching.value = picked;
+  voiceError.value = '';
+  try {
+    const saved = await api.setVoiceProvider(picked);
+    me.voiceProvider = saved.provider;
+    me.voiceVersion = saved.updatedAt;
+    await clearSpeechCaches(); // the files made by the other voice must never play again
+  } catch {
+    voiceError.value = picked === 'google' ? t('set.voiceGoogleCheckFail') : t('set.voiceSwitchFail');
+  } finally {
+    switching.value = null;
+  }
+}
+
+/* The voice itself: the list comes from the providers (metadata only, no characters spent), and a change rebuilds the
+   server's engines with the new voice/model/speed. The form is saved per provider; the sample is synthesized once per
+   settings and then cached by the engine. */
+const voiceOptions = ref<VoiceOptions | null>(null);
+const voiceOptionsState = ref<'idle' | 'loading' | 'error'>('idle');
+const voiceForm = ref<VoiceConfig | null>(null);
+const voiceSaving = ref(false);
+const voiceSaved = ref(false);
+const voiceFormError = ref('');
+const previewing = ref(false);
+let previewAudio: HTMLAudioElement | null = null;
+let previewUrl = '';
+
+const cloneVoice = (config: VoiceConfig): VoiceConfig => ({ ...config, elevenlabs: { ...config.elevenlabs }, google: { ...config.google } });
+
+async function loadVoiceOptions(): Promise<void> {
+  voiceOptionsState.value = 'loading';
+  voiceFormError.value = '';
+  try {
+    const options = await api.voiceOptions();
+    voiceOptions.value = options;
+    voiceForm.value = cloneVoice(options.current);
+    voiceOptionsState.value = 'idle';
+  } catch {
+    voiceOptionsState.value = 'error';
+  }
+}
+
+const voiceDirty = computed(() => {
+  const current = voiceOptions.value?.current;
+  const form = voiceForm.value;
+  if (!current || !form) return false;
+  return (
+    current.elevenlabs.voice !== form.elevenlabs.voice ||
+    current.elevenlabs.model !== form.elevenlabs.model ||
+    current.elevenlabs.speed !== form.elevenlabs.speed ||
+    current.google.voice !== form.google.voice
+  );
+});
+
+async function saveVoice(): Promise<boolean> {
+  const form = voiceForm.value;
+  if (!form || voiceSaving.value) return false;
+  voiceSaving.value = true;
+  voiceSaved.value = false;
+  voiceFormError.value = '';
+  try {
+    const saved = await api.updateVoice(me.voiceProvider === 'elevenlabs' ? { elevenlabs: { ...form.elevenlabs } } : { google: { ...form.google } });
+    me.voiceProvider = saved.provider;
+    me.voiceVersion = saved.updatedAt;
+    if (voiceOptions.value) voiceOptions.value.current = saved;
+    voiceForm.value = cloneVoice(saved);
+    await clearSpeechCaches();
+    voiceSaved.value = true;
+    setTimeout(() => (voiceSaved.value = false), 2000);
+    return true;
+  } catch {
+    voiceFormError.value = t('set.voiceSettingsFail');
+    return false;
+  } finally {
+    voiceSaving.value = false;
+  }
+}
+
+function stopPreview(): void {
+  previewAudio?.pause();
+  previewAudio = null;
+  if (previewUrl) URL.revokeObjectURL(previewUrl);
+  previewUrl = '';
+}
+
+async function previewVoice(): Promise<void> {
+  if (previewing.value) return;
+  previewing.value = true;
+  voiceFormError.value = '';
+  try {
+    if (voiceDirty.value && !(await saveVoice())) return; // hear what the form says: apply it first
+    const blob = await fetchVoicePreview();
+    stopPreview();
+    previewUrl = URL.createObjectURL(blob);
+    previewAudio = new Audio(previewUrl);
+    previewAudio.onended = stopPreview;
+    await previewAudio.play();
+  } catch {
+    voiceFormError.value = t('set.voicePreviewFail');
+  } finally {
+    previewing.value = false;
+  }
+}
+
+const voiceItemProps = (item: VoiceOption): { subtitle?: string } => ({ subtitle: item.detail });
+watch(
+  () => open.voice && me.admin,
+  (show) => {
+    if (show && !voiceOptions.value && voiceOptionsState.value !== 'loading') void loadVoiceOptions();
+  }
+);
+onBeforeUnmount(stopPreview);
+watch(
+  () => open.voice,
+  (isOpen) => {
+    if (!isOpen) stopPreview();
+  }
+);
 async function loadUsage(): Promise<void> {
   usageState.value = 'loading';
   try {
@@ -40,9 +181,15 @@ async function loadUsage(): Promise<void> {
   }
 }
 watch(
-  () => open.voice && me.admin,
+  () => open.voice && me.admin && me.voiceProvider === 'elevenlabs',
   (show) => {
     if (show && !usage.value && usageState.value !== 'loading') void loadUsage();
+  }
+);
+watch(
+  () => open.voice && me.admin && me.voiceProvider === 'google',
+  (show) => {
+    if (show && !googleUsage.value && googleState.value !== 'loading') void loadGoogleUsage();
   }
 );
 const usageReset = computed(() => (usage.value?.resetAt ? new Date(usage.value.resetAt).toLocaleDateString() : ''));
@@ -50,7 +197,11 @@ const usageDays = computed(() => (usage.value?.resetAt ? Math.max(0, Math.ceil((
 /* How far through the period we are. The account only says when it resets, so the period is taken as a month (30 days): about right for a monthly plan. */
 const PERIOD_DAYS = 30;
 const timePct = computed(() => Math.min(100, Math.max(0, ((PERIOD_DAYS - usageDays.value) / PERIOD_DAYS) * 100)));
-const usageColor = computed(() => ((usage.value?.percent ?? 0) >= 90 ? 'error' : (usage.value?.percent ?? 0) >= 70 ? 'warning' : 'primary'));
+const usageColor = computed(() => colorFor(usage.value?.percent ?? 0));
+/** Green, then orange from 70%, red from 90%. */
+function colorFor(percent: number): string {
+  return percent >= 90 ? 'error' : percent >= 70 ? 'warning' : 'primary';
+}
 const directionSummary = computed(() => (settings.direction === 'forward' ? t('deck.dirForward') : t('deck.dirReverse')));
 </script>
 
@@ -89,6 +240,19 @@ const directionSummary = computed(() => (settings.direction === 'forward' ? t('d
 .warm .hint {
   color: #6b5a4a !important;
   opacity: 1;
+}
+/* the ElevenLabs speed slider: label on the left, value on the right */
+.speedrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.speedval {
+  min-width: 34px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 /* Phones have no mouse, hence no tooltips: the tooltip switch is hidden there. */
 @media not all and (hover: hover) and (pointer: fine) {
@@ -528,16 +692,53 @@ const directionSummary = computed(() => (settings.direction === 'forward' ? t('d
     <!-- admin only (the server refuses everybody else too): how much of the ElevenLabs credits is used -->
     <template v-if="me.admin">
       <button type="button" class="sechead" :data-tip="t('tip.section')" :aria-expanded="open.voice" data-testid="voice-section" @click="open.voice = !open.voice">
-        <span class="glyph">声</span><span class="name">{{ t('set.elevenlabs') }}</span><span class="sum" />
+        <span class="glyph">声</span><span class="name">{{ t('set.voiceTitle') }}</span><span class="sum" />
         <v-icon :icon="open.voice ? 'mdi-chevron-up' : 'mdi-chevron-down'" size="20" />
       </button>
       <v-expand-transition>
       <div v-show="open.voice" class="soft-card pa-4 mb-3" data-testid="voice-usage">
-        <!-- admin test option, this device only: every read asks ElevenLabs, no cache of any kind -->
+        <!-- admin: which voice reads the words (the server refuses everybody else too) -->
+        <v-list-item :title="t('set.voiceProvider')" :subtitle="t('set.voiceProviderSub')" class="wrapsub pa-0" />
+        <div class="px-4 pb-3">
+          <v-btn-toggle :model-value="me.voiceProvider" mandatory density="comfortable" color="primary" variant="outlined" divided class="w-100" data-testid="voice-provider" @update:model-value="switchVoice">
+            <v-btn v-for="p in me.voiceAvailable" :key="p" :value="p" size="small" class="flex-grow-1" :loading="switching === p" :disabled="!!switching">{{ voiceName(p) }}</v-btn>
+          </v-btn-toggle>
+          <div v-if="voiceError" class="hint mt-2">{{ voiceError }}</div>
+        </div>
+        <!-- admin: the voice (and ElevenLabs' model and speed) of the active provider, plus a short sample -->
+        <div class="px-4 pb-3" data-testid="voice-settings">
+          <div v-if="voiceOptionsState === 'loading'" class="hint">{{ t('set.voiceOptionsLoading') }}</div>
+          <div v-else-if="voiceOptionsState === 'error'" class="hint">
+            {{ t('set.voiceOptionsError') }}
+            <v-btn variant="tonal" size="small" class="ml-2" @click="loadVoiceOptions">{{ t('deck.retry') }}</v-btn>
+          </div>
+          <template v-else-if="voiceForm && voiceOptions">
+            <template v-if="me.voiceProvider === 'elevenlabs'">
+              <v-select v-model="voiceForm.elevenlabs.voice" :items="voiceOptions.elevenlabs.voices" :item-props="voiceItemProps" item-title="name" item-value="id" :label="t('set.voiceVoice')" density="compact" variant="outlined" hide-details class="mb-2" data-testid="voice-elevenlabs" />
+              <v-select v-if="voiceOptions.elevenlabs.models.length" v-model="voiceForm.elevenlabs.model" :items="voiceOptions.elevenlabs.models" item-title="name" item-value="id" :label="t('set.voiceModel')" density="compact" variant="outlined" hide-details class="mb-2" data-testid="voice-model" />
+              <div class="speedrow">
+                <span>{{ t('set.voiceSpeed') }}</span>
+                <v-slider v-model="voiceForm.elevenlabs.speed" :min="0.7" :max="1.2" :step="0.05" hide-details density="compact" color="primary" class="flex-grow-1 mx-2" />
+                <span class="speedval">{{ voiceForm.elevenlabs.speed.toFixed(2) }}</span>
+              </div>
+            </template>
+            <v-select v-else v-model="voiceForm.google.voice" :items="voiceOptions.google.voices" :item-props="voiceItemProps" item-title="name" item-value="id" :label="t('set.voiceVoice')" density="compact" variant="outlined" hide-details data-testid="voice-google" />
+            <div class="d-flex ga-2 mt-2">
+              <v-btn size="small" color="primary" variant="flat" :disabled="!voiceDirty" :loading="voiceSaving" @click="saveVoice">{{ voiceSaved ? t('set.voiceSaved') : t('set.voiceSave') }}</v-btn>
+              <v-btn size="small" variant="tonal" color="primary" :loading="previewing" @click="previewVoice">{{ t('set.voiceListen') }}</v-btn>
+            </div>
+            <div v-if="voiceFormError" class="hint mt-2">{{ voiceFormError }}</div>
+            <div class="hint mt-2">{{ t('set.voicePreviewNote') }}</div>
+          </template>
+        </div>
+        <v-divider class="mb-2" />
+        <!-- admin test option, this device only: every read asks the provider, no cache of any kind -->
         <v-list-item class="pa-0 mb-2" :title="t('set.skipVoiceCache')" :subtitle="t('set.skipVoiceCacheSub')" lines="three">
           <template #append><v-switch v-model="settings.skipVoiceCache" color="primary" hide-details density="compact" :aria-label="t('set.skipVoiceCache')" data-testid="skip-voice-cache" /></template>
         </v-list-item>
         <v-divider class="mb-2" />
+        <!-- the credit figures are ElevenLabs only (the server reads its subscription); Google offers no such figure -->
+        <template v-if="me.voiceProvider === 'elevenlabs'">
         <div class="usagehead">
           <v-btn icon="mdi-refresh" variant="text" size="small" :loading="usageState === 'loading'" :aria-label="t('set.voiceUsageRefresh')" @click="loadUsage" />
         </div>
@@ -568,6 +769,26 @@ const directionSummary = computed(() => (settings.direction === 'forward' ? t('d
         </div>
         <div v-else-if="usageState === 'error'" class="hint">{{ t('set.voiceUsageError') }}</div>
         <div v-else class="hint">{{ t('set.voiceUsageLoading') }}</div>
+        </template>
+        <!-- Google has no usage API: the server counts the characters itself and stops at the limit -->
+        <template v-else>
+        <div class="usagehead">
+          <v-btn icon="mdi-refresh" variant="text" size="small" :loading="googleState === 'loading'" :aria-label="t('set.voiceUsageRefresh')" @click="loadGoogleUsage" />
+        </div>
+        <div v-if="googleUsage" class="usagebody" data-testid="voice-google-usage">
+          <v-progress-circular :model-value="googleUsage.percent" :color="colorFor(googleUsage.percent)" :size="104" :width="11" class="usagering">
+            <span class="usagepct">{{ Math.round(googleUsage.percent) }}<small>%</small></span>
+          </v-progress-circular>
+          <div class="usagenums">
+            <div class="usageused"><b>{{ googleUsage.used.toLocaleString() }}</b> <span>/ {{ t('set.voiceGoogleChars', { n: googleUsage.limit.toLocaleString() }) }}</span></div>
+            <div class="usageleft">{{ t('set.voiceGoogleLeft', { n: Math.max(0, googleUsage.limit - googleUsage.used).toLocaleString() }) }}</div>
+            <div class="usagereset"><v-icon icon="mdi-calendar-month-outline" size="16" /> {{ t('set.voiceGoogleMonth', { month: googleUsage.month }) }}</div>
+          </div>
+        </div>
+        <div v-else-if="googleState === 'error'" class="hint">{{ t('set.voiceGoogleUsageError') }}</div>
+        <div v-else class="hint">{{ t('set.voiceGoogleUsageLoading') }}</div>
+        <div class="hint mt-2">{{ t('set.voiceGoogleNote') }}</div>
+        </template>
       </div>
       </v-expand-transition>
     </template>
