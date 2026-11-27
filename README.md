@@ -6,7 +6,7 @@ Phone-first flashcards (Vue 3 + Vuetify, installable PWA) that study the words o
 Screens: login -> deck screen (tap a dictionary to study it at once; the tag button of a dictionary opens its tags; the status filter is on top) -> study (front, then tap for the meaning,
 tap again to turn the card over to the details: Sino-Viet, pitch, kanji blocks with stroke-order player, notes,
 related words; Again / Learned / Skip; swipe or arrows to change word; speech) -> summary; settings (font size,
-show reading / meaning / Hán Việt, natural voice, dark mode, language).
+show reading / meaning / Hán Việt, dark mode, language; the admin picks the voice: ElevenLabs, Google or the phone's own).
 
 Deck screen (`DeckView.vue`): a tap anywhere on a dictionary's card studies it at once, with the status filter on top (New + Learning by default) and
 the tags remembered for THAT dictionary. There is no Start button on the screen: the tags of a dictionary are chosen from its tag button (a sheet

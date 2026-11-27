@@ -114,15 +114,16 @@ test.describe('auto play settings', () => {
     await page.locator('.sechead').filter({ hasText: 'Auto play' }).click();
     const front = page.getByTestId('auto-front');
     const back = page.getByTestId('auto-back');
-    await expect(front).toHaveText('3 s'); // defaults: 3 s on the front, 4 s on the answer
-    await expect(back).toHaveText('4 s');
+    await expect(front).toHaveText('2 s'); // defaults: 2 s on the front, 2 s on the answer, 2 s per word in the word list
+    await expect(back).toHaveText('2 s');
+    await expect(page.getByTestId('list-auto')).toHaveText('2 s');
 
     await page.getByRole('button', { name: 'Front side +' }).click();
-    await expect(front).toHaveText('4 s');
+    await expect(front).toHaveText('3 s');
     await page.getByRole('button', { name: 'Answer side −' }).click();
-    await expect(back).toHaveText('3 s');
-    await expect.poll(async () => (await apiSettings(request, 'bob')).settings?.autoFrontSec, { timeout: 10_000 }).toBe(4);
-    expect((await apiSettings(request, 'bob')).settings?.autoBackSec).toBe(3);
+    await expect(back).toHaveText('1 s');
+    await expect.poll(async () => (await apiSettings(request, 'bob')).settings?.autoFrontSec, { timeout: 10_000 }).toBe(3);
+    expect((await apiSettings(request, 'bob')).settings?.autoBackSec).toBe(1);
 
     const voice = page.getByRole('checkbox', { name: 'Read the word aloud' });
     await expect(voice).toBeChecked();
@@ -168,7 +169,7 @@ test.describe('auto play: save voice files', () => {
   });
 
   async function runAutoPlay(page: Page, request: import('@playwright/test').APIRequestContext, autoSaveVoice: boolean): Promise<void> {
-    await apiPutSettings(request, 'bob', { autoFrontSec: 1, autoBackSec: 1, autoSpeak: true, naturalVoice: true, autoSaveVoice });
+    await apiPutSettings(request, 'bob', { autoFrontSec: 1, autoBackSec: 1, autoSpeak: true, autoSaveVoice });
     await openSignedIn(page, request, 'bob');
     await startStudy(page, deck);
     test.skip(!(await page.locator('.speak').isVisible()), 'the speaker button only shows when the browser can speak');

@@ -163,17 +163,17 @@ export const api = {
   deletePaper: (paperId: string) => request<{ ok: boolean }>(`/api/papers/${encodeURIComponent(paperId)}`, { method: 'DELETE' }),
   /** Admin: how much of the ElevenLabs credits this period is used (the server reads the account; it costs no credits). */
   speechUsage: () => request<{ used: number; limit: number; percent: number; resetAt: string | null; tier: string | null }>('/api/speech/usage'),
-  /** Which voice provider is active, which ones the server has a key for, and when the choice last changed (the browser cache is keyed by these). */
-  voice: () => request<{ provider: VoiceProvider; updatedAt: string; available: VoiceProvider[] }>('/api/voice'),
+  /** Which voice is active (a provider or the phone's own voice), which ones are available, and when the choice last changed. */
+  voice: () => request<{ provider: VoiceMode; updatedAt: string; available: VoiceMode[] }>('/api/voice'),
   /** Admin: the voices and models each provider offers, plus the settings in use (metadata only: no characters spent). */
   voiceOptions: () => request<VoiceOptions>('/api/voice/options'),
   /** Admin: picks the voice for everybody, or one provider's voice/model/speed. Returns the whole settings. */
-  updateVoice: (patch: { provider?: VoiceProvider; elevenlabs?: Partial<VoiceConfig['elevenlabs']>; google?: Partial<VoiceConfig['google']> }) =>
+  updateVoice: (patch: { provider?: VoiceMode; elevenlabs?: Partial<VoiceConfig['elevenlabs']>; google?: Partial<VoiceConfig['google']> }) =>
     request<VoiceConfig>('/api/voice', { method: 'PUT', body: JSON.stringify(patch) }),
-  /** Admin: Google characters counted by the server this month (`month` is YYYY-MM); it stops Google at the limit. */
-  voiceUsage: () => request<{ used: number; limit: number; percent: number; month: string }>('/api/voice/usage'),
+  /** Admin: Google characters counted by the server this month (`month` is YYYY-MM); `stored` false means memory only (no D1). */
+  voiceUsage: () => request<{ used: number; limit: number; percent: number; month: string; stored: boolean; error: string | null }>('/api/voice/usage'),
   /** Admin: picks the voice for everybody. */
-  setVoiceProvider: (provider: VoiceProvider) => request<VoiceConfig>('/api/voice', { method: 'PUT', body: JSON.stringify({ provider }) }),
+  setVoiceProvider: (provider: VoiceMode) => request<VoiceConfig>('/api/voice', { method: 'PUT', body: JSON.stringify({ provider }) }),
   /** Free servers sleep: ping /health first so the UI can say "waking up". */
   health: () => request<{ ok: boolean; saveVoice?: boolean }>('/health')
 };
@@ -197,9 +197,9 @@ export async function loadServerInfo(): Promise<void> {
 export const me = reactive({
   admin: false,
   ready: false,
-  voiceProvider: 'elevenlabs' as VoiceProvider,
+  voiceProvider: 'elevenlabs' as VoiceMode,
   voiceVersion: '',
-  voiceAvailable: ['elevenlabs'] as VoiceProvider[]
+  voiceAvailable: ['elevenlabs'] as VoiceMode[]
 });
 export async function loadMe(): Promise<void> {
   if (!auth.token && import.meta.env.VITE_LOGIN !== 'false') {
@@ -224,11 +224,13 @@ export async function loadMe(): Promise<void> {
 
 /* Where the server got a spoken word from (its x-voice-source header): a paid call to ElevenLabs or Google, its memory, or a file on its disk. */
 export type VoiceProvider = 'elevenlabs' | 'google';
+/** A server provider, or the phone's own voice (no server call, no cache). */
+export type VoiceMode = VoiceProvider | 'device';
 export type ServerVoiceSource = VoiceProvider | 'server-memory' | 'server-file' | 'server';
 
 /* The admin's voice settings (what the server keeps in app_config) and the voices each provider offers. */
 export interface VoiceConfig {
-  provider: VoiceProvider;
+  provider: VoiceMode;
   elevenlabs: { voice: string; model: string; speed: number };
   google: { voice: string };
   updatedAt: string;
@@ -238,6 +240,8 @@ export interface VoiceOption {
   name: string;
   detail?: string;
   previewUrl?: string | null;
+  /** ElevenLabs only: a voice of this account (cloned/generated/professional), not a premade one. */
+  mine?: boolean;
 }
 export interface VoiceOptions {
   current: VoiceConfig;
@@ -267,11 +271,23 @@ export async function fetchSpeech(text: string, deck = '', save = true, fresh = 
   return { blob: await res.blob(), source, provider, version };
 }
 
-/* A short sample with the active voice settings (admin only). The server caches it, so the same settings twice are free. */
-export async function fetchVoicePreview(text = 'こんにちは'): Promise<Blob> {
+/* A short sample with one provider's settings (admin only). The server caches it by settings, so the same one twice is free. */
+export interface VoicePreviewInput {
+  provider: VoiceProvider;
+  text?: string;
+  voice?: string;
+  model?: string;
+  speed?: number;
+}
+export async function fetchVoicePreview(input: VoicePreviewInput): Promise<Blob> {
   let res: Response;
   try {
-    res = await fetch(`${BASE}/api/voice/preview?text=${encodeURIComponent(text)}`, { headers: authHeaders(), cache: 'no-store' });
+    res = await fetch(`${BASE}/api/voice/preview`, {
+      method: 'POST',
+      headers: { ...authHeaders(), 'content-type': 'application/json' },
+      body: JSON.stringify(input),
+      cache: 'no-store'
+    });
   } catch {
     throw new ApiError(t('api.conn'), 0);
   }

@@ -58,20 +58,25 @@ test.describe('settings sync in the app', () => {
   });
 });
 
-test.describe('auto play: save voice files', () => {
+test.describe('voice: save voice files', () => {
   /* The e2e server has no SPEECH_SAVE_DIR, so it says saveVoice: false in /health; the switch only exists on a server that keeps voice files. */
   const healthSaysSaveVoice = (page: import('@playwright/test').Page, saveVoice: boolean) =>
     page.route('**/health', (route) => route.fulfill({ json: { ok: true, saveVoice } }));
+  /* The option sits in Choose Voice, which the app shows to admins only, and the e2e server makes nobody an admin: these two tests answer /api/me. */
+  const appSaysAdmin = (page: import('@playwright/test').Page) =>
+    page.route('**/api/me', (route) => route.fulfill({ json: { user: 'bob', admin: true } }));
 
   test('on a server that cannot save voice files the switch is not shown', async ({ page, request }) => {
+    await appSaysAdmin(page);
     await openSignedIn(page, request, 'bob');
     await page.goto('/#/settings');
-    await page.locator('.sechead').filter({ hasText: 'Auto play' }).click();
-    await expect(page.getByRole('checkbox', { name: 'Read the word aloud' })).toBeVisible(); // the section is open ...
+    await page.getByTestId('voice-section').click();
+    await expect(page.getByTestId('voice-section')).toHaveAttribute('aria-expanded', 'true'); // the section is open ...
     await expect(page.getByRole('checkbox', { name: 'Save voice files' })).toHaveCount(0); // ... and the option is not in it
   });
 
   test('the switch is on by default, is saved with the other settings, and can be turned off', async ({ page, request }) => {
+    await appSaysAdmin(page);
     await healthSaysSaveVoice(page, true);
     // the app pulls the saved settings once after sign-in and they replace the local ones: click only after that, or the pull can switch it back on
     const pulled = page.waitForResponse((r) => r.url().includes('/api/settings') && r.request().method() === 'GET');
@@ -79,7 +84,7 @@ test.describe('auto play: save voice files', () => {
     await pulled;
     await page.waitForTimeout(300); // the pulled settings are applied right after the response
     await page.goto('/#/settings');
-    await page.locator('.sechead').filter({ hasText: 'Auto play' }).click();
+    await page.getByTestId('voice-section').click();
     const sw = page.getByRole('checkbox', { name: 'Save voice files' });
     await expect(sw).toBeChecked();
     // a click that lands while the section is still opening can be lost: click again until the switch really is off
@@ -89,6 +94,38 @@ test.describe('auto play: save voice files', () => {
     }).toPass({ timeout: 15_000 });
     expect((await stored(page)).autoSaveVoice).toBe(false);
     await expect.poll(async () => (await apiSettings(request, 'bob')).settings?.autoSaveVoice, { timeout: 10_000 }).toBe(false);
+  });
+});
+
+test.describe('voice: Google characters at the monthly limit', () => {
+  /* The e2e server has no Google key, so who the user is, which providers exist and the character count are answered here. */
+  const googleWithUsage = async (page: import('@playwright/test').Page, used: number, limit: number): Promise<void> => {
+    await page.route('**/api/me', (route) => route.fulfill({ json: { user: 'bob', admin: true } }));
+    await page.route('**/api/voice', (route) =>
+      route.fulfill({ json: { provider: 'elevenlabs', updatedAt: '2026-11-01T00:00:00Z', available: ['elevenlabs', 'google', 'device'] } })
+    );
+    await page.route('**/api/voice/usage', (route) =>
+      route.fulfill({ json: { used, limit, percent: (used / limit) * 100, month: '2026-11', stored: true, error: null } })
+    );
+  };
+
+  test('at the limit the Google radio is off and the warning says why', async ({ page, request }) => {
+    await googleWithUsage(page, 1_000_000, 1_000_000);
+    await openSignedIn(page, request, 'bob');
+    await page.goto('/#/settings');
+    await page.getByTestId('voice-section').click();
+    await expect(page.getByTestId('google-limit')).toBeVisible();
+    await expect(page.getByRole('radio', { name: 'Google Cloud TTS' })).toBeDisabled();
+    await expect(page.getByRole('radio', { name: 'ElevenLabs' })).toBeEnabled(); // the other provider stays a choice
+  });
+
+  test('below the limit Google can be picked and there is no warning', async ({ page, request }) => {
+    await googleWithUsage(page, 10, 1_000_000);
+    await openSignedIn(page, request, 'bob');
+    await page.goto('/#/settings');
+    await page.getByTestId('voice-section').click();
+    await expect(page.getByRole('radio', { name: 'Google Cloud TTS' })).toBeEnabled();
+    await expect(page.getByTestId('google-limit')).toHaveCount(0);
   });
 });
 

@@ -12,15 +12,15 @@ export interface Settings {
   showHanViet: boolean; // show the Sino-Vietnamese (Hán Việt) reading
   showEnglish: boolean; // show the English meaning under the Vietnamese one
   showTooltips: boolean; // web only: a small label when the mouse is over a button
-  naturalVoice: boolean; // read words with the natural (ElevenLabs) voice when the server has one
   direction: 'forward' | 'reverse'; // forward = Japanese -> Vietnamese, reverse = Vietnamese -> Japanese
   studyInOrder: boolean; // false = a run is in random order, true = in the order of the word list (see lib/cardOrder.ts)
   autoFrontSec: number; // auto play: seconds the front of a card stays
   autoBackSec: number; // auto play: seconds the answer side stays
+  listAutoSec: number; // auto play in the word list's kanji grid: seconds each word's popup stays before the next word
   autoSpeak: boolean; // auto play: read the word aloud
   autoSaveVoice: boolean; // auto play: let the server keep the spoken words as files (only a local run with SPEECH_SAVE_DIR saves anything)
   strokeStrictness: 'strict' | 'normal' | 'loose'; // handwriting practice: how strictly a stroke is checked (this device only, not synced)
-  skipVoiceCache: boolean; // admin test option: never use a cached voice (browser, shipped file, server), always ask ElevenLabs (this device only, not synced; costs credits)
+  skipVoiceCache: boolean; // admin test option: never use a cached voice (browser, shipped file, server), always ask the selected provider (this device only, not synced; costs credits)
   testInstantCheck: boolean; // test: true = each answer is marked right or wrong at once, false = nothing is shown until the test is finished (kept per user, synced)
 }
 
@@ -35,7 +35,7 @@ const KEY = 'flashmobile.settings';
 
 function defaults(): Settings {
   const vietnamese = typeof navigator !== 'undefined' && navigator.language?.toLowerCase().startsWith('vi');
-  return { cardText: defaultCardStyles(), showReading: false, dark: false, language: vietnamese ? 'vi' : 'en', showMeaning: true, showHanViet: true, showEnglish: false, showTooltips: true, naturalVoice: true, direction: 'forward', studyInOrder: false, autoFrontSec: 3, autoBackSec: 4, autoSpeak: true, autoSaveVoice: true, strokeStrictness: 'normal', skipVoiceCache: false, testInstantCheck: true };
+  return { cardText: defaultCardStyles(), showReading: false, dark: false, language: vietnamese ? 'vi' : 'en', showMeaning: true, showHanViet: true, showEnglish: false, showTooltips: true, direction: 'forward', studyInOrder: false, autoFrontSec: 2, autoBackSec: 2, listAutoSec: 2, autoSpeak: true, autoSaveVoice: true, strokeStrictness: 'normal', skipVoiceCache: false, testInstantCheck: true };
 }
 
 /* Any saved / received shape -> valid Settings (unknown keys dropped, bad values replaced by defaults). */
@@ -51,11 +51,11 @@ export function normalizeSettings(input: unknown, tooltips = true, strictness: S
     showHanViet: typeof raw.showHanViet === 'boolean' ? raw.showHanViet : base.showHanViet,
     showEnglish: typeof raw.showEnglish === 'boolean' ? raw.showEnglish : base.showEnglish,
     showTooltips: typeof raw.showTooltips === 'boolean' ? raw.showTooltips : tooltips,
-    naturalVoice: typeof raw.naturalVoice === 'boolean' ? raw.naturalVoice : base.naturalVoice,
     direction: raw.direction === 'reverse' ? 'reverse' : 'forward',
     studyInOrder: typeof raw.studyInOrder === 'boolean' ? raw.studyInOrder : base.studyInOrder,
     autoFrontSec: autoSec(raw.autoFrontSec, base.autoFrontSec),
     autoBackSec: autoSec(raw.autoBackSec, base.autoBackSec),
+    listAutoSec: autoSec(raw.listAutoSec, base.listAutoSec),
     autoSpeak: typeof raw.autoSpeak === 'boolean' ? raw.autoSpeak : base.autoSpeak,
     autoSaveVoice: typeof raw.autoSaveVoice === 'boolean' ? raw.autoSaveVoice : base.autoSaveVoice,
     strokeStrictness: raw.strokeStrictness === 'strict' || raw.strokeStrictness === 'normal' || raw.strokeStrictness === 'loose' ? raw.strokeStrictness : strictness,

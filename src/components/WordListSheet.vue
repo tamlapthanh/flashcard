@@ -2,13 +2,16 @@
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { t } from '../i18n';
 import { listOrder } from '../lib/cardOrder';
+import { readingRows } from '../lib/readingLines';
+import { canSpeak, prefetchSpeech, speakJapanese, stopSpeaking } from '../lib/speech';
 import { swipeDown } from '../lib/swipeDown';
 import { markOf } from '../lib/listMark';
 import { STATUS_COLOR, STATUS_ICON, STATUS_ORDER } from '../lib/status';
 import { tagStyle } from '../lib/tagColor';
+import { settings } from '../settings';
 import PitchLine from './PitchLine.vue';
 import type { StudySession } from '../session';
-import type { StudyResult, StudyStatus } from '../types';
+import type { LightCard, StudyResult, StudyStatus } from '../types';
 
 import { VBottomSheet } from 'vuetify/components';
 
@@ -82,6 +85,7 @@ const atBottom = (el: HTMLElement): boolean => el.scrollTop + el.clientHeight >=
 
 let touching = false;
 function onTouchStart(e: TouchEvent): void {
+  autoStop();
   touching = true;
   touchY = e.touches[0]?.clientY ?? 0;
 }
@@ -134,6 +138,7 @@ function glide(): void {
 function onWheel(e: WheelEvent): void {
   const el = rowsEl.value;
   if (!el || e.ctrlKey || Math.abs(e.deltaY) < 1) return;
+  autoStop();
   const toward = e.deltaY < 0 ? atTop(el) : atBottom(el);
   if (toward) {
     stopGlide();
@@ -158,9 +163,11 @@ const pickedId = ref<string | null>(null);
    press, before the click), must not jump to the word. */
 let hadSelection = false;
 function onRowsDown(): void {
+  autoStop();
   hadSelection = !!window.getSelection()?.toString();
 }
 function onRowClick(id: string, el?: HTMLElement): void {
+  autoStop();
   const before = hadSelection;
   hadSelection = false;
   if (before) {
@@ -254,6 +261,7 @@ onBeforeUnmount(() => {
   cancelDismiss();
 });
 function onTileClick(id: string, e?: Event): void {
+  autoStop();
   seenId.value = id;
   if (withMouse || labelId.value === id) onRowClick(id, (e?.currentTarget as HTMLElement | null) ?? undefined);
   else {
@@ -268,9 +276,130 @@ const firstUpper = (s: string): string => {
   const low = s.toLowerCase();
   return low.charAt(0).toUpperCase() + low.slice(1);
 };
+/* The last line of a square's popup: the word's own reading. A single kanji's reading is the long "On: … / Kun: …" form (shown on the
+   kanji sheet), so it is left out here. */
+const popupReading = (reading: string | null): string | null => (reading && !readingRows(reading) ? reading : null);
+
+/*
+ * Auto play in the square grid: the popup opens on one word at a time, the word is read aloud (the same settings as the study
+ * screen's auto play), and the list moves on by itself through the words on screen; one pass, then it stops. Nothing is marked or
+ * graded. A tap, a scroll, the search, a filter or closing the sheet stops it, and the popup stays on the word it reached.
+ */
+const autoOn = ref(false);
+let autoToken = 0;
+let autoTimer: ReturnType<typeof setTimeout> | undefined;
+let autoWake: { release: () => Promise<void> } | null = null;
+
+let autoResolve: (() => void) | undefined;
+/* Counts up in small steps and reads settings.listAutoSec every step, so the + / − of the pause button changes the wait of the
+   word on screen at once, not only from the next word. */
+const autoWait = (): Promise<void> =>
+  new Promise((resolve) => {
+    let elapsed = 0;
+    const tick = 200;
+    const step = (): void => {
+      elapsed += tick;
+      const goal = settings.listAutoSec * 1000;
+      if (elapsed >= goal) {
+        autoResolve = undefined;
+        resolve();
+        return;
+      }
+      autoTimer = setTimeout(step, Math.min(tick, goal - elapsed));
+    };
+    autoResolve = resolve;
+    autoTimer = setTimeout(step, tick);
+  });
+/* Ends a wait at once when auto play is stopped, so the run is not left hanging on a cleared timer. */
+function stopAutoWait(): void {
+  clearTimeout(autoTimer);
+  autoResolve?.();
+  autoResolve = undefined;
+}
+
+/* Reads the word and resolves when the voice has finished (never waits for ever on a voice that does not answer). */
+function autoSpeak(c: LightCard): Promise<void> {
+  if (!settings.autoSpeak || c.lang !== 'ja' || !canSpeak()) return Promise.resolve();
+  return new Promise((resolve) => {
+    const guard = setTimeout(finish, 10_000); // a voice that never answers must not stop the run
+    function finish(): void {
+      clearTimeout(guard);
+      resolve();
+    }
+    speakJapanese(c.reading || c.headword, finish, props.session.deckName, settings.autoSaveVoice);
+  });
+}
+
+/* Brings the square into the middle of the list, with room under it for the popup, then lets the popup pick its side. */
+function autoScroll(id: string): void {
+  const root = rowsEl.value;
+  const el = root?.querySelector<HTMLElement>(`[data-wid="${CSS.escape(id)}"]`);
+  if (!root || !el) return;
+  stopGlide(); // a wheel glide that is still running would fight this position
+  const box = root.getBoundingClientRect();
+  const r = el.getBoundingClientRect();
+  const room = 72; // about the height of the popup under the square
+  const target = root.scrollTop + (r.top - box.top) + (r.height + room) / 2 - root.clientHeight / 2;
+  root.scrollTop = Math.max(0, Math.min(root.scrollHeight - root.clientHeight, target));
+  placeLabel(id, el);
+}
+
+async function autoRun(token: number): Promise<void> {
+  try {
+    const list = visibleCards.value.map(({ c }) => c);
+    const from = labelId.value ? list.findIndex((c) => c.id === labelId.value) : -1; // carries on from the word on screen
+    for (let i = Math.max(0, from); i < list.length; i++) {
+      if (token !== autoToken) return;
+      const c = list[i]!;
+      const next = list[i + 1];
+      if (settings.autoSpeak && next?.lang === 'ja') prefetchSpeech(next.reading || next.headword, props.session.deckName, settings.autoSaveVoice);
+      labelId.value = c.id;
+      autoScroll(c.id);
+      await Promise.all([autoWait(), autoSpeak(c)]);
+    }
+  } finally {
+    // a finished run (or a step that threw) never leaves the button stuck on pause
+    if (token === autoToken) {
+      autoOn.value = false;
+      releaseAutoWake();
+    }
+  }
+}
+
+async function acquireAutoWake(): Promise<void> {
+  try {
+    const nav = navigator as Navigator & { wakeLock?: { request: (type: 'screen') => Promise<{ release: () => Promise<void> }> } };
+    autoWake = (await nav.wakeLock?.request('screen')) ?? null; // the phone keeps the screen on while it plays
+  } catch {
+    autoWake = null;
+  }
+}
+function releaseAutoWake(): void {
+  void autoWake?.release().catch(() => undefined);
+  autoWake = null;
+}
+
+function autoStart(): void {
+  if (autoOn.value || matches.value.length === 0) return;
+  autoOn.value = true;
+  void acquireAutoWake();
+  void autoRun(++autoToken).catch((e: unknown) => console.error('word list auto play stopped', e));
+}
+function autoStop(): void {
+  if (!autoOn.value) return;
+  autoToken++; // the running loop notices and quits
+  stopAutoWait();
+  autoOn.value = false;
+  stopSpeaking();
+  releaseAutoWake();
+}
+const autoToggle = (): void => (autoOn.value ? autoStop() : autoStart());
+onBeforeUnmount(autoStop);
+
 const searchBox = ref<{ focus: () => void } | null>(null);
 
 function toggleSearch(): void {
+  autoStop();
   searchOpen.value = !searchOpen.value;
   if (searchOpen.value) void nextTick(() => searchBox.value?.focus());
   else {
@@ -298,6 +427,7 @@ const searchOpts = computed(() => [
 ]);
 /* Switches one option on or off; every one may be off (then the list is empty). */
 function flip(option: { value: boolean }): void {
+  autoStop();
   option.value = !option.value;
 }
 const foldOpts = (): void => {
@@ -319,6 +449,7 @@ const tagChoices = computed(() => {
 });
 const canFilterTags = computed(() => tagChoices.value.length >= 2);
 function toggleTag(tag: string): void {
+  autoStop();
   selectedTags.value = selectedTags.value.includes(tag) ? selectedTags.value.filter((x) => x !== tag) : [...selectedTags.value, tag];
 }
 const foldTags = (): void => {
@@ -391,6 +522,7 @@ const gridStyle = computed(() => (props.kanjiGrid ? { '--kcols': String(tileGrid
 
 const hasMore = computed(() => shown.value < matches.value.length);
 watch([query, inLearned, inSkipped, inTodo, selectedTags], () => {
+  autoStop(); // the words on screen change under the run
   shown.value = chunk();
   if (rowsEl.value) rowsEl.value.scrollTop = 0;
 });
@@ -422,6 +554,7 @@ watch(
     if (isOpen) {
       shown.value = chunk();
     } else {
+      autoStop();
       query.value = ''; // the search box is empty and hidden again next time
       labelId.value = null;
       inLearned.value = inSkipped.value = inTodo.value = true;
@@ -507,6 +640,9 @@ const currentId = computed(() => props.session.current?.id ?? null);
         <span v-if="session.tags.length" class="dcount">{{ t('list.tagsOf', { tags: session.tags.join(', ') }) }}</span>
       </div>
       <!-- the magnifier is pinned in the top right corner (next to the grip): it never moves, with the box shown or hidden -->
+      <!-- square grid only: auto play (left of the eye button): shows the popup of one word at a time and moves on by itself,
+           one word every "Wait per word in the word list" from Settings (the button only starts and pauses) -->
+      <v-btn v-if="kanjiGrid" class="searchbtn autobtn" :icon="autoOn ? 'mdi-pause' : 'mdi-play'" variant="text" size="x-small" density="comfortable" :aria-label="t(autoOn ? 'auto.pause' : 'auto.play')" :aria-pressed="autoOn" @click="autoToggle" />
       <!-- square grid only: shows the Sino-Vietnamese reading under the kanji of every square (left of the magnifier, same button) -->
       <v-btn v-if="kanjiGrid" class="searchbtn hvbtn" :icon="showHv ? 'mdi-eye' : 'mdi-eye-off'" variant="text" size="x-small" density="comfortable" :aria-label="t('list.hanviet')" :aria-pressed="showHv" @click="showHv = !showHv" />
       <v-btn class="searchbtn" :icon="searchOpen ? 'mdi-magnify-close' : 'mdi-magnify'" variant="text" size="x-small" density="comfortable" :aria-label="t('list.search')" :aria-expanded="searchOpen" @click="toggleSearch" />
@@ -563,7 +699,7 @@ const currentId = computed(() => props.session.current?.id ?? null);
         </div>
       </div>
       <div class="rowswrap">
-      <div ref="rowsEl" class="rows px-3 pb-3" :class="{ kgrid: kanjiGrid, fanopen: optsOpen || tagsOpen }" @pointerdown.capture="onRowsDown" :style="{ '--cols': cols, ...gridStyle }" @scroll.passive="updateThumb" @touchstart.passive="onTouchStart" @touchmove.passive="onTouchMove" @touchend.passive="onTouchEnd" @touchcancel.passive="onTouchEnd" @wheel="onWheel">
+      <div ref="rowsEl" class="rows px-3 pb-3" :class="{ kgrid: kanjiGrid, fanopen: optsOpen || tagsOpen, auto: autoOn }" @pointerdown.capture="onRowsDown" :style="{ '--cols': cols, ...gridStyle }" @scroll.passive="updateThumb" @touchstart.passive="onTouchStart" @touchmove.passive="onTouchMove" @touchend.passive="onTouchEnd" @touchcancel.passive="onTouchEnd" @wheel="onWheel">
         <template v-for="{ c, n } in visibleCards" :key="c.id">
         <div
           v-if="kanjiGrid"
@@ -577,7 +713,7 @@ const currentId = computed(() => props.session.current?.id ?? null);
           @click="onTileClick(c.id, $event)"
           @keydown.enter.self.prevent="onTileClick(c.id, $event)"
           @keydown.space.self.prevent="onTileClick(c.id, $event)"
-        >{{ tileLayout(c.headword).text }}<span v-if="showHv && c.hanviet" class="khh">{{ firstUpper(c.hanviet) }}</span><span v-if="c.hanviet ||c.meaning || tileLayout(c.headword).cut" class="khv"><span v-if="tileLayout(c.headword).cut" class="khw jp">{{ c.headword }}</span><b v-if="c.hanviet">{{ c.hanviet.toUpperCase() }}</b><span v-if="c.meaning" class="khm">{{ c.meaning }}</span></span></div>
+        >{{ tileLayout(c.headword).text }}<span v-if="showHv && c.hanviet" class="khh">{{ firstUpper(c.hanviet) }}</span><span v-if="c.hanviet || c.meaning || tileLayout(c.headword).cut || popupReading(c.reading)" class="khv"><span v-if="tileLayout(c.headword).cut" class="khw jp">{{ c.headword }}</span><b v-if="c.hanviet">{{ c.hanviet.toUpperCase() }}</b><span v-if="c.meaning" class="khm">{{ c.meaning }}</span><span v-if="popupReading(c.reading)" class="khr">{{ popupReading(c.reading) }}</span></span></div>
         <div
           v-else
           role="button"
@@ -930,7 +1066,11 @@ const currentId = computed(() => props.session.current?.id ?? null);
 .searchbtn.hvbtn {
   right: 52px; /* just left of the magnifier */
 }
-.searchbtn.hvbtn[aria-pressed='true'] {
+.searchbtn.autobtn {
+  right: 92px; /* just left of the eye button */
+}
+.searchbtn.hvbtn[aria-pressed='true'],
+.searchbtn.autobtn[aria-pressed='true'] {
   background: color-mix(in srgb, rgb(var(--v-theme-primary)) 80%, #000) !important; /* darker green while on, like the magnifier with its box open */
 }
 /* the Sino-Vietnamese reading, always shown under the kanji (eye button on) */
@@ -938,19 +1078,16 @@ const currentId = computed(() => props.session.current?.id ?? null);
   position: absolute;
   left: 2px;
   right: 2px;
-  bottom: 2px;
+  bottom: 4px; /* a little higher than the edge: the marks under the letters (ạ, ộ, …) were being cut off */
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-family: var(--font-body, inherit);
   font-size: max(9px, calc(10px * var(--kf, 1)));
   font-weight: 700;
-  line-height: 1.1;
-  color: #d32f2f; /* red: the green was hard to read on the squares */
+  line-height: 1.3; /* room for the marks above and below (ấ, ạ), not just the letters */
+  color: var(--jp); /* the ink of the kanji: the red was too glaring (and green was hard to read on the squares); --jp flips with dark mode */
   pointer-events: none;
-}
-.v-theme--dark .khh {
-  color: #ff6b6b; /* lighter red on the dark paper */
 }
 .searchbtn[aria-expanded='true'] {
   background: color-mix(in srgb, rgb(var(--v-theme-primary)) 80%, #000) !important; /* a darker green while the box is open (no movement) */
@@ -1061,6 +1198,9 @@ const currentId = computed(() => props.session.current?.id ?? null);
 }
 .sheet:has(.hvbtn) .deckhead {
   padding-right: 84px; /* room for the eye button too */
+}
+.sheet:has(.autobtn) .deckhead {
+  padding-right: 124px; /* and for the auto play button */
 }
 .dname {
   min-width: 0;
@@ -1196,7 +1336,8 @@ const currentId = computed(() => props.session.current?.id ?? null);
 .ktile.skipped {
   background-color: color-mix(in srgb, #ef8a17 20%, var(--paper));
 }
-/* the Sino-Vietnamese reading, under the tile, only while the mouse is over it */
+/* the popup under the tile while the mouse is over it (or after a tap): the navy picked from docs/popup-color-mockup.html with white text
+   (the mint / gold lines were the hard part to read, so every line is white now; the weights and sizes keep the four lines apart) */
 .khv {
   display: none;
   position: absolute;
@@ -1208,14 +1349,18 @@ const currentId = computed(() => props.session.current?.id ?? null);
   max-width: min(480px, 92vw); /* wide enough for a long word on ONE line: it only wraps when even this is not enough */
   padding: 3px 9px;
   border-radius: 8px;
-  background: var(--forest);
+  background: #16324f; /* navy (option B in the colour mockup) */
   color: #fff;
+  box-shadow: 0 4px 14px rgba(10, 25, 45, 0.35); /* sets the popup apart from the squares and the dark paper */
   font-size: 0.72rem;
   line-height: 1.3;
   text-align: center;
   font-family: var(--font-body, inherit);
   white-space: normal;
   pointer-events: none;
+}
+.v-theme--dark .khv {
+  background: #1d4066; /* the same navy, a little lighter so it stands off the dark paper */
 }
 .khw {
   display: block;
@@ -1228,12 +1373,19 @@ const currentId = computed(() => props.session.current?.id ?? null);
 .khv b {
   display: block;
   letter-spacing: 0.02em;
-  color: #7fe3b0; /* Sino-Vietnamese: mint (the word above it is white, the meaning below is gold: three colours) */
+  color: #fff; /* Sino-Vietnamese: white too, kept apart by the bold weight */
 }
 .khm {
   display: block;
   font-weight: 400;
-  color: #ffd77a; /* ... the Vietnamese meaning: soft gold */
+  color: #fff; /* the meaning: white, the lightest line */
+}
+.khr {
+  display: block;
+  margin-top: 1px;
+  font-family: var(--font-jp);
+  font-weight: 500;
+  color: #fff; /* the reading, the last line */
 }
 .ktile.up .khv {
   top: auto;
@@ -1257,6 +1409,10 @@ const currentId = computed(() => props.session.current?.id ?? null);
   }
   .ktile:hover .khv {
     display: block;
+  }
+  /* while auto play runs, only its own word's popup shows: the square under a resting pointer does not open a second one */
+  .rows.auto .ktile:hover:not(.show) .khv {
+    display: none;
   }
 }
 .row.learned {

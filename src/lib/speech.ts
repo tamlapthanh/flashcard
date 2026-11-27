@@ -79,6 +79,7 @@ function loadVoiceIndex(provider: VoiceProvider): Promise<VoiceIndex> {
 
 async function shippedFile(text: string, deck: string): Promise<Blob | null> {
   const provider = me.voiceProvider;
+  if (provider === 'device') return null; // no server voice, no shipped file
   const decks = await loadVoiceIndex(provider);
   const rel = decks[deck]?.[text] ?? Object.values(decks).map((words) => words[text]).find(Boolean); // the same word of another deck will do
   if (!rel) return null;
@@ -145,13 +146,14 @@ function applyServedVoice(served: { provider?: VoiceProvider; version?: string }
 }
 
 async function cachedSpeech(text: string, deck: string, save = true): Promise<{ blob: Blob; source: VoiceSource; origin?: VoiceOrigin }> {
+  if (!me.ready) await loadMe(); // which voice (and which cache) before anything is looked up
+  if (me.voiceProvider === 'device') throw new Error('the phone voice is active'); // no server call, no cache
   // admin test option "no voice cache": no browser cache, no shipped file, no server cache or file; nothing is stored either
   if (skipCache()) {
     const served = await fetchSpeech(text, deck, false, true);
     applyServedVoice(served);
     return { blob: served.blob, source: served.source };
   }
-  if (!me.ready) await loadMe(); // which voice (and which cache) before anything is looked up
   const hasCaches = typeof caches !== 'undefined';
   const key = new Request(entryUrl(text, deck));
   const store = hasCaches ? await caches.open(cacheName(deck)).catch(() => null) : null;
@@ -261,7 +263,7 @@ export function speakJapanese(text: string, onEnd?: () => void, deck = '', save 
     onEnd?.();
     return;
   }
-  if (!settings.naturalVoice || typeof Audio === 'undefined') {
+  if (typeof Audio === 'undefined') {
     speakWithDevice(text, onEnd);
     return;
   }
@@ -298,7 +300,9 @@ export function speakJapanese(text: string, onEnd?: () => void, deck = '', save 
 
 /** Gets a word ready (into the browser's cache) without playing it, so it starts at once when its turn comes. */
 export function prefetchSpeech(text: string, deck = '', save = true): void {
-  if (!text || !settings.naturalVoice || typeof Audio === 'undefined') return;
+  if (!text || typeof Audio === 'undefined') return;
+  if (!me.ready) return; // wait for /api/voice: the phone voice must not fetch anything
+  if (me.voiceProvider === 'device') return; // nothing is fetched for the phone's own voice
   if (skipCache()) return; // nothing is kept, so fetching ahead would only spend credits for a sound that is thrown away
   void cachedSpeech(text, deck, save).catch(() => undefined);
 }
