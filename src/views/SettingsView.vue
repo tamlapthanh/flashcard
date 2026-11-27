@@ -268,6 +268,14 @@ const directionSummary = computed(() => (settings.direction === 'forward' ? t('d
 .v-application:not(.v-theme--dark):has(.settings-page) {
   background: #fff !important;
 }
+/* This screen is long: without a background of its own, the cards scroll behind the transparent top bar and its title and menu button
+   look as if they had scrolled away. White matches the page above; dark mode keeps the page gradient (fixed), whose top is #123619. */
+.v-application:not(.v-theme--dark):has(.settings-page) .v-app-bar.v-toolbar {
+  background: #fff !important;
+}
+.v-theme--dark:has(.settings-page) .v-app-bar.v-toolbar {
+  background: #123619 !important;
+}
 </style>
 
 <style scoped>
